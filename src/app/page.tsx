@@ -162,7 +162,9 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to start session');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        const errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -174,7 +176,8 @@ export default function Home() {
       setState('QUIZ');
     } catch (error) {
       console.error('Error starting session:', error);
-      alert('セッション開始に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : 'セッション開始に失敗しました';
+      alert(`セッション開始に失敗しました: ${errorMessage}`);
     }
   };
 

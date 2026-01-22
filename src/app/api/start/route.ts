@@ -124,8 +124,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error in /api/start:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error('Error details:', { errorMessage, errorStack });
+    
     const errorPayload = {
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
+      // 開発環境でのみスタックトレースを含める
+      ...(process.env.NODE_ENV !== 'production' && errorStack ? { stack: errorStack } : {}),
     };
     return new NextResponse(JSON.stringify(errorPayload), {
       status: 500,
