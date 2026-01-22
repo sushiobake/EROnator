@@ -1,0 +1,46 @@
+{
+  "name": "eronator-mvp0",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev-with-lock.js",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "clean": "node scripts/clean-next.js",
+    "dev:clean": "node scripts/run-dev-clean.js",
+    "build:clean": "node scripts/run-build-clean.js",
+    "start:clean": "node scripts/run-start-clean.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "prisma db seed",
+    "import:batch": "node scripts/importBatch.cjs"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.0",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
+    "dotenv": "^17.2.3",
+    "jest": "^29.7.0",
+    "jest-environment-node": "^29.7.0",
+    "prisma": "^5.19.0",
+    "ts-jest": "^29.1.2",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

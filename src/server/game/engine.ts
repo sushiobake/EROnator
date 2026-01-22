@@ -1,0 +1,406 @@
+/**
+ * ゲームエンジン（アルゴリズムとDBの橋渡し）
+ */
+
+import { prisma } from '@/server/db/client';
+import type { WorkWeight, WorkProbability, AiGateChoice } from '@/server/algo/types';
+import {
+  calculateBasePrior,
+  normalizeWeights,
+  calculateConfidence,
+  calculateEffectiveCandidates,
+  calculateEffectiveConfirmThreshold,
+} from '@/server/algo/scoring';
+import {
+  selectExploreTag,
+  shouldInsertConfirm,
+  selectConfirmType,
+  getNextHardConfirmType,
+  type TagInfo,
+} from '@/server/algo/questionSelection';
+import { passesCoverageGate } from '@/server/algo/coverage';
+import { hasDerivedFeature, updateWeightsForTagQuestion } from '@/server/algo/weightUpdate';
+import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
+import { getMvpConfig } from '@/server/config/loader';
+import type { MvpConfig } from '@/server/config/schema';
+import type { QuestionHistoryEntry } from '@/server/session/manager';
+
+/**
+ * AI_GATEフィルタ適用（Spec §2.1）
+ */
+export function filterWorksByAiGate(
+  works: Array<{ workId: string; isAi: string }>,
+  aiGateChoice: AiGateChoice
+): string[] {
+  if (aiGateChoice === 'YES') {
+    return works.filter(w => w.isAi === 'AI').map(w => w.workId);
+  }
+  if (aiGateChoice === 'NO') {
+    return works.filter(w => w.isAi === 'HAND').map(w => w.workId);
+  }
+  // DONT_CARE: 全て許可
+  return works.map(w => w.workId);
+}
+
+/**
+ * 初期重み計算（AI_GATE後）
+ */
+export async function initializeWeights(
+  allowedWorkIds: string[],
+  alpha: number
+): Promise<WorkWeight[]> {
+  // productUrlは必須（Prisma schemaでnullableではない）
+  const works = await prisma.work.findMany({
+    where: {
+      workId: { in: allowedWorkIds },
+    },
+  });
+
+  // popularityPlayBonusを環境変数で無効化可能（デバッグ中は常に0として扱う）
+  const usePlayBonus = process.env.DISABLE_POPULARITY_PLAY_BONUS !== '1';
+  
+  return works.map(w => ({
+    workId: w.workId,
+    weight: calculateBasePrior(
+      w.popularityBase,
+      usePlayBonus ? w.popularityPlayBonus : 0,
+      alpha
+    ),
+  }));
+}
+
+/**
+ * 質問生成（最小限の情報のみ返す）
+ */
+export interface QuestionData {
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  displayText: string;
+  tagKey?: string;
+  hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
+  hardConfirmValue?: string;
+}
+
+/**
+ * 次の質問を選択・生成
+ */
+export async function selectNextQuestion(
+  weights: WorkWeight[],
+  probabilities: WorkProbability[],
+  questionCount: number,
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): Promise<QuestionData | null> {
+  const confidence = calculateConfidence(probabilities);
+  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+  const effectiveConfirmThreshold = calculateEffectiveConfirmThreshold(
+    weights.length,
+    config.flow.effectiveConfirmThresholdParams.min,
+    config.flow.effectiveConfirmThresholdParams.max,
+    config.flow.effectiveConfirmThresholdParams.divisor
+  );
+
+  const qIndex = questionCount + 1; // 次の質問番号（1-based）
+
+  // 使用済みタグを取得（SOFT_CONFIRMとEXPLORE_TAGの両方で使用）
+  const usedTagKeys = new Set(
+    questionHistory
+      .filter(q => q.tagKey)
+      .map(q => q.tagKey!)
+  );
+
+  // Confirm挿入判定
+  const shouldConfirm = shouldInsertConfirm(
+    qIndex,
+    confidence,
+    effectiveCandidates,
+    {
+      qForcedIndices: config.confirm.qForcedIndices,
+      confidenceConfirmBand: config.confirm.confidenceConfirmBand,
+      effectiveConfirmThreshold,
+    }
+  );
+
+  if (shouldConfirm) {
+    // SOFT_CONFIRM vs HARD_CONFIRM選択
+    const usedHardTypes = questionHistory
+      .filter(q => q.kind === 'HARD_CONFIRM')
+      .map(q => q.hardConfirmType!)
+      .filter((t): t is 'TITLE_INITIAL' | 'AUTHOR' => !!t);
+
+    // SOFT_CONFIRM候補（DERIVEDタグ）を探す（使用済みタグを除外）
+    const derivedTags = await prisma.tag.findMany({
+      where: {
+        tagType: 'DERIVED',
+        tagKey: { notIn: Array.from(usedTagKeys) },
+      },
+      include: {
+        workTags: {
+          where: {
+            workId: { in: weights.map(w => w.workId) },
+            derivedConfidence: { gte: config.algo.derivedConfidenceThreshold },
+          },
+        },
+      },
+    });
+
+    const hasSoftConfirmData = derivedTags.some(tag => tag.workTags.length > 0);
+
+    const confirmType = selectConfirmType(confidence, hasSoftConfirmData, {
+      softConfidenceMin: config.confirm.softConfidenceMin,
+      hardConfidenceMin: config.confirm.hardConfidenceMin,
+    });
+
+    if (confirmType === 'SOFT_CONFIRM' && derivedTags.length > 0) {
+      // SOFT_CONFIRM: DERIVEDタグを使用（最初の利用可能なもの）
+      const tag = derivedTags[0];
+      return {
+        kind: 'SOFT_CONFIRM',
+        displayText: `この作品は「${tag.displayName}」ですか？`,
+        tagKey: tag.tagKey,
+      };
+    } else {
+      // HARD_CONFIRM
+      const nextHardType = getNextHardConfirmType(usedHardTypes);
+      if (!nextHardType) {
+        // 全て使用済み → EXPLORE_TAGにフォールバック
+        return await selectExploreQuestion(weights, probabilities, questionHistory, config);
+      }
+
+      // top1を取得
+      const sorted = [...probabilities].sort((a, b) => {
+        if (a.probability !== b.probability) {
+          return b.probability - a.probability;
+        }
+        return a.workId.localeCompare(b.workId);
+      });
+      const topWorkId = sorted[0]?.workId;
+      if (!topWorkId) {
+        return null;
+      }
+
+      const topWork = await prisma.work.findUnique({
+        where: { workId: topWorkId },
+      });
+      if (!topWork) {
+        return null;
+      }
+
+      if (nextHardType === 'TITLE_INITIAL') {
+        const initial = normalizeTitleForInitial(topWork.title);
+        return {
+          kind: 'HARD_CONFIRM',
+          displayText: `タイトルは「${initial}」から始まりますか？`,
+          hardConfirmType: 'TITLE_INITIAL',
+          hardConfirmValue: initial,
+        };
+      } else {
+        // AUTHOR
+        return {
+          kind: 'HARD_CONFIRM',
+          displayText: `作者（サークル）は「${topWork.authorName}」ですか？`,
+          hardConfirmType: 'AUTHOR',
+          hardConfirmValue: topWork.authorName,
+        };
+      }
+    }
+  }
+
+  // EXPLORE_TAG
+  return await selectExploreQuestion(weights, probabilities, questionHistory, config);
+}
+
+/**
+ * EXPLORE_TAG質問選択
+ */
+async function selectExploreQuestion(
+  weights: WorkWeight[],
+  probabilities: WorkProbability[],
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): Promise<QuestionData | null> {
+  // 使用済みタグを除外（selectNextQuestionから渡される想定だが、念のため再計算）
+  const usedTagKeys = new Set(
+    questionHistory
+      .filter(q => q.tagKey)
+      .map(q => q.tagKey!)
+  );
+
+  // 全タグを取得（coverage gate通過のみ）
+  const allTags = await prisma.tag.findMany({
+    where: {
+      tagKey: { notIn: Array.from(usedTagKeys) },
+      tagType: { in: ['OFFICIAL', 'DERIVED'] },
+    },
+    include: {
+      workTags: {
+        where: {
+          workId: { in: weights.map(w => w.workId) },
+        },
+      },
+    },
+  });
+
+  const totalWorks = weights.length;
+  const availableTags: TagInfo[] = [];
+
+  for (const tag of allTags) {
+    const workCount = tag.workTags.length;
+    if (passesCoverageGate(
+      workCount,
+      totalWorks,
+      config.dataQuality.minCoverageMode,
+      config.dataQuality.minCoverageRatio,
+      config.dataQuality.minCoverageWorks
+    )) {
+      availableTags.push({
+        tagKey: tag.tagKey,
+        displayName: tag.displayName,
+        tagType: tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL',
+        workCount,
+      });
+    }
+  }
+
+  if (availableTags.length === 0) {
+    return null;
+  }
+
+  // workHasTag関数
+  const workTagMap = new Map<string, Set<string>>();
+  for (const tag of allTags) {
+    for (const wt of tag.workTags) {
+      if (!workTagMap.has(wt.workId)) {
+        workTagMap.set(wt.workId, new Set());
+      }
+      workTagMap.get(wt.workId)!.add(tag.tagKey);
+    }
+  }
+
+  const workHasTag = (workId: string, tagKey: string): boolean => {
+    const tags = workTagMap.get(workId);
+    if (!tags) return false;
+    return tags.has(tagKey);
+  };
+
+  const selectedTagKey = selectExploreTag(availableTags, probabilities, workHasTag);
+  if (!selectedTagKey) {
+    return null;
+  }
+
+  const selectedTag = availableTags.find(t => t.tagKey === selectedTagKey);
+  if (!selectedTag) {
+    return null;
+  }
+
+  return {
+    kind: 'EXPLORE_TAG',
+    displayText: `この作品は「${selectedTag.displayName}」ですか？`,
+    tagKey: selectedTagKey,
+  };
+}
+
+/**
+ * 回答による重み更新
+ */
+export async function processAnswer(
+  weights: WorkWeight[],
+  question: QuestionData,
+  answerChoice: string,
+  config: MvpConfig
+): Promise<WorkWeight[]> {
+  const strengthMap: Record<string, number> = {
+    YES: 1.0,
+    PROBABLY_YES: 0.6,
+    UNKNOWN: 0,
+    PROBABLY_NO: -0.6,
+    NO: -1.0,
+    DONT_CARE: 0,
+  };
+
+  const strength = strengthMap[answerChoice] ?? 0;
+
+  if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
+    // Tag-based質問
+    const tagKey = question.tagKey!;
+    
+    // WorkTagsを取得
+    const workTags = await prisma.workTag.findMany({
+      where: {
+        workId: { in: weights.map(w => w.workId) },
+        tagKey,
+      },
+    });
+
+    const workTagMap = new Map<string, number | null>();
+    for (const wt of workTags) {
+      workTagMap.set(wt.workId, wt.derivedConfidence);
+    }
+
+    const workHasFeature = (workId: string): boolean => {
+      const derivedConf = workTagMap.get(workId);
+      if (question.kind === 'SOFT_CONFIRM') {
+        // SOFT_CONFIRM: DERIVEDタグのみ（derivedConfidence >= threshold）
+        return hasDerivedFeature(derivedConf, config.algo.derivedConfidenceThreshold);
+      } else {
+        // EXPLORE_TAG:
+        // - WorkTag行が存在しない (undefined) → タグ無し → false
+        // - OFFICIALタグなど derivedConfidence=null → タグが付いているので feature=true
+        // - DERIVEDタグ (number) → threshold で二値化
+        if (derivedConf === undefined) {
+          // WorkTag自体が無い
+          return false;
+        }
+        if (derivedConf === null) {
+          // OFFICIALタグなど: 「タグが付いている」ので true 扱い
+          return true;
+        }
+        // DERIVEDタグ: thresholdで二値化
+        return hasDerivedFeature(derivedConf, config.algo.derivedConfidenceThreshold);
+      }
+    };
+
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  } else {
+    // HARD_CONFIRM
+    // 質問のhardConfirmValueから判定（top1は質問生成時に確定済み）
+    const expectedValue = question.hardConfirmValue!;
+    const hardConfirmType = question.hardConfirmType!;
+
+    // 全Workを取得して判定
+    const workIds = weights.map(w => w.workId);
+    const works = await prisma.work.findMany({
+      where: { workId: { in: workIds } },
+    });
+
+    const workMap = new Map(works.map(w => [w.workId, w]));
+
+    let workHasFeature: (workId: string) => boolean;
+    if (hardConfirmType === 'TITLE_INITIAL') {
+      workHasFeature = (workId: string) => {
+        const work = workMap.get(workId);
+        if (!work) return false;
+        const initial = normalizeTitleForInitial(work.title);
+        return initial === expectedValue;
+      };
+    } else {
+      // AUTHOR
+      workHasFeature = (workId: string) => {
+        const work = workMap.get(workId);
+        if (!work) return false;
+        return work.authorName === expectedValue;
+      };
+    }
+
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+}

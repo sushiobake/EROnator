@@ -1,0 +1,419 @@
+/**
+ * ルートページ（ゲーム状態管理）
+ */
+
+'use client';
+
+import { useState, useEffect } from 'react';
+import { AgeGate } from './components/AgeGate';
+import { AiGate } from './components/AiGate';
+import { Quiz } from './components/Quiz';
+import { Reveal } from './components/Reveal';
+import { Success } from './components/Success';
+import { FailList } from './components/FailList';
+import { DebugPanel } from './components/DebugPanel';
+
+type GameState =
+  | 'AGE_GATE'
+  | 'AI_GATE'
+  | 'QUIZ'
+  | 'REVEAL'
+  | 'SUCCESS'
+  | 'FAIL_LIST';
+
+interface Question {
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  displayText: string;
+}
+
+interface Work {
+  workId: string;
+  title: string;
+  authorName: string;
+  productUrl: string;
+  thumbnailUrl?: string | null;
+}
+
+// デバッグUI有効化判定（クライアント側）
+function isDebugUIEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (process.env.NODE_ENV === 'production') return false;
+  if (!process.env.NEXT_PUBLIC_DEBUG_TOKEN) return false;
+  return true;
+}
+
+interface DebugPayload {
+  step: number;
+  session: {
+    sessionId: string;
+    questionCount: number;
+    confidence: number;
+    candidateCount: number;
+    top1Score: number;
+    top2Score: number;
+  };
+  before?: {
+    questionCount: number;
+    confidence: number;
+    candidateCount: number;
+    top1Score: number;
+    top2Score: number;
+    weightsTop: Array<{
+      workId: string;
+      weight: number;
+    }>;
+  };
+  after: {
+    questionCount: number;
+    confidence: number;
+    candidateCount: number;
+    top1Score: number;
+    top2Score: number;
+    weightsTop: Array<{
+      workId: string;
+      weight: number;
+    }>;
+  };
+  delta?: {
+    confidenceDelta: number;
+    candidateCountDelta: number;
+    topGapDelta: number;
+    weightDeltasTop: Array<{
+      workId: string;
+      before: number;
+      after: number;
+      delta: number;
+    }>;
+  };
+  lastAnswerMeta?: {
+    questionId?: string;
+    answerValue: string;
+    touchedTagKeys: string[];
+  };
+  topCandidates: Array<{
+    workId: string;
+    title: string;
+    authorName: string;
+    isAi: string;
+    score: number;
+    popularityBase: number;
+    popularityPlayBonus: number;
+    tags: string[];
+  }>;
+  rationaleRaw: Record<string, unknown>;
+}
+
+export default function Home() {
+  const [isClient, setIsClient] = useState(false);
+  const [state, setState] = useState<GameState>('AGE_GATE');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [question, setQuestion] = useState<Question | null>(null);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [revealWork, setRevealWork] = useState<Work | null>(null);
+  const [successWork, setSuccessWork] = useState<Work | null>(null);
+  const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
+  const [debugData, setDebugData] = useState<DebugPayload | null>(null);
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+    const de = localStorage.getItem('eronator.debugEnabled') === '1';
+    const po = localStorage.getItem('eronator.debugPanel.open') === '1';
+    setDebugEnabled(de);
+    setDebugPanelOpen(po);
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+    localStorage.setItem('eronator.debugEnabled', debugEnabled ? '1' : '0');
+  }, [isClient, debugEnabled]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
+  }, [isClient, debugPanelOpen]);
+
+  const debugUIEnabled = isDebugUIEnabled();
+
+  // sessionIdをLocalStorageで保持
+  useEffect(() => {
+    const stored = localStorage.getItem('eronator_sessionId');
+    if (stored) {
+      setSessionId(stored);
+    }
+  }, []);
+
+  const handleAgeGateConfirm = () => {
+    setState('AI_GATE');
+  };
+
+  const handleAiGateSelect = async (choice: 'YES' | 'NO' | 'DONT_CARE') => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
+        headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
+      }
+
+      const response = await fetch('/api/start', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ aiGateChoice: choice }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start session');
+      }
+
+      const data = await response.json();
+      setSessionId(data.sessionId);
+      localStorage.setItem('eronator_sessionId', data.sessionId);
+      setQuestion(data.question);
+      setQuestionCount(data.sessionState.questionCount);
+      setDebugData(data.debug || null);
+      setState('QUIZ');
+    } catch (error) {
+      console.error('Error starting session:', error);
+      alert('セッション開始に失敗しました');
+    }
+  };
+
+  const handleQuizAnswer = async (choice: string) => {
+    if (!sessionId) return;
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
+        headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
+      }
+
+      const response = await fetch('/api/answer', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sessionId, choice }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit answer');
+      }
+
+      const data = await response.json();
+      setDebugData(data.debug || null);
+
+      if (data.state === 'REVEAL') {
+        setRevealWork(data.work);
+        setState('REVEAL');
+      } else if (data.state === 'FAIL_LIST') {
+        await loadFailList();
+      } else if (data.state === 'QUIZ') {
+        setQuestion(data.question);
+        setQuestionCount(data.sessionState.questionCount);
+        setState('QUIZ');
+      }
+    } catch (error) {
+      console.error('Error submitting answer:', error);
+      alert('回答の送信に失敗しました');
+    }
+  };
+
+  const handleQuizBack = async () => {
+    if (!sessionId) return;
+
+    try {
+      const response = await fetch('/api/back', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to go back');
+      }
+
+      const data = await response.json();
+      setQuestion(data.question);
+      setQuestionCount(data.sessionState.questionCount);
+      setState('QUIZ');
+    } catch (error) {
+      console.error('Error going back:', error);
+      alert(error instanceof Error ? error.message : '前の質問に戻れませんでした');
+    }
+  };
+
+  const handleRestart = () => {
+    // セッションIDをクリアしてAI_GATEに戻る
+    setSessionId(null);
+    localStorage.removeItem('eronator_sessionId');
+    setState('AI_GATE');
+  };
+
+  const handleRevealAnswer = async (answer: 'YES' | 'NO') => {
+    if (!sessionId) return;
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
+        headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
+      }
+
+      const response = await fetch('/api/reveal', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ sessionId, answer }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit reveal answer');
+      }
+
+      const data = await response.json();
+      setDebugData(data.debug || null);
+
+      if (data.state === 'SUCCESS') {
+        // SUCCESS時はworkIdのみ返るので、revealWorkを使用
+        if (revealWork) {
+          setSuccessWork(revealWork);
+          setState('SUCCESS');
+        }
+      } else if (data.state === 'FAIL_LIST') {
+        await loadFailList();
+      } else if (data.state === 'QUIZ') {
+        setQuestion(data.question);
+        setQuestionCount(data.sessionState.questionCount);
+        setState('QUIZ');
+      }
+    } catch (error) {
+      console.error('Error submitting reveal answer:', error);
+      alert('回答の送信に失敗しました');
+    }
+  };
+
+  const loadFailList = async () => {
+    if (!sessionId) return;
+
+    try {
+      const response = await fetch(`/api/failList?sessionId=${sessionId}`);
+      if (!response.ok) {
+        throw new Error('Failed to load fail list');
+      }
+      const data = await response.json();
+      setFailListCandidates(data.candidates);
+      setState('FAIL_LIST');
+    } catch (error) {
+      console.error('Error loading fail list:', error);
+      alert('候補リストの読み込みに失敗しました');
+    }
+  };
+
+  const handleFailListSelectWork = (workId: string) => {
+    // 作品選択時は終了（SUCCESSボーナスなし）
+    alert(`作品を選択しました: ${workId}`);
+  };
+
+  const handleFailListNotInList = async (submittedTitleText: string) => {
+    if (!sessionId) return;
+
+    try {
+      const response = await fetch('/api/failList', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, submittedTitleText }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit not in list');
+      }
+
+      alert('送信しました。ありがとうございます。');
+    } catch (error) {
+      console.error('Error submitting not in list:', error);
+      alert('送信に失敗しました');
+    }
+  };
+
+  if (state === 'AGE_GATE') {
+    return (
+      <AgeGate
+        onConfirm={handleAgeGateConfirm}
+      />
+    );
+  }
+
+  if (state === 'AI_GATE') {
+    return <AiGate onSelect={handleAiGateSelect} />;
+  }
+
+  if (state === 'QUIZ' && question) {
+    return (
+      <>
+        <Quiz
+          question={question}
+          questionCount={questionCount}
+          onAnswer={handleQuizAnswer}
+          onBack={handleQuizBack}
+          canGoBack={questionCount > 1}
+        />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (state === 'REVEAL' && revealWork) {
+    return (
+      <>
+        <Reveal work={revealWork} onAnswer={handleRevealAnswer} />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (state === 'SUCCESS' && successWork) {
+    return (
+      <>
+        <Success work={successWork} onRestart={handleRestart} />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (state === 'FAIL_LIST') {
+    return (
+      <>
+        <FailList
+          candidates={failListCandidates}
+          onSelectWork={handleFailListSelectWork}
+          onNotInList={handleFailListNotInList}
+          onRestart={handleRestart}
+        />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+    );
+  }
+
+  return <div>Loading...</div>;
+}
