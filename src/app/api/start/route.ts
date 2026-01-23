@@ -20,10 +20,14 @@ import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 
 export async function POST(request: NextRequest) {
   try {
-    // デバッグ: 環境変数の確認（本番では削除）
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-      console.log('DATABASE_URL host:', process.env.DATABASE_URL?.split('@')[1]?.split(':')[0]);
+    // デバッグ: 環境変数の確認
+    console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+    if (process.env.DATABASE_URL) {
+      const urlParts = process.env.DATABASE_URL.split('@');
+      if (urlParts.length > 1) {
+        const hostPart = urlParts[1].split(':')[0];
+        console.log('DATABASE_URL host:', hostPart);
+      }
     }
     
     const body = await request.json();
