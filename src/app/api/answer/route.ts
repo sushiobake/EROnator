@@ -14,7 +14,7 @@ import { processAnswer, selectNextQuestion } from '@/server/game/engine';
 import { applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
-import { prisma } from '@/server/db/client';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { WorkResponse, QuestionResponse, SessionStateResponse } from '@/server/api/types';
 import { toWorkResponse } from '@/server/api/dto';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
@@ -22,6 +22,9 @@ import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPa
 
 export async function POST(request: NextRequest) {
   try {
+    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
+    await ensurePrismaConnected();
+    
     const body = await request.json();
     const { sessionId, choice } = body;
 

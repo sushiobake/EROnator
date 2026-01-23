@@ -8,7 +8,7 @@ import { SessionManager } from '@/server/session/manager';
 import { normalizeWeights } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
-import { prisma } from '@/server/db/client';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { WorkResponse, FailListResponse } from '@/server/api/types';
 import { toWorkResponse } from '@/server/api/dto';
 
@@ -17,6 +17,9 @@ import { toWorkResponse } from '@/server/api/dto';
  */
 export async function GET(request: NextRequest) {
   try {
+    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
+    await ensurePrismaConnected();
+    
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
 
@@ -93,6 +96,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
+    await ensurePrismaConnected();
+    
     const body = await request.json();
     const { sessionId, submittedTitleText } = body;
 

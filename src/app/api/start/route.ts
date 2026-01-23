@@ -13,13 +13,16 @@ import {
 import { normalizeWeights, calculateConfidence } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
-import { prisma } from '@/server/db/client';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { QuestionResponse, SessionStateResponse } from '@/server/api/types';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 
 export async function POST(request: NextRequest) {
   try {
+    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
+    await ensurePrismaConnected();
+    
     // デバッグ: 環境変数の確認
     console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
     if (process.env.DATABASE_URL) {
