@@ -91,20 +91,43 @@ GitHubのリポジトリページをリロードして、ファイルが表示�
 
 **Environment Variables**セクションで、以下を追加します：
 
-#### 環境変数1: DATABASE_URL
+#### 環境変数1: DATABASE_URL（接続プーリング用）
+
+**重要**: Vercelのサーバーレス環境では、Supabaseの**接続プーリングURL**（ポート6543）を使用する必要があります。
+
+**接続プーリングURLの取得方法**:
+1. Supabaseダッシュボード → **Settings** → **Database**
+2. **Connection pooling**セクションを探す
+3. **Connection string**をコピー（形式: `postgresql://postgres.xxx:password@aws-0-xxx.pooler.supabase.com:6543/postgres`）
+4. 末尾に`?pgbouncer=true&connection_limit=1`を追加
+
+**完成形の例**:
+```
+postgresql://postgres.xxxxxxxxxxxxx:your-password@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
+```
 
 1. 「**Add**」をクリック
 2. **Name**: `DATABASE_URL`
-3. **Value**: Supabaseの接続URL
-   ```
-   postgresql://postgres:Matsuko110-@db.qmzxgycowketnvrrdpft.supabase.co:5432/postgres?pgbouncer=true&connection_limit=1
-   ```
+3. **Value**: 上記の接続プーリングURL（ポート6543）
 4. **Environment**: 
    - ✅ **Production**（本番環境）
    - ✅ **Preview**（プレビュー環境）
    - ✅ **Development**（開発環境）
    - すべてにチェックを入れる
 5. 「**Save**」をクリック
+
+#### 環境変数1-2: DIRECT_URL（直接接続用、オプション）
+
+マイグレーションを実行する場合は、直接接続URLも設定します：
+
+1. 「**Add**」をクリック
+2. **Name**: `DIRECT_URL`
+3. **Value**: 直接接続URL（ポート5432、例: `postgresql://postgres:password@db.xxx.supabase.co:5432/postgres`）
+4. **Environment**: 
+   - ✅ **Production**、✅ **Preview**、✅ **Development** すべて
+5. 「**Save**」をクリック
+
+**注意**: マイグレーションを実行しない場合は省略可能
 
 #### 環境変数2: AFFILIATE_ID
 
