@@ -79,12 +79,14 @@ export class SessionManager {
 
   /**
    * セッション更新
+   * パフォーマンス最適化: 部分更新をサポート（getSessionをスキップ可能）
    */
   static async updateSession(
     sessionId: string,
-    updates: Partial<SessionState>
+    updates: Partial<SessionState>,
+    currentSession?: SessionState // オプション: 既に取得済みのセッションを渡すことでgetSessionをスキップ
   ): Promise<void> {
-    const current = await this.getSession(sessionId);
+    const current = currentSession ?? await this.getSession(sessionId);
     if (!current) {
       throw new Error(`Session not found: ${sessionId}`);
     }

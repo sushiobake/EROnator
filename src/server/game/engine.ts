@@ -128,16 +128,22 @@ export async function selectNextQuestion(
       .filter((t): t is 'TITLE_INITIAL' | 'AUTHOR' => !!t);
 
     // SOFT_CONFIRM候補（DERIVEDタグ）を探す（使用済みタグを除外）
+    // パフォーマンス最適化: 必要なフィールドのみ取得
     const derivedTags = await prisma.tag.findMany({
       where: {
         tagType: 'DERIVED',
         tagKey: { notIn: Array.from(usedTagKeys) },
       },
-      include: {
+      select: {
+        tagKey: true,
+        displayName: true,
         workTags: {
           where: {
             workId: { in: weights.map(w => w.workId) },
             derivedConfidence: { gte: config.algo.derivedConfidenceThreshold },
+          },
+          select: {
+            workId: true,
           },
         },
       },
@@ -178,8 +184,14 @@ export async function selectNextQuestion(
         return null;
       }
 
+      // パフォーマンス最適化: 必要なフィールドのみ取得
       const topWork = await prisma.work.findUnique({
         where: { workId: topWorkId },
+        select: {
+          workId: true,
+          title: true,
+          authorName: true,
+        },
       });
       if (!topWork) {
         return null;
@@ -226,15 +238,22 @@ async function selectExploreQuestion(
   );
 
   // 全タグを取得（coverage gate通過のみ）
+  // パフォーマンス最適化: 必要なフィールドのみ取得
   const allTags = await prisma.tag.findMany({
     where: {
       tagKey: { notIn: Array.from(usedTagKeys) },
       tagType: { in: ['OFFICIAL', 'DERIVED'] },
     },
-    include: {
+    select: {
+      tagKey: true,
+      displayName: true,
+      tagType: true,
       workTags: {
         where: {
           workId: { in: weights.map(w => w.workId) },
+        },
+        select: {
+          workId: true,
         },
       },
     },
@@ -324,10 +343,15 @@ export async function processAnswer(
     const tagKey = question.tagKey!;
     
     // WorkTagsを取得
+    // パフォーマンス最適化: 必要なフィールドのみ取得
     const workTags = await prisma.workTag.findMany({
       where: {
         workId: { in: weights.map(w => w.workId) },
         tagKey,
+      },
+      select: {
+        workId: true,
+        derivedConfidence: true,
       },
     });
 

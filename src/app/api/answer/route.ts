@@ -103,11 +103,25 @@ export async function POST(request: NextRequest) {
     const confidence = calculateConfidence(probabilities);
     const effectiveCandidates = calculateEffectiveCandidates(probabilities);
 
-    // 重みを更新
-    await SessionManager.updateWeights(sessionId, updatedWeights);
-
-    // 質問カウントをインクリメント
-    await SessionManager.incrementQuestionCount(sessionId);
+    // パフォーマンス最適化: 重み更新、質問カウント更新、スナップショット保存を1回のクエリにまとめる
+    const weightsMap: Record<string, number> = {};
+    for (const w of updatedWeights) {
+      weightsMap[w.workId] = w.weight;
+    }
+    const newQuestionCount = session.questionCount + 1;
+    
+    // 重みのスナップショットを保存（修正機能用）
+    const currentWeightsHistory = session.weightsHistory || [];
+    const newWeightsHistory = [...currentWeightsHistory, {
+      qIndex: currentQuestion.qIndex,
+      weights: weights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+    }];
+    
+    await SessionManager.updateSession(sessionId, {
+      weights: weightsMap,
+      questionCount: newQuestionCount,
+      weightsHistory: newWeightsHistory,
+    }, session); // 既に取得済みのsessionを渡すことでgetSessionをスキップ
 
     // REVEAL判定
     if (confidence >= config.confirm.revealThreshold) {
@@ -130,15 +144,21 @@ export async function POST(request: NextRequest) {
           const workResponse = toWorkResponse(topWork);
 
           // デバッグペイロード構築（3重ロック成立時のみ）
-          const updatedSession = await SessionManager.getSession(sessionId);
+          // パフォーマンス最適化: セッション再取得を削除（既に取得済みのsessionを使用）
           let debug;
-          if (allowed && updatedSession && beforeState) {
+          if (allowed && session && beforeState) {
             const touchedTagKeys: string[] = [];
             if (currentQuestion.tagKey) {
               touchedTagKeys.push(currentQuestion.tagKey);
             }
+            // セッション状態を更新（デバッグ用）
+            const updatedSessionForDebug = {
+              ...session,
+              questionCount: session.questionCount + 1,
+              weights: updatedWeights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+            };
             debug = await buildDebugPayload(
-              updatedSession,
+              updatedSessionForDebug,
               probabilities,
               confidence,
               beforeState,
@@ -188,14 +208,22 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 質問履歴に追加
-    await SessionManager.addQuestionHistory(sessionId, {
-      qIndex: session.questionCount + 1,
+    // パフォーマンス最適化: 質問履歴追加（既に更新済みの状態を使用）
+    const newHistory = [...session.questionHistory, {
+      qIndex: newQuestionCount,
       kind: nextQuestion.kind,
       tagKey: nextQuestion.tagKey,
       hardConfirmType: nextQuestion.hardConfirmType,
       hardConfirmValue: nextQuestion.hardConfirmValue,
-    });
+    }];
+    await SessionManager.updateSession(sessionId, {
+      questionHistory: newHistory,
+    }, { 
+      ...session, 
+      questionCount: newQuestionCount, 
+      weights: weightsMap,
+      weightsHistory: newWeightsHistory,
+    }); // 既に更新済みの状態を渡すことでgetSessionをスキップ
 
     // 返却（最小限の情報のみ）
     const questionResponse: QuestionResponse = {
@@ -212,15 +240,21 @@ export async function POST(request: NextRequest) {
     };
 
     // デバッグペイロード構築（3重ロック成立時のみ）
-    const updatedSession = await SessionManager.getSession(sessionId);
+    // パフォーマンス最適化: セッション再取得を削除（既に取得済みのsessionを使用）
     let debug;
-    if (allowed && updatedSession && beforeState) {
+    if (allowed && session && beforeState) {
       const touchedTagKeys: string[] = [];
       if (currentQuestion.tagKey) {
         touchedTagKeys.push(currentQuestion.tagKey);
       }
+      // セッション状態を更新（デバッグ用）
+      const updatedSessionForDebug = {
+        ...session,
+        questionCount: session.questionCount + 1,
+        weights: updatedWeights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+      };
       debug = await buildDebugPayload(
-        updatedSession,
+        updatedSessionForDebug,
         probabilities,
         confidence,
         beforeState,

@@ -491,7 +491,7 @@ async function main() {
           }
         }
 
-        CHARACTER タグ処理
+        // CHARACTER タグ処理
         for (const displayName of workData.characterTags || []) {
           // 既存のTagを displayName で検索（既存優先）
           let tag = await findTagByDisplayName(tx, displayName);
