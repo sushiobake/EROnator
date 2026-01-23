@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
 // Singleton Prisma client (server-side only)
+// Vercel serverless functions用にグローバルスコープで管理
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
@@ -11,9 +12,7 @@ export const prisma =
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
-// デバッグ: 接続確認
-console.log('Prisma Client initialized, DATABASE_URL:', process.env.DATABASE_URL ? 'exists' : 'missing');
-
-if (process.env.NODE_ENV !== 'production') {
+// Vercel serverless functionsでもグローバルに保持（コールドスタート対策）
+if (!globalForPrisma.prisma) {
   globalForPrisma.prisma = prisma;
 }
