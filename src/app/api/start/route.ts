@@ -20,6 +20,12 @@ import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 
 export async function POST(request: NextRequest) {
   try {
+    // デバッグ: 環境変数の確認（本番では削除）
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
+      console.log('DATABASE_URL host:', process.env.DATABASE_URL?.split('@')[1]?.split(':')[0]);
+    }
+    
     const body = await request.json();
     const { aiGateChoice } = body;
 
