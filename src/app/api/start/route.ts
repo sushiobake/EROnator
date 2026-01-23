@@ -23,16 +23,6 @@ export async function POST(request: NextRequest) {
     // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
     
-    // デバッグ: 環境変数の確認
-    console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
-    if (process.env.DATABASE_URL) {
-      const urlParts = process.env.DATABASE_URL.split('@');
-      if (urlParts.length > 1) {
-        const hostPart = urlParts[1].split(':')[0];
-        console.log('DATABASE_URL host:', hostPart);
-      }
-    }
-    
     const body = await request.json();
     const { aiGateChoice } = body;
 
@@ -49,8 +39,13 @@ export async function POST(request: NextRequest) {
     await SessionManager.setAiGateChoice(sessionId, aiGateChoice);
 
     // 全Work取得（AI_GATEフィルタ前）
-    // productUrlは必須（Prisma schemaでnullableではない）
-    const allWorks = await prisma.work.findMany();
+    // パフォーマンス最適化: 必要なフィールドのみ取得
+    const allWorks = await prisma.work.findMany({
+      select: {
+        workId: true,
+        isAi: true,
+      },
+    });
 
     // AI_GATEフィルタ適用
     const allowedWorkIds = filterWorksByAiGate(
