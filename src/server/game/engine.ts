@@ -237,61 +237,81 @@ async function selectExploreQuestion(
       .map(q => q.tagKey!)
   );
 
-  // 全タグを取得（coverage gate通過のみ）
-  // パフォーマンス最適化: 必要なフィールドのみ取得
-  const allTags = await prisma.tag.findMany({
+  // パフォーマンス最適化: WorkTagsを先に取得して、カバレッジゲートを通過するタグのみを取得
+  const workIds = weights.map(w => w.workId);
+  const totalWorks = weights.length;
+
+  // まず、WorkTagsを取得してタグごとの作品数を集計
+  const workTags = await prisma.workTag.findMany({
     where: {
-      tagKey: { notIn: Array.from(usedTagKeys) },
-      tagType: { in: ['OFFICIAL', 'DERIVED'] },
+      workId: { in: workIds },
     },
     select: {
       tagKey: true,
-      displayName: true,
-      tagType: true,
-      workTags: {
-        where: {
-          workId: { in: weights.map(w => w.workId) },
-        },
-        select: {
-          workId: true,
-        },
-      },
+      workId: true,
     },
   });
 
-  const totalWorks = weights.length;
-  const availableTags: TagInfo[] = [];
+  // タグごとの作品数を集計
+  const tagWorkCountMap = new Map<string, number>();
+  for (const wt of workTags) {
+    tagWorkCountMap.set(wt.tagKey, (tagWorkCountMap.get(wt.tagKey) || 0) + 1);
+  }
 
-  for (const tag of allTags) {
-    const workCount = tag.workTags.length;
-    if (passesCoverageGate(
+  // カバレッジゲートを通過するタグのみをフィルタ
+  const passingTagKeys: string[] = [];
+  for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
+    if (!usedTagKeys.has(tagKey) && passesCoverageGate(
       workCount,
       totalWorks,
       config.dataQuality.minCoverageMode,
       config.dataQuality.minCoverageRatio,
       config.dataQuality.minCoverageWorks
     )) {
-      availableTags.push({
-        tagKey: tag.tagKey,
-        displayName: tag.displayName,
-        tagType: tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL',
-        workCount,
-      });
+      passingTagKeys.push(tagKey);
     }
+  }
+
+  if (passingTagKeys.length === 0) {
+    return null;
+  }
+
+  // カバレッジゲートを通過したタグのみを取得
+  const allTags = await prisma.tag.findMany({
+    where: {
+      tagKey: { in: passingTagKeys },
+      tagType: { in: ['OFFICIAL', 'DERIVED'] },
+    },
+    select: {
+      tagKey: true,
+      displayName: true,
+      tagType: true,
+    },
+  });
+
+  const availableTags: TagInfo[] = [];
+  for (const tag of allTags) {
+    const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
+    availableTags.push({
+      tagKey: tag.tagKey,
+      displayName: tag.displayName,
+      tagType: tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL',
+      workCount,
+    });
   }
 
   if (availableTags.length === 0) {
     return null;
   }
 
-  // workHasTag関数
+  // workHasTag関数（既に取得済みのworkTagsを使用）
   const workTagMap = new Map<string, Set<string>>();
-  for (const tag of allTags) {
-    for (const wt of tag.workTags) {
+  for (const wt of workTags) {
+    if (passingTagKeys.includes(wt.tagKey)) {
       if (!workTagMap.has(wt.workId)) {
         workTagMap.set(wt.workId, new Set());
       }
-      workTagMap.get(wt.workId)!.add(tag.tagKey);
+      workTagMap.get(wt.workId)!.add(wt.tagKey);
     }
   }
 
