@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "deploy:prod": "node scripts/deploy-to-production.js",
     "dev": "node scripts/dev-with-lock.js",
     "build": "prisma generate && next build",
     "start": "next start",
