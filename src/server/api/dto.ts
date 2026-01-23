@@ -12,8 +12,11 @@ import { prisma } from '@/server/db/client';
 /**
  * Work → WorkResponse変換
  * 表示に必要な最小限の情報のみ返す
+ * パフォーマンス最適化: 部分的なWork型も受け取れるように修正
  */
-export function toWorkResponse(work: Work): WorkResponse {
+export function toWorkResponse(
+  work: Pick<Work, 'workId' | 'title' | 'authorName' | 'productUrl' | 'thumbnailUrl'>
+): WorkResponse {
   return {
     workId: work.workId,
     title: work.title,
