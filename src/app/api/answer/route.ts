@@ -136,8 +136,17 @@ export async function POST(request: NextRequest) {
 
       if (topWorkId && !session.revealRejectedWorkIds.includes(topWorkId)) {
         // REVEAL可能
+        // パフォーマンス最適化: 必要なフィールドのみ取得
         const topWork = await prisma.work.findUnique({
           where: { workId: topWorkId },
+          select: {
+            workId: true,
+            title: true,
+            authorName: true,
+            isAi: true,
+            productUrl: true,
+            thumbnailUrl: true,
+          },
         });
 
         if (topWork) {
