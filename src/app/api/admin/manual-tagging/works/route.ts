@@ -10,9 +10,10 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
+import type { Prisma } from '@prisma/client';
 
-function buildWhere(filter: string): Parameters<typeof prisma.work.findMany>[0]['where'] {
-  const baseWhere: Parameters<typeof prisma.work.findMany>[0]['where'] = { commentText: { not: null } };
+function buildWhere(filter: string): Prisma.WorkWhereInput {
+  const baseWhere: Prisma.WorkWhereInput = { commentText: { not: null } };
 
   // 要注意⚠️＝隔離。needsReview=true の作品はこのタブにのみ表示し、他タブには出さない
   if (filter === 'needs_review') {

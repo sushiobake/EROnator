@@ -1585,7 +1585,6 @@ export default function ImportWorkflow() {
                             </span>
                           );
                         })}
-                        }
                         
                         {/* プレビュー状態のタグ（未承認）※ナシにしたものは表示しない */}
                         {importPreview && (() => {

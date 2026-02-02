@@ -38,6 +38,7 @@ interface ParsedWork {
   seriesInfo?: string | null; // JSON string
   gameRegistered?: boolean; // ゲーム・シミュレーションで使用（エロネーター登録）
   tagSource?: 'human' | 'ai' | null; // タグの由来（human=人力タグ付け、ai=AI分析、null=未タグ）
+  derivedTags?: Array<{ displayName: string; rank?: string; tagKey?: string; source?: string }>; // DB取得時など
 }
 
 interface ParseResponse {
@@ -1894,7 +1895,7 @@ export default function AdminTagsPage() {
                           })()}
                           <td style={{ padding: '0.5rem' }}>
                             <button
-                              onClick={() => setShowCommentModal({ workId: work.workId, comment: work.commentText })}
+                              onClick={() => setShowCommentModal({ workId: work.workId, comment: work.commentText ?? '' })}
                               style={{
                                 padding: '0.25rem 0.5rem',
                                 fontSize: '0.75rem',

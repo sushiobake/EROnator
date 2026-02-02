@@ -263,10 +263,10 @@ export async function buildDebugPayload(
     const tagNameMap = new Map(tags.map(t => [t.tagKey, t.displayName]));
     enrichedLastAnswerMeta = {
       ...lastAnswerMeta,
-      touchedTagNames: lastAnswerMeta.touchedTagKeys.map(tagKey => 
+      touchedTagNames: lastAnswerMeta.touchedTagKeys.map(tagKey =>
         tagNameMap.get(tagKey) ?? tagKey // タグ名、取得できない場合はtagKey
       ),
-    };
+    } as NonNullable<DebugPayload['lastAnswerMeta']>;
   }
 
   return {

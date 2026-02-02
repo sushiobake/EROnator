@@ -459,7 +459,7 @@ export default function TagManager({ adminToken }: Props) {
         <div style={{ color: RANK_TEXT.A }}><strong>A:</strong> {stats.A}</div>
         <div style={{ color: RANK_TEXT.B }}><strong>B:</strong> {stats.B}</div>
         <div style={{ color: RANK_TEXT.C }}><strong>C:</strong> {stats.C}</div>
-        <div style={{ color: '#666' }}><strong>未設定:</strong> {stats.none}</div>
+        <div style={{ color: '#666' }}><strong>未設定:</strong> {stats.N}</div>
         <div style={{ color: RANK_TEXT.X }}><strong>X:</strong> {stats.X}</div>
       </div>
 

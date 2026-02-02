@@ -702,7 +702,7 @@ export async function analyzeWithGroq(
       rawCount: rawDerivedTags.length,
       afterFilterCount: filterResult.passed.length,
       selectedCount: derivedTags.length,
-      derivedTags: derivedTags.map(t => `${t.displayName} (${t.confidence.toFixed(2)}, ${t.source}${t.rank ? `, rank:${t.rank}` : ''})`),
+      derivedTags: derivedTags.map(t => `${t.displayName} (${t.confidence.toFixed(2)}${t.source ? `, ${t.source}` : ''})`),
       characterTags,
       needsReview,
     });

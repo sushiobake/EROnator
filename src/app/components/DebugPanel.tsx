@@ -249,14 +249,16 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
           )}
 
           {/* 影響を受けたタグ */}
-          {debug.lastAnswerMeta && debug.lastAnswerMeta.touchedTagKeys.length > 0 && (
+          {debug.lastAnswerMeta && debug.lastAnswerMeta.touchedTagKeys.length > 0 && (() => {
+            const meta = debug.lastAnswerMeta!;
+            return (
             <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: '#d1ecf1', borderRadius: '6px', border: '1px solid #bee5eb' }}>
               <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', fontWeight: 'bold', color: '#333' }}>
                 影響を受けたタグ
               </h3>
               <div style={{ fontSize: '13px' }}>
-                {(debug.lastAnswerMeta.touchedTagNames || debug.lastAnswerMeta.touchedTagKeys).map((tagName, idx) => (
-                  <span key={debug.lastAnswerMeta.touchedTagKeys[idx] || idx} style={{ 
+                {(meta.touchedTagNames || meta.touchedTagKeys).map((tagName, idx) => (
+                  <span key={meta.touchedTagKeys[idx] || idx} style={{ 
                     display: 'inline-block',
                     margin: '2px 4px',
                     padding: '4px 8px',
@@ -269,7 +271,8 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
                 ))}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* 重みの変化（Top N） */}
           {debug.delta && debug.delta.weightDeltasTop.length > 0 && (

@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
         matchedTags,
         suggestedTags,
         characterName: item.characterName || null,
-        hasChanges,
+        hasChanges: Boolean(hasChanges),
       });
     }
     

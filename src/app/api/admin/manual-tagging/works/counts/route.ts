@@ -5,8 +5,9 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
+import type { Prisma } from '@prisma/client';
 
-function buildWhere(filter: string): Parameters<typeof prisma.work.count>[0]['where'] {
+function buildWhere(filter: string): Prisma.WorkWhereInput {
   const baseWhere = { commentText: { not: null } };
 
   if (filter === 'needs_review') {

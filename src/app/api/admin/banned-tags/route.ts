@@ -28,14 +28,14 @@ function getBannedTagsPath(): string {
   return candidates[0];
 }
 
-export interface BannedTag {
+interface BannedTag {
   pattern: string;
   type: 'exact' | 'startsWith' | 'contains' | 'regex';
   reason: string;
   addedAt: string;
 }
 
-export interface BannedTagsConfig {
+interface BannedTagsConfig {
   version: string;
   description: string;
   bannedTags: BannedTag[];
@@ -62,8 +62,8 @@ async function saveBannedTags(config: BannedTagsConfig): Promise<void> {
   await fs.writeFile(getBannedTagsPath(), JSON.stringify(config, null, 2), 'utf-8');
 }
 
-// タグ名が禁止リストにマッチするかチェック
-export function isTagBanned(tagName: string, bannedTags: BannedTag[]): boolean {
+// タグ名が禁止リストにマッチするかチェック（ルート内でのみ使用、他からは @/server/admin/bannedTags を利用）
+function isTagBanned(tagName: string, bannedTags: BannedTag[]): boolean {
   for (const banned of bannedTags) {
     switch (banned.type) {
       case 'exact':

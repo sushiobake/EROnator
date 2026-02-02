@@ -47,7 +47,7 @@ function loadQuestionTemplates(): Record<string, string> {
     const data = JSON.parse(content);
     questionTemplatesCache = data.templates || {};
     questionTemplatesCacheTime = now;
-    return questionTemplatesCache;
+    return questionTemplatesCache ?? {};
   } catch {
     return {};
   }

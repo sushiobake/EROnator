@@ -233,7 +233,17 @@ export async function POST(request: Request) {
 
       const startTime = Date.now();
       try {
-        const analysis = await analyzeWork(work, lists);
+        const analysis = await analyzeWork(
+          {
+            workId: work.workId,
+            title: work.title,
+            commentText: work.commentText ?? '',
+            workTags: work.workTags.map((wt) => ({
+              tag: { tagType: wt.tag.tagType, displayName: wt.tag.displayName },
+            })),
+          },
+          lists
+        );
         const elapsed = Date.now() - startTime;
         const resultNeedsReview = (analysis as { needsReview?: boolean }).needsReview === true;
         const validationFailed = (analysis as { validationFailed?: boolean }).validationFailed === true;

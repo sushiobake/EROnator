@@ -89,10 +89,10 @@ export async function POST(request: NextRequest) {
         // matchedTagsとsuggestedTagsを処理
         const allTags: Array<{ displayName: string; category?: string; isSuggested: boolean }> = [];
         if (item.matchedTags) {
-          allTags.push(...item.matchedTags.map(t => ({ ...t, isSuggested: false })));
+          allTags.push(...item.matchedTags.map((t: { displayName: string; category?: string }) => ({ ...t, isSuggested: false })));
         }
         if (item.suggestedTags) {
-          allTags.push(...item.suggestedTags.map(t => ({ ...t, isSuggested: true })));
+          allTags.push(...item.suggestedTags.map((t: { displayName: string; category?: string }) => ({ ...t, isSuggested: true })));
         }
         
         // 各タグを処理

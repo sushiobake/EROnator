@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
+import type { Prisma } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    let where: Parameters<typeof prisma.work.findMany>[0]['where'] = {};
+    let where: Prisma.WorkWhereInput = {};
     
     if (filter === 'noComment') {
       where = { commentText: null };

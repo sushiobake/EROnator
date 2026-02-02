@@ -10,7 +10,7 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { getMvpConfig } from '@/server/config/loader';
 import { selectNextQuestion, processAnswer, filterWorksByAiGate } from '@/server/game/engine';
 import { normalizeWeights, calculateConfidence } from '@/server/algo/scoring';
-import type { WorkWeight } from '@/server/algo/types';
+import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 
 interface SimulationStep {
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
         workId: w.workId,
         isAi: w.isAi as 'AI' | 'HAND' | 'UNKNOWN',
       })),
-      aiGateChoice
+      aiGateChoice as AiGateChoice
     );
 
     // workIdからWorkへのマップを作成
@@ -665,7 +665,7 @@ async function runSimulation(
         workId: w.workId,
         isAi: w.isAi as 'AI' | 'HAND' | 'UNKNOWN',
       })),
-      aiGateChoice
+      aiGateChoice as AiGateChoice
     );
 
     // workIdからWorkへのマップを作成

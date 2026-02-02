@@ -7,6 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 
+type WorkWithTags = Awaited<
+  ReturnType<
+    typeof prisma.work.findMany<{
+      include: { workTags: { include: { tag: true } } };
+    }>
+  >
+>;
+
 export interface LoadFromDbResponse {
   success: boolean;
   works?: Array<{
@@ -287,7 +295,7 @@ export async function POST(request: NextRequest) {
     const totalPages = Math.ceil(totalWorks / pageSize);
 
     // 作品を取得（タグ情報も含める、ページネーション・フィルタ適用）
-    let works: Awaited<ReturnType<typeof prisma.work.findMany>>;
+    let works: WorkWithTags;
     try {
       works = await prisma.work.findMany({
         where: Object.keys(workWhere).length ? workWhere : undefined,
@@ -358,7 +366,11 @@ export async function POST(request: NextRequest) {
         ...row,
         needsReview: Boolean(row.needsReview),
         workTags: workTagsByWorkId.get(row.workId) ?? [],
-      })) as Awaited<ReturnType<typeof prisma.work.findMany>>;
+        gameRegistered: null,
+        tagSource: null,
+        aiAnalyzed: null,
+        humanChecked: null,
+      })) as WorkWithTags;
       // gameRegistered 列が無いDBでは「登録済み」フィルタは 0 件とする（未登録のみ表示可能）
       if (filter === 'registered') works = [];
     }
