@@ -12,11 +12,42 @@
 
 const { execSync } = require('child_process');
 const readline = require('readline');
+const fs = require('fs');
+const path = require('path');
 
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
 });
+
+const SCHEMA_DIR = path.join(__dirname, '..', 'prisma');
+const SCHEMA_FILE = path.join(SCHEMA_DIR, 'schema.prisma');
+const SCHEMA_SQLITE = path.join(SCHEMA_DIR, 'schema.sqlite.prisma');
+const SCHEMA_POSTGRES = path.join(SCHEMA_DIR, 'schema.postgres.prisma');
+
+/**
+ * schema.prisma を PostgreSQL に切り替え
+ */
+function switchToPostgres() {
+  if (!fs.existsSync(SCHEMA_POSTGRES)) {
+    throw new Error('schema.postgres.prisma が見つかりません');
+  }
+  console.log('📝 schema.prisma を PostgreSQL に切り替え中...');
+  fs.copyFileSync(SCHEMA_POSTGRES, SCHEMA_FILE);
+  console.log('✅ PostgreSQL スキーマに切り替えました');
+}
+
+/**
+ * schema.prisma を SQLite に戻す
+ */
+function switchToSqlite() {
+  if (!fs.existsSync(SCHEMA_SQLITE)) {
+    throw new Error('schema.sqlite.prisma が見つかりません');
+  }
+  console.log('📝 schema.prisma を SQLite に戻しています...');
+  fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
+  console.log('✅ SQLite スキーマに戻しました');
+}
 
 function question(query) {
   return new Promise(resolve => rl.question(query, resolve));
@@ -80,6 +111,24 @@ async function main() {
     process.exit(0);
   }
 
+  // schema.prisma を PostgreSQL に切り替え（本番環境用）
+  try {
+    switchToPostgres();
+  } catch (error) {
+    console.error('❌ スキーマの切り替えに失敗しました:', error.message);
+    rl.close();
+    process.exit(1);
+  }
+
+  // スキーマ変更をコミット（一時的）
+  try {
+    execSync('git add prisma/schema.prisma', { stdio: 'inherit' });
+    execSync('git commit -m "chore: switch to PostgreSQL schema for production"', { stdio: 'inherit' });
+  } catch (error) {
+    // コミットに失敗しても続行（既にコミット済みの場合）
+    console.log('⚠️  スキーマ変更のコミットをスキップしました（既にコミット済みの可能性があります）');
+  }
+
   // mainブランチに切り替え
   console.log('\n📦 mainブランチに切り替え中...');
   execSync('git checkout main', { stdio: 'inherit' });
@@ -99,6 +148,14 @@ async function main() {
   // developブランチに戻る
   console.log('↩️  developブランチに戻ります...');
   execSync('git checkout develop', { stdio: 'inherit' });
+
+  // schema.prisma を SQLite に戻す（ローカル開発用）
+  try {
+    switchToSqlite();
+  } catch (error) {
+    console.error('⚠️  スキーマを SQLite に戻すのに失敗しました:', error.message);
+    console.log('⚠️  手動で schema.sqlite.prisma を schema.prisma にコピーしてください');
+  }
 
   console.log('\n✅ デプロイが完了しました！');
   console.log('本番環境: https://eronator.vercel.app');

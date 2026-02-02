@@ -1,0 +1,16 @@
+[
+  {
+    "key": "ctrl+shift+d",
+    "command": "workbench.action.terminal.sendSequence",
+    "args": {
+      "text": "npm run dev\r"
+    }
+  },
+  {
+    "key": "ctrl+shift+c",
+    "command": "workbench.action.terminal.sendSequence",
+    "args": {
+      "text": "npm run dev:clean\r"
+    }
+  }
+]

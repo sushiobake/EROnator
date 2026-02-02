@@ -47,8 +47,14 @@ git add config/mvpConfig.json
 # 変更を記録
 git commit -m "コンフィグを調整しました"
 
-# GitHubに送る
+# ⚠️ 重要: プッシュ前にスキーマを PostgreSQL に切り替え
+npm run prepare:push
+
+# GitHubに送る（prepare:push で自動的にスキーマが切り替わっています）
 git push origin develop
+
+# ローカル開発用に SQLite に戻す
+npm run restore:sqlite
 ```
 
 **手順4: 変更を確認する**

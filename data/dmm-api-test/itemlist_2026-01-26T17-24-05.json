@@ -1,0 +1,463 @@
+{
+  "status": 200,
+  "result_count": 5,
+  "total_count": 50000,
+  "first_position": 1,
+  "items": [
+    {
+      "service_code": "doujin",
+      "service_name": "同人",
+      "floor_code": "digital_doujin",
+      "floor_name": "同人",
+      "category_name": "同人 (同人)",
+      "content_id": "d_727173",
+      "product_id": "d_727173",
+      "title": "伽をせよ【Mac版】",
+      "URL": "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_727173/",
+      "affiliateURL": "https://al.fanza.co.jp/?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdc%2Fdoujin%2F-%2Fdetail%2F%3D%2Fcid%3Dd_727173%2F&af_id=sok-990&ch=api",
+      "imageURL": {
+        "list": "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173pt.jpg",
+        "large": "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173pl.jpg"
+      },
+      "sampleImageURL": {
+        "sample_l": {
+          "image": [
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-001.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-002.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-003.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-004.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-005.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-006.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-007.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/game/d_727173/d_727173jp-008.jpg"
+          ]
+        }
+      },
+      "prices": {
+        "price": "770",
+        "list_price": "770",
+        "deliveries": {
+          "delivery": [
+            {
+              "type": "download",
+              "price": "770",
+              "list_price": "770"
+            }
+          ]
+        }
+      },
+      "date": "2026-01-27 00:00:00",
+      "iteminfo": {
+        "genre": [
+          {
+            "id": 7110,
+            "name": "シミュレーション"
+          },
+          {
+            "id": 156002,
+            "name": "ドット制作"
+          },
+          {
+            "id": 156022,
+            "name": "男性向け"
+          },
+          {
+            "id": 156023,
+            "name": "成人向け"
+          },
+          {
+            "id": 160045,
+            "name": "ツクール"
+          },
+          {
+            "id": 160073,
+            "name": "くノ一"
+          },
+          {
+            "id": 160098,
+            "name": "リョナ"
+          }
+        ],
+        "maker": [
+          {
+            "id": 218014,
+            "name": "OL馬鹿"
+          }
+        ]
+      }
+    },
+    {
+      "service_code": "doujin",
+      "service_name": "同人",
+      "floor_code": "digital_doujin",
+      "floor_name": "同人",
+      "category_name": "同人 (同人)",
+      "content_id": "d_727162",
+      "product_id": "d_727162",
+      "title": "ハメ撮りマジイキ黒ギャル 総集編",
+      "volume": "835",
+      "URL": "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_727162/",
+      "affiliateURL": "https://al.fanza.co.jp/?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdc%2Fdoujin%2F-%2Fdetail%2F%3D%2Fcid%3Dd_727162%2F&af_id=sok-990&ch=api",
+      "imageURL": {
+        "list": "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162pt.jpg",
+        "large": "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162pl.jpg"
+      },
+      "sampleImageURL": {
+        "sample_l": {
+          "image": [
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-001.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-002.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-003.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-004.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-005.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-006.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-007.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/comic/d_727162/d_727162jp-008.jpg"
+          ]
+        }
+      },
+      "prices": {
+        "price": "990",
+        "list_price": "990",
+        "deliveries": {
+          "delivery": [
+            {
+              "type": "download",
+              "price": "990",
+              "list_price": "990"
+            }
+          ]
+        }
+      },
+      "date": "2026-01-27 00:00:00",
+      "iteminfo": {
+        "genre": [
+          {
+            "id": 553,
+            "name": "学園もの"
+          },
+          {
+            "id": 1034,
+            "name": "ギャル"
+          },
+          {
+            "id": 4111,
+            "name": "寝取り・寝取られ・NTR"
+          },
+          {
+            "id": 5001,
+            "name": "中出し"
+          },
+          {
+            "id": 5002,
+            "name": "フェラ"
+          },
+          {
+            "id": 5071,
+            "name": "ハーレム"
+          },
+          {
+            "id": 152004,
+            "name": "ラブラブ・あまあま"
+          },
+          {
+            "id": 152016,
+            "name": "浮気"
+          },
+          {
+            "id": 154019,
+            "name": "陰毛・腋毛"
+          },
+          {
+            "id": 154021,
+            "name": "褐色・日焼け"
+          },
+          {
+            "id": 156022,
+            "name": "男性向け"
+          },
+          {
+            "id": 156023,
+            "name": "成人向け"
+          }
+        ],
+        "maker": [
+          {
+            "id": 24699,
+            "name": "あまがみ堂"
+          }
+        ]
+      }
+    },
+    {
+      "service_code": "doujin",
+      "service_name": "同人",
+      "floor_code": "digital_doujin",
+      "floor_name": "同人",
+      "category_name": "同人 (同人)",
+      "content_id": "d_727148",
+      "product_id": "d_727148",
+      "title": "いっぱい出してね SRM娘8",
+      "volume": "画像6枚+α",
+      "URL": "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_727148/",
+      "affiliateURL": "https://al.fanza.co.jp/?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdc%2Fdoujin%2F-%2Fdetail%2F%3D%2Fcid%3Dd_727148%2F&af_id=sok-990&ch=api",
+      "imageURL": {
+        "list": "https://doujin-assets.dmm.co.jp/digital/cg/d_727148/d_727148pt.jpg",
+        "large": "https://doujin-assets.dmm.co.jp/digital/cg/d_727148/d_727148pl.jpg"
+      },
+      "sampleImageURL": {
+        "sample_l": {
+          "image": [
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727148/d_727148jp-001.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727148/d_727148jp-002.jpg"
+          ]
+        }
+      },
+      "prices": {
+        "price": "330",
+        "list_price": "330",
+        "deliveries": {
+          "delivery": [
+            {
+              "type": "download",
+              "price": "330",
+              "list_price": "330"
+            }
+          ]
+        }
+      },
+      "date": "2026-01-27 00:00:00",
+      "iteminfo": {
+        "genre": [
+          {
+            "id": 2001,
+            "name": "巨乳"
+          },
+          {
+            "id": 5001,
+            "name": "中出し"
+          },
+          {
+            "id": 5003,
+            "name": "ぶっかけ"
+          },
+          {
+            "id": 5019,
+            "name": "パイズリ"
+          },
+          {
+            "id": 5023,
+            "name": "顔射"
+          },
+          {
+            "id": 152004,
+            "name": "ラブラブ・あまあま"
+          },
+          {
+            "id": 152018,
+            "name": "恋人同士"
+          },
+          {
+            "id": 153003,
+            "name": "おっぱい"
+          },
+          {
+            "id": 156022,
+            "name": "男性向け"
+          },
+          {
+            "id": 156023,
+            "name": "成人向け"
+          },
+          {
+            "id": 160012,
+            "name": "手コキ"
+          },
+          {
+            "id": 160044,
+            "name": "汁/液大量"
+          }
+        ],
+        "series": [
+          {
+            "id": 3020035,
+            "name": "いっぱい出してね"
+          }
+        ],
+        "maker": [
+          {
+            "id": 231635,
+            "name": "七六屋"
+          }
+        ]
+      }
+    },
+    {
+      "service_code": "doujin",
+      "service_name": "同人",
+      "floor_code": "digital_doujin",
+      "floor_name": "同人",
+      "category_name": "同人 (同人)",
+      "content_id": "d_727140",
+      "product_id": "d_727140",
+      "title": "麻子のママ活記録-晒されたい男との密会-",
+      "volume": "1本 (約10分)",
+      "URL": "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_727140/",
+      "affiliateURL": "https://al.fanza.co.jp/?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdc%2Fdoujin%2F-%2Fdetail%2F%3D%2Fcid%3Dd_727140%2F&af_id=sok-990&ch=api",
+      "imageURL": {
+        "list": "https://doujin-assets.dmm.co.jp/digital/voice/d_727140/d_727140pt.jpg",
+        "large": "https://doujin-assets.dmm.co.jp/digital/voice/d_727140/d_727140pl.jpg"
+      },
+      "sampleImageURL": {
+        "sample_l": {
+          "image": []
+        }
+      },
+      "prices": {
+        "price": "990",
+        "list_price": "990",
+        "deliveries": {
+          "delivery": [
+            {
+              "type": "download",
+              "price": "990",
+              "list_price": "990"
+            }
+          ]
+        }
+      },
+      "date": "2026-01-27 00:00:00",
+      "iteminfo": {
+        "genre": [
+          {
+            "id": 28,
+            "name": "羞恥"
+          },
+          {
+            "id": 1014,
+            "name": "熟女"
+          },
+          {
+            "id": 156022,
+            "name": "男性向け"
+          },
+          {
+            "id": 156023,
+            "name": "成人向け"
+          },
+          {
+            "id": 160058,
+            "name": "潮吹き"
+          }
+        ],
+        "series": [
+          {
+            "id": 3020064,
+            "name": "麻子のママ活記録"
+          }
+        ],
+        "maker": [
+          {
+            "id": 231514,
+            "name": "麻子のママ活記録"
+          }
+        ]
+      }
+    },
+    {
+      "service_code": "doujin",
+      "service_name": "同人",
+      "floor_code": "digital_doujin",
+      "floor_name": "同人",
+      "category_name": "同人 (同人)",
+      "content_id": "d_727106",
+      "product_id": "d_727106",
+      "title": "マルタさんとボクシング、しよっ♪ side:L",
+      "volume": "画像323枚",
+      "URL": "https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_727106/",
+      "affiliateURL": "https://al.fanza.co.jp/?lurl=https%3A%2F%2Fwww.dmm.co.jp%2Fdc%2Fdoujin%2F-%2Fdetail%2F%3D%2Fcid%3Dd_727106%2F&af_id=sok-990&ch=api",
+      "imageURL": {
+        "list": "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106pt.jpg",
+        "large": "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106pl.jpg"
+      },
+      "sampleImageURL": {
+        "sample_l": {
+          "image": [
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-001.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-002.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-003.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-004.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-005.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-006.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-007.jpg",
+            "https://doujin-assets.dmm.co.jp/digital/cg/d_727106/d_727106jp-008.jpg"
+          ]
+        }
+      },
+      "prices": {
+        "price": "1650",
+        "list_price": "1650",
+        "deliveries": {
+          "delivery": [
+            {
+              "type": "download",
+              "price": "1650",
+              "list_price": "1650"
+            }
+          ]
+        }
+      },
+      "date": "2026-01-27 00:00:00",
+      "iteminfo": {
+        "genre": [
+          {
+            "id": 2001,
+            "name": "巨乳"
+          },
+          {
+            "id": 3008,
+            "name": "水着"
+          },
+          {
+            "id": 4096,
+            "name": "スポーツ"
+          },
+          {
+            "id": 5019,
+            "name": "パイズリ"
+          },
+          {
+            "id": 153003,
+            "name": "おっぱい"
+          },
+          {
+            "id": 153024,
+            "name": "女性視点"
+          },
+          {
+            "id": 156022,
+            "name": "男性向け"
+          },
+          {
+            "id": 156023,
+            "name": "成人向け"
+          },
+          {
+            "id": 160092,
+            "name": "ロングヘア"
+          },
+          {
+            "id": 160158,
+            "name": "騎乗位"
+          }
+        ],
+        "maker": [
+          {
+            "id": 75955,
+            "name": "猫又屋"
+          }
+        ]
+      }
+    }
+  ]
+}

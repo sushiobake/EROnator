@@ -113,6 +113,7 @@ export default function Home() {
   const [successWork, setSuccessWork] = useState<Work | null>(null);
   const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
   const [debugData, setDebugData] = useState<DebugPayload | null>(null);
+  const [revealAnalysis, setRevealAnalysis] = useState<any>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
@@ -122,6 +123,41 @@ export default function Home() {
     const po = localStorage.getItem('eronator.debugPanel.open') === '1';
     setDebugEnabled(de);
     setDebugPanelOpen(po);
+
+    // localStorageの変更を監視（他のタブやページからの変更を検知）
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'eronator.debugEnabled') {
+        setDebugEnabled(e.newValue === '1');
+      }
+      if (e.key === 'eronator.debugPanel.open') {
+        setDebugPanelOpen(e.newValue === '1');
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // 同じページ内での変更も検知するため、定期的にチェック
+    const intervalId = setInterval(() => {
+      const currentDe = localStorage.getItem('eronator.debugEnabled') === '1';
+      const currentPo = localStorage.getItem('eronator.debugPanel.open') === '1';
+      setDebugEnabled(prev => {
+        if (prev !== currentDe) {
+          return currentDe;
+        }
+        return prev;
+      });
+      setDebugPanelOpen(prev => {
+        if (prev !== currentPo) {
+          return currentPo;
+        }
+        return prev;
+      });
+    }, 500); // 500msごとにチェック
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -135,6 +171,23 @@ export default function Home() {
   }, [isClient, debugPanelOpen]);
 
   const debugUIEnabled = isDebugUIEnabled();
+
+  // デバッグ情報をコンソールに出力（開発用）
+  useEffect(() => {
+    if (isClient && process.env.NODE_ENV === 'development') {
+      console.log('[Debug Panel] debugUIEnabled:', debugUIEnabled);
+      console.log('[Debug Panel] debugEnabled:', debugEnabled);
+      console.log('[Debug Panel] debugData:', debugData ? 'exists' : 'null');
+      console.log('[Debug Panel] NEXT_PUBLIC_DEBUG_TOKEN:', process.env.NEXT_PUBLIC_DEBUG_TOKEN ? 'set' : 'not set');
+      console.log('[Debug Panel] Should show panel:', debugUIEnabled && debugEnabled);
+      if (!debugUIEnabled) {
+        console.warn('[Debug Panel] debugUIEnabled is false. Check NEXT_PUBLIC_DEBUG_TOKEN in .env.local');
+      }
+      if (!debugEnabled) {
+        console.warn('[Debug Panel] debugEnabled is false. Enable it in /admin/tags config tab');
+      }
+    }
+  }, [isClient, debugUIEnabled, debugEnabled, debugData]);
 
   // sessionIdをLocalStorageで保持
   useEffect(() => {
@@ -235,6 +288,14 @@ export default function Home() {
       }
 
       const data = await response.json();
+
+      // AIゲートに戻る場合
+      if (data.state === 'AI_GATE') {
+        setState('AI_GATE');
+        return;
+      }
+
+      // 前の質問に戻る場合
       setQuestion(data.question);
       setQuestionCount(data.sessionState.questionCount);
       setState('QUIZ');
@@ -272,6 +333,7 @@ export default function Home() {
 
       const data = await response.json();
       setDebugData(data.debug || null);
+      setRevealAnalysis(data.revealAnalysis || null);
 
       if (data.state === 'SUCCESS') {
         // SUCCESS時はworkIdのみ返るので、revealWorkを使用
@@ -337,14 +399,36 @@ export default function Home() {
 
   if (state === 'AGE_GATE') {
     return (
-      <AgeGate
-        onConfirm={handleAgeGateConfirm}
-      />
+      <>
+        <AgeGate
+          onConfirm={handleAgeGateConfirm}
+        />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            revealAnalysis={null}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
     );
   }
 
   if (state === 'AI_GATE') {
-    return <AiGate onSelect={handleAiGateSelect} />;
+    return (
+      <>
+        <AiGate onSelect={handleAiGateSelect} />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            revealAnalysis={null}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+    );
   }
 
   if (state === 'QUIZ' && question) {
@@ -352,14 +436,15 @@ export default function Home() {
       <>
         <Quiz
           question={question}
-          questionCount={questionCount}
+          questionCount={questionCount + 1}
           onAnswer={handleQuizAnswer}
           onBack={handleQuizBack}
-          canGoBack={questionCount > 1}
+          canGoBack={true}
         />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
+            revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
@@ -375,6 +460,7 @@ export default function Home() {
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
+            revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
@@ -390,6 +476,7 @@ export default function Home() {
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
+            revealAnalysis={revealAnalysis}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
@@ -410,6 +497,7 @@ export default function Home() {
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
+            revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
           />

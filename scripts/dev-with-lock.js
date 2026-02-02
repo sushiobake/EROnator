@@ -9,7 +9,7 @@ const path = require('path');
 
 const lockFile = path.join(process.cwd(), '.dev-lock');
 const devCommand = 'next';
-const devArgs = ['dev'];
+const devArgs = ['dev', '-p', '3000'];
 
 // ロックファイルの存在確認
 if (fs.existsSync(lockFile)) {
@@ -113,21 +113,65 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-// dev サーバー起動
-const devProcess = spawn(devCommand, devArgs, {
+// .nextディレクトリをクリーンアップ（オプション、環境変数で制御）
+// 環境変数 CLEAN_NEXT=true または CLEAN_NEXT=1 で有効化
+const shouldCleanNext = process.env.CLEAN_NEXT === 'true' || process.env.CLEAN_NEXT === '1';
+if (shouldCleanNext) {
+  console.log('Cleaning .next directory...');
+  try {
+    const cleanScript = path.join(__dirname, 'clean-next.js');
+    require(cleanScript);
+  } catch (cleanError) {
+    // EBUSYエラーなどは開発サーバーが起動中の場合なので、警告のみ
+    if (cleanError.code === 'EBUSY' || cleanError.code === 'ENOTEMPTY' || cleanError.code === 'EPERM') {
+      console.warn('Warning: Could not clean .next directory (server may be running). Continuing...');
+    } else {
+      console.warn('Warning: Failed to clean .next directory:', cleanError.message);
+      console.warn('Continuing anyway...');
+    }
+  }
+}
+
+// Prisma Clientを事前に生成（ファイルロックエラー対策）
+console.log('Generating Prisma Client...');
+const prismaGenerate = spawn('npx', ['prisma', 'generate'], {
   stdio: 'inherit',
   shell: true,
   cwd: process.cwd(),
   env: process.env,
 });
 
-devProcess.on('exit', (code) => {
-  cleanup();
-  process.exit(code || 0);
+prismaGenerate.on('exit', (code) => {
+  if (code !== 0) {
+    console.warn('Warning: Prisma Client generation failed. Continuing anyway...');
+  }
+  // Prisma Client生成後、devサーバーを起動
+  startDevServer();
 });
 
-devProcess.on('error', (error) => {
-  cleanup();
-  console.error('Error starting dev server:', error.message);
-  process.exit(1);
+prismaGenerate.on('error', (error) => {
+  console.warn('Warning: Could not run prisma generate:', error.message);
+  console.warn('Continuing with dev server startup...');
+  startDevServer();
 });
+
+function startDevServer() {
+  // dev サーバー起動
+  const devProcess = spawn(devCommand, devArgs, {
+    stdio: 'inherit',
+    shell: true,
+    cwd: process.cwd(),
+    env: process.env,
+  });
+
+  devProcess.on('exit', (code) => {
+    cleanup();
+    process.exit(code || 0);
+  });
+
+  devProcess.on('error', (error) => {
+    cleanup();
+    console.error('Error starting dev server:', error.message);
+    process.exit(1);
+  });
+}

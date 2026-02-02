@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "description": "取得禁止タグリスト。これらのタグはインポート時にスキップされる。",
+  "bannedTags": [
+    {
+      "pattern": "イチオシ",
+      "type": "exact",
+      "reason": "販売促進タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "コミケ",
+      "type": "startsWith",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "デモ・体験版あり",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "ネクスト同人大賞",
+      "type": "startsWith",
+      "reason": "受賞・ノミネートタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "専売",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "独占",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "全年齢向け",
+      "type": "exact",
+      "reason": "エロネーター対象外",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "旧作",
+      "type": "exact",
+      "reason": "不要タグ",
+      "addedAt": "2026-01-28"
+    }
+  ]
+}
