@@ -50,8 +50,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Prismaで0件の場合、直接SQLiteで取得（フォールバック）
+    // Prismaで0件の場合
     if (allWorks.length === 0) {
+      const dbUrl = process.env.DATABASE_URL ?? '';
+      const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
+      // デプロイ先（Postgres）ではSQLiteフォールバックは使わない（ファイルが存在しないため）
+      if (isPostgres) {
+        throw new ApiError(
+          503,
+          'ゲームに登録された作品がありません。管理者が作品を登録してください。',
+          'No works with gameRegistered=true on Postgres'
+        );
+      }
+      // ローカル（SQLite）のみ: 直接SQLiteで取得（フォールバック）
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const sqlite3 = require('better-sqlite3');
@@ -68,7 +79,6 @@ export async function POST(request: NextRequest) {
         console.log(`[start] Direct SQLite query found ${allWorks.length} works`);
       } catch (directError) {
         console.error('[start] Error in direct SQLite fallback:', directError);
-        // フォールバックも失敗した場合はエラーを返す
         throw new ApiError(
           500,
           '作品データの読み込みに失敗しました',
