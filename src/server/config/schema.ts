@@ -22,6 +22,11 @@ const AlgoSchema = z.object({
   alpha: z.number().min(0).max(1),
   derivedConfidenceThreshold: z.number().min(0).max(1),
   revealPenalty: z.number().positive().max(1),
+  /** EXPLORE_TAGでp値がこの範囲外のタグは出題しない。未設定時はフィルタなし */
+  explorePValueMin: z.number().min(0).max(1).optional(),
+  explorePValueMax: z.number().min(0).max(1).optional(),
+  /** p値が範囲内のタグが無いときHARD_CONFIRM/REVEALにフォールバックする */
+  explorePValueFallbackEnabled: z.boolean().optional(),
 }).strict();
 
 const FlowSchema = z.object({

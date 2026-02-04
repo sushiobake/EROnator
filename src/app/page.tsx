@@ -5,16 +5,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AgeGate } from './components/AgeGate';
+import { TopScreen } from './components/TopScreen';
 import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
 import { Reveal } from './components/Reveal';
 import { Success } from './components/Success';
 import { FailList } from './components/FailList';
 import { DebugPanel } from './components/DebugPanel';
+import { Stage } from './components/Stage';
 
 type GameState =
-  | 'AGE_GATE'
+  | 'TOP'
   | 'AI_GATE'
   | 'QUIZ'
   | 'REVEAL'
@@ -105,12 +106,13 @@ interface DebugPayload {
 
 export default function Home() {
   const [isClient, setIsClient] = useState(false);
-  const [state, setState] = useState<GameState>('AGE_GATE');
+  const [state, setState] = useState<GameState>('TOP');
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [question, setQuestion] = useState<Question | null>(null);
   const [questionCount, setQuestionCount] = useState(0);
   const [revealWork, setRevealWork] = useState<Work | null>(null);
   const [successWork, setSuccessWork] = useState<Work | null>(null);
+  const [successRecommendedWorks, setSuccessRecommendedWorks] = useState<Work[]>([]);
   const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
   const [debugData, setDebugData] = useState<DebugPayload | null>(null);
   const [revealAnalysis, setRevealAnalysis] = useState<any>(null);
@@ -197,7 +199,7 @@ export default function Home() {
     }
   }, []);
 
-  const handleAgeGateConfirm = () => {
+  const handleTopPlay = () => {
     setState('AI_GATE');
   };
 
@@ -306,10 +308,10 @@ export default function Home() {
   };
 
   const handleRestart = () => {
-    // セッションIDをクリアしてAI_GATEに戻る
+    // セッションIDをクリアしてトップに戻る
     setSessionId(null);
     localStorage.removeItem('eronator_sessionId');
-    setState('AI_GATE');
+    setState('TOP');
   };
 
   const handleRevealAnswer = async (answer: 'YES' | 'NO') => {
@@ -336,9 +338,9 @@ export default function Home() {
       setRevealAnalysis(data.revealAnalysis || null);
 
       if (data.state === 'SUCCESS') {
-        // SUCCESS時はworkIdのみ返るので、revealWorkを使用
         if (revealWork) {
           setSuccessWork(revealWork);
+          setSuccessRecommendedWorks(Array.isArray(data.recommendedWorks) ? data.recommendedWorks : []);
           setState('SUCCESS');
         }
       } else if (data.state === 'FAIL_LIST') {
@@ -397,12 +399,10 @@ export default function Home() {
     }
   };
 
-  if (state === 'AGE_GATE') {
+  if (state === 'TOP') {
     return (
       <>
-        <AgeGate
-          onConfirm={handleAgeGateConfirm}
-        />
+        <TopScreen onPlay={handleTopPlay} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -417,6 +417,7 @@ export default function Home() {
 
   if (state === 'AI_GATE') {
     return (
+      <Stage>
       <>
         <AiGate onSelect={handleAiGateSelect} />
         {debugUIEnabled && debugEnabled && (
@@ -428,11 +429,13 @@ export default function Home() {
           />
         )}
       </>
+      </Stage>
     );
   }
 
   if (state === 'QUIZ' && question) {
     return (
+      <Stage>
       <>
         <Quiz
           question={question}
@@ -450,11 +453,13 @@ export default function Home() {
           />
         )}
       </>
+      </Stage>
     );
   }
 
   if (state === 'REVEAL' && revealWork) {
     return (
+      <Stage>
       <>
         <Reveal work={revealWork} onAnswer={handleRevealAnswer} />
         {debugUIEnabled && debugEnabled && (
@@ -466,13 +471,15 @@ export default function Home() {
           />
         )}
       </>
+      </Stage>
     );
   }
 
   if (state === 'SUCCESS' && successWork) {
     return (
+      <Stage>
       <>
-        <Success work={successWork} onRestart={handleRestart} />
+        <Success work={successWork} recommendedWorks={successRecommendedWorks} onRestart={handleRestart} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -482,11 +489,13 @@ export default function Home() {
           />
         )}
       </>
+      </Stage>
     );
   }
 
   if (state === 'FAIL_LIST') {
     return (
+      <Stage>
       <>
         <FailList
           candidates={failListCandidates}
@@ -503,6 +512,7 @@ export default function Home() {
           />
         )}
       </>
+      </Stage>
     );
   }
 

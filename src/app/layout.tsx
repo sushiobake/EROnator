@@ -12,7 +12,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ja">
-      <body>{children}</body>
+      <body
+        style={{
+          fontFamily: '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif',
+        }}
+      >
+        {children}
+      </body>
     </html>
   );
 }

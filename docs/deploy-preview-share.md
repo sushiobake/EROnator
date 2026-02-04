@@ -23,6 +23,38 @@
 
 ---
 
+## 0.5. 初回のみ: ローカル SQLite の作品を Supabase に投入する（任意）
+
+**これは初回だけ必要です。** 一度投入すれば Supabase にデータが残るので、**2回目以降のデプロイテスト（push → ビルド → URL 確認）ではやる必要はありません。**
+
+**目的**: デプロイ先（Supabase）にまだ作品が 0 件のとき、ローカルの SQLite から「ゲーム登録済み」作品をコピーする。
+
+### 自動でやる（推奨）
+
+1. **初回だけ** `.env.supabase` を用意する  
+   - `.env.supabase.example` をコピーして `.env.supabase` を作る  
+   - Supabase の **Pooler** の URL を `DATABASE_URL`、**直接接続** の URL を `DIRECT_URL` に書く（`.env` は触らない）
+2. 同期を実行する  
+   ```bash
+   npm run sync:supabase
+   ```  
+   これで「スキーマ Postgres に切り替え → Prisma 生成 → 同期 → スキーマ SQLite に戻す → Prisma 再生成」まで一括で行われ、手元は SQLite のままになります。
+
+### 手動でやる場合
+
+- バックアップを取ったあと、`.env` に Supabase の接続文字列を一時的に設定し、以下を順に実行する。
+  1. `npm run backup:project` などでバックアップ
+  2. `.env` に `DATABASE_URL`（Pooler）と `DIRECT_URL`（直接接続）を設定
+  3. `prisma/schema.postgres.prisma` を `prisma/schema.prisma` に上書き
+  4. `npx prisma generate` → `npx tsx scripts/sync-sqlite-to-supabase.ts`
+  5. `npm run restore:sqlite` → `npx prisma generate`
+  6. `.env` をローカル用（SQLite）に戻す
+
+- **注意**: 同期スクリプトは「`gameRegistered = true` かつ `needsReview = false`」の作品と、それに紐づく Tag・WorkTag だけを投入します。  
+  投入後、デプロイした URL でセッション開始ができるようになります。
+
+---
+
 ## デプロイできる状態を保つルール（準備）
 
 デプロイ前に必ず守ること。ここを守ると「push したらビルドが通らない」を防げる。

@@ -16,6 +16,7 @@ import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { QuestionResponse, SessionStateResponse } from '@/server/api/types';
+import { toWorkResponse } from '@/server/api/dto';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPayload';
 import { buildRevealAnalysis } from '@/server/debug/buildRevealAnalysis';
@@ -110,12 +111,29 @@ export async function POST(request: NextRequest) {
           ? await buildRevealAnalysis(session, topWorkId, probabilities)
           : undefined;
 
+        // 推奨作品: その時点の推測 top2～4（確率ランキング2～4位）
+        const recommendedWorkIds = [sorted[1]?.workId, sorted[2]?.workId, sorted[3]?.workId].filter(
+          (id): id is string => !!id
+        );
+        const recommendedRows = recommendedWorkIds.length > 0
+          ? await prisma.work.findMany({
+              where: { workId: { in: recommendedWorkIds } },
+            })
+          : [];
+        const recommendedWorks = recommendedRows
+          .map((w) => toWorkResponse(w))
+          .sort((a, b) => {
+            const ia = recommendedWorkIds.indexOf(a.workId);
+            const ib = recommendedWorkIds.indexOf(b.workId);
+            return ia - ib;
+          });
+
         return NextResponse.json({
           state: 'SUCCESS',
           workId: topWorkId,
+          recommendedWorks,
           ...(debug ? { debug } : {}),
           ...(revealAnalysis ? { revealAnalysis } : {}),
-          // 内部確率・重みは返さない（Data exposure policy）
         });
       }
     } else {

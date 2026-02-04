@@ -21,16 +21,18 @@ export interface QuestionCandidate {
 }
 
 /**
+ * EXPLORE_TAG用 p値バンドオプション（configで指定時のみ使用）
+ */
+export interface ExplorePValueBand {
+  pValueMin: number;
+  pValueMax: number;
+}
+
+/**
  * EXPLORE_TAG選択 (Spec §6.1 - シンプル版)
  * 
- * シンプルなアプローチ:
  * - 全タグの中から、pが0.5に最も近いものを選ぶ
- * - フィルタなし（0.3〜0.7制限を廃止）
- * 
- * 理由:
- * - フィルタがあると、候補がない時にp=0%のタグが選ばれてしまう
- * - フィルタなしでも、0.5に最も近いタグを選ぶので情報量は最大化される
- * 
+ * - pValueBand を渡した場合: p が [min, max] 内のタグのみ候補。該当が無ければ null（呼び出し元で HARD_CONFIRM 等にフォールバック）
  * Tie-break: tagKey昇順（決定論的）
  */
 export function selectExploreTag(
@@ -38,7 +40,8 @@ export function selectExploreTag(
   probabilities: WorkProbability[],
   workHasTag: (workId: string, tagKey: string) => boolean,
   confidence: number = 0, // 現在の確度（未使用だが互換性のため残す）
-  topWorkId: string | null = null // top1のworkId（未使用だが互換性のため残す）
+  topWorkId: string | null = null, // top1のworkId（未使用だが互換性のため残す）
+  pValueBand?: ExplorePValueBand | null
 ): string | null {
   if (availableTags.length === 0) {
     return null;
@@ -57,15 +60,29 @@ export function selectExploreTag(
     };
   });
   
-  // 全候補から0.5に最も近いものを選ぶ（フィルタなし）
-  candidates.sort((a, b) => {
+  // p値バンドが指定されている場合、範囲内の候補に限定
+  let filtered = candidates;
+  if (pValueBand != null) {
+    filtered = candidates.filter(
+      c => c.coverage >= pValueBand.pValueMin && c.coverage <= pValueBand.pValueMax
+    );
+    if (filtered.length === 0) {
+      console.log(
+        `[selectExploreTag] p値が [${pValueBand.pValueMin}, ${pValueBand.pValueMax}] 内のタグが0件のため null（HARD_CONFIRM等にフォールバック）`
+      );
+      return null;
+    }
+  }
+  
+  // 0.5に最も近いものを選ぶ
+  filtered.sort((a, b) => {
     if (a.distanceFromHalf !== b.distanceFromHalf) {
       return a.distanceFromHalf - b.distanceFromHalf;
     }
     return a.tagKey.localeCompare(b.tagKey);
   });
   
-  const selected = candidates[0];
+  const selected = filtered[0];
   console.log(`[selectExploreTag] シンプル: ${selected.tagKey} (p: ${selected.coverage.toFixed(2)})`);
   return selected.tagKey;
 }

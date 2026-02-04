@@ -1,6 +1,6 @@
 /**
  * 人力タグ付け: 全タグ一覧（S/A/B/C マスター・参考用）
- * GET → { s: string[], a: string[], b: string[], c: string[] }
+ * GET → { s, a, b, c, categories?: { categoryOrder, tagsByCategory } }
  */
 
 import { NextResponse } from 'next/server';
@@ -9,6 +9,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const TAG_RANKS_PATH = 'config/tagRanks.json';
+const TAG_CATEGORIES_PATH = 'config/tagCategories.json';
 
 export async function GET() {
   try {
@@ -36,7 +37,20 @@ export async function GET() {
     const a = derivedTags.filter((t) => tagRanks[t.displayName] === 'A').map((t) => t.displayName);
     const b = derivedTags.filter((t) => tagRanks[t.displayName] === 'B').map((t) => t.displayName);
     const c = derivedTags.filter((t) => tagRanks[t.displayName] === 'C').map((t) => t.displayName);
-    return NextResponse.json({ success: true, s, a, b, c });
+
+    let categories: { categoryOrder: string[]; tagsByCategory: Record<string, string[]> } | undefined;
+    try {
+      const catContent = await fs.readFile(path.join(process.cwd(), TAG_CATEGORIES_PATH), 'utf-8');
+      const catData = JSON.parse(catContent);
+      categories = {
+        categoryOrder: catData.categoryOrder ?? [],
+        tagsByCategory: catData.tagsByCategory ?? {},
+      };
+    } catch {
+      // ignore
+    }
+
+    return NextResponse.json({ success: true, s, a, b, c, categories });
   } catch (error) {
     console.error('[manual-tagging/all-tags]', error);
     return NextResponse.json({ error: 'Failed to fetch all tags' }, { status: 500 });

@@ -86,13 +86,15 @@ export async function POST(request: NextRequest) {
       weights
     );
 
-    // 回答処理
+    // 回答処理（まとめ質問のときは strength ±0.6 と summaryDisplayNames を使用）
     const questionData = {
       kind: currentQuestion.kind,
       displayText: '', // 使用しない
       tagKey: currentQuestion.tagKey,
       hardConfirmType: currentQuestion.hardConfirmType,
       hardConfirmValue: currentQuestion.hardConfirmValue,
+      isSummaryQuestion: currentQuestion.isSummaryQuestion,
+      summaryDisplayNames: currentQuestion.summaryDisplayNames,
     };
 
     const updatedWeights = await processAnswer(
@@ -228,6 +230,9 @@ export async function POST(request: NextRequest) {
       tagKey: nextQuestion.tagKey,
       hardConfirmType: nextQuestion.hardConfirmType,
       hardConfirmValue: nextQuestion.hardConfirmValue,
+      isSummaryQuestion: nextQuestion.isSummaryQuestion,
+      summaryQuestionId: nextQuestion.summaryQuestionId,
+      summaryDisplayNames: nextQuestion.summaryDisplayNames,
     }];
     await SessionManager.updateSession(sessionId, {
       questionHistory: newHistory,

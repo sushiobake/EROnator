@@ -27,6 +27,12 @@ export interface QuestionHistoryEntry {
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
   hardConfirmValue?: string;
+  /** まとめ質問のとき true。回答時の strength を ±0.6 に固定する */
+  isSummaryQuestion?: boolean;
+  /** まとめ質問の id（同じまとめを重複出題しないため） */
+  summaryQuestionId?: string;
+  /** まとめ質問の displayNames（回答時のグループ判定に使用） */
+  summaryDisplayNames?: string[];
 }
 
 /**

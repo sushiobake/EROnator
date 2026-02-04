@@ -12,12 +12,12 @@ interface RestartButtonProps {
 
 export function RestartButton({ onRestart, label = 'もう１度妄想する' }: RestartButtonProps) {
   return (
-    <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+    <div style={{ marginTop: 32, textAlign: 'center' }}>
       <button
         onClick={onRestart}
         style={{
-          padding: '0.75rem 2rem',
-          fontSize: '1rem',
+          padding: '12px 32px',
+          fontSize: 16,
           cursor: 'pointer',
           backgroundColor: '#0070f3',
           color: 'white',

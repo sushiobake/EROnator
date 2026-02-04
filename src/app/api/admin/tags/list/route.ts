@@ -1,10 +1,13 @@
 /**
  * /api/admin/tags/list: タグ一覧と作品数を取得するAPI
+ * displayCategory: 表示用に統合したカテゴリ（シチュエーション/系統、その他、キャラタグなど）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import fs from 'fs';
+import path from 'path';
 
 export interface TagListResponse {
   success: boolean;
@@ -13,8 +16,10 @@ export interface TagListResponse {
     displayName: string;
     tagType: string;
     category: string | null;
+    displayCategory: string;
     workCount: number;
   }>;
+  categoryOrder?: string[];
   stats?: {
     total: number;
     byType: {
@@ -24,6 +29,33 @@ export interface TagListResponse {
     };
   };
   error?: string;
+}
+
+function loadCategoryConfig(): { categoryOrder: string[]; categoryMerge: Record<string, string> } {
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'tagCategories.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content);
+    return {
+      categoryOrder: data.categoryOrder ?? [],
+      categoryMerge: data.categoryMerge ?? {},
+    };
+  } catch {
+    return { categoryOrder: [], categoryMerge: {} };
+  }
+}
+
+function getDisplayCategory(
+  tagType: string,
+  displayName: string,
+  category: string | null,
+  categoryMerge: Record<string, string>
+): string {
+  if (tagType === 'OFFICIAL' && displayName === 'キャラクター') return 'キャラクター';
+  if (tagType === 'STRUCTURAL') return 'キャラタグ';
+  if (category === 'CHARACTER' || category === 'キャラクター') return 'キャラクター';
+  const merged = categoryMerge[category ?? ''] ?? category ?? 'その他';
+  return merged || 'その他';
 }
 
 export async function GET(request: NextRequest) {
@@ -103,6 +135,7 @@ export async function GET(request: NextRequest) {
           STRUCTURAL: 0,
         };
 
+        const { categoryOrder, categoryMerge } = loadCategoryConfig();
         const tagsData = directTags.map(tag => {
           const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
           byType[tagType]++;
@@ -112,6 +145,7 @@ export async function GET(request: NextRequest) {
             displayName: tag.displayName,
             tagType: tag.tagType,
             category: tag.category,
+            displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
             workCount: tag.workCount,
           };
         });
@@ -121,6 +155,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           success: true,
           tags: tagsData,
+          categoryOrder,
           stats: {
             total: tagsData.length,
             byType,
@@ -139,17 +174,19 @@ export async function GET(request: NextRequest) {
       STRUCTURAL: 0,
     };
 
+    const { categoryOrder, categoryMerge } = loadCategoryConfig();
     const tagsData = tags.map(tag => {
       const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
       byType[tagType]++;
 
-          return {
-            tagKey: tag.tagKey,
-            displayName: tag.displayName,
-            tagType: tag.tagType,
-            category: tag.category,
-            workCount: tag._count.workTags,
-          };
+      return {
+        tagKey: tag.tagKey,
+        displayName: tag.displayName,
+        tagType: tag.tagType,
+        category: tag.category,
+        displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
+        workCount: tag._count.workTags,
+      };
     });
 
     console.log(`[tags/list] Returning ${tagsData.length} tags, stats:`, byType);
@@ -157,6 +194,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       tags: tagsData,
+      categoryOrder,
       stats: {
         total: tagsData.length,
         byType,

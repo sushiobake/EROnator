@@ -178,6 +178,7 @@ export async function POST(request: NextRequest) {
                 displayName: tag.displayName,
                 tagType: 'DERIVED',
                 category: tag.category || null,
+                questionTemplate: `${tag.displayName}が特徴的だったりするのかしら？`,
               },
             });
           } else {

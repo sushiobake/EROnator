@@ -19,7 +19,7 @@ export function ExternalLink({ href, children, linkText }: ExternalLinkProps) {
   const url = affiliateId ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}` : href;
 
   return (
-    <div style={{ margin: '0.5rem 0' }}>
+    <div style={{ margin: '8px 0' }}>
       <a
         href={url}
         target="_blank"
@@ -28,7 +28,7 @@ export function ExternalLink({ href, children, linkText }: ExternalLinkProps) {
       >
         {linkText || children}
       </a>
-      <span style={{ marginLeft: '0.5rem', fontSize: '0.8em', color: '#666' }}>
+      <span style={{ marginLeft: 8, fontSize: '0.8em', color: '#666' }}>
         (PR)
       </span>
     </div>

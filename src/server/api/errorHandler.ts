@@ -163,6 +163,15 @@ function translateErrorMessage(message: string): string {
     return 'タイムアウトが発生しました。もう一度お試しください。';
   }
 
+  // データベース接続（Neon等: Tenant or user not found など）
+  if (
+    message.includes('Tenant or user not found') ||
+    message.includes('FATAL:') ||
+    (message.includes('connection') && message.includes('refused'))
+  ) {
+    return 'データベースに接続できません。デプロイ先の環境変数（DATABASE_URL）を確認してください。';
+  }
+
   // デフォルト
   return 'エラーが発生しました。もう一度お試しください。';
 }

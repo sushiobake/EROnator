@@ -2397,6 +2397,53 @@ export default function AdminTagsPage() {
                     />
                   </label>
                 </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>explorePValueMin / explorePValueMax（EXPLOREのp値範囲）</strong>
+                    <br />
+                    <small>この範囲外のp値のタグは出題しない。未設定時はフィルタなし。例: 0.1〜0.9</small>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="1"
+                        placeholder="0.1"
+                        value={config.algo.explorePValueMin ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateConfig(['algo', 'explorePValueMin'], v === '' ? undefined : parseFloat(v));
+                        }}
+                        style={{ width: '80px', padding: '0.5rem' }}
+                      />
+                      <span>〜</span>
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="1"
+                        placeholder="0.9"
+                        value={config.algo.explorePValueMax ?? ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          updateConfig(['algo', 'explorePValueMax'], v === '' ? undefined : parseFloat(v));
+                        }}
+                        style={{ width: '80px', padding: '0.5rem' }}
+                      />
+                    </div>
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.algo.explorePValueFallbackEnabled !== false}
+                      onChange={(e) => updateConfig(['algo', 'explorePValueFallbackEnabled'], e.target.checked)}
+                    />
+                    <strong>explorePValueFallbackEnabled</strong>
+                    <small>p値範囲内のタグが無いとき HARD_CONFIRM にフォールバック</small>
+                  </label>
+                </div>
               </section>
 
               {/* Flow セクション */}
@@ -3451,6 +3498,10 @@ export default function AdminTagsPage() {
                 </h3>
                 <button
                   onClick={async () => {
+                    if (!simResult?.targetWorkId) {
+                      alert('正解作品が不明なため再試行できません');
+                      return;
+                    }
                     setSimLoading(true);
                     try {
                       const response = await fetch('/api/admin/simulate', {
@@ -3466,12 +3517,14 @@ export default function AdminTagsPage() {
                           aiGateChoice: simAiGateChoice,
                         }),
                       });
-                      if (!response.ok) throw new Error('Failed');
-                      const data = await response.json();
-                      setSimResult(data);
+                      const data = await response.json().catch(() => ({}));
+                      if (!response.ok) {
+                        throw new Error((data as { error?: string }).error ?? (data as { message?: string }).message ?? '再試行に失敗しました');
+                      }
+                      setSimResult(data as typeof simResult);
                     } catch (error) {
                       console.error('Retry error:', error);
-                      alert('再試行に失敗しました');
+                      alert(error instanceof Error ? error.message : '再試行に失敗しました');
                     } finally {
                       setSimLoading(false);
                     }

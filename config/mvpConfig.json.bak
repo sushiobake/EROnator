@@ -3,17 +3,16 @@
   "confirm": {
     "revealThreshold": 0.7,
     "confidenceConfirmBand": [
-      0.35,
+      0.3,
       0.7
     ],
     "qForcedIndices": [
       6,
       10,
-      15,
-      19,
-      25
+      16,
+      22
     ],
-    "softConfidenceMin": 0.35,
+    "softConfidenceMin": 0.3,
     "hardConfidenceMin": 0.55
   },
   "algo": {
@@ -23,7 +22,7 @@
     "revealPenalty": 0.5
   },
   "flow": {
-    "maxQuestions": 35,
+    "maxQuestions": 40,
     "maxRevealMisses": 3,
     "failListN": 5,
     "effectiveConfirmThresholdFormula": "A",

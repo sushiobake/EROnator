@@ -23,6 +23,7 @@ import { hasDerivedFeature, updateWeightsForTagQuestion } from '@/server/algo/we
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
+import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import fs from 'fs';
 import path from 'path';
@@ -53,15 +54,87 @@ function loadQuestionTemplates(): Record<string, string> {
   }
 }
 
+/** 汎用パターン（新タグ・BCタグ・未設定時） */
+const DEFAULT_QUESTION_PATTERN = (displayName: string) => `${displayName}が特徴的だったりするのかしら？`;
+
+/** キャラタグ（Xタグ）用パターン */
+const CHARACTER_QUESTION_PATTERN = (displayName: string) => `${displayName}というキャラクターが登場する？`;
+
+/** まとめ質問キャッシュ（erotic=true は6問目以降のみ出題） */
+let summaryQuestionsCache: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> | null = null;
+let summaryQuestionsCacheTime = 0;
+
+function loadSummaryQuestions(): Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> {
+  const now = Date.now();
+  if (summaryQuestionsCache && now - summaryQuestionsCacheTime < CACHE_TTL) {
+    return summaryQuestionsCache;
+  }
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'summaryQuestions.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { summaryQuestions?: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> };
+    summaryQuestionsCache = data.summaryQuestions ?? [];
+    summaryQuestionsCacheTime = now;
+    return summaryQuestionsCache;
+  } catch {
+    return [];
+  }
+}
+
+/** 抽象質問（旧ふわっと）タグの displayName 一覧 */
+let abstractDisplayNamesCache: Set<string> | null = null;
+let abstractDisplayNamesCacheTime = 0;
+
+function loadAbstractDisplayNames(): Set<string> {
+  const now = Date.now();
+  if (abstractDisplayNamesCache && now - abstractDisplayNamesCacheTime < CACHE_TTL) {
+    return abstractDisplayNamesCache;
+  }
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'vagueTags.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { displayNames?: string[] };
+    abstractDisplayNamesCache = new Set(data.displayNames ?? []);
+    abstractDisplayNamesCacheTime = now;
+    return abstractDisplayNamesCache;
+  } catch {
+    return new Set();
+  }
+}
+
+/** エロ質問タグの displayName 一覧 */
+let eroticDisplayNamesCache: Set<string> | null = null;
+let eroticDisplayNamesCacheTime = 0;
+
+function loadEroticDisplayNames(): Set<string> {
+  const now = Date.now();
+  if (eroticDisplayNamesCache && now - eroticDisplayNamesCacheTime < CACHE_TTL) {
+    return eroticDisplayNamesCache;
+  }
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'eroticTags.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { displayNames?: string[] };
+    eroticDisplayNamesCache = new Set(data.displayNames ?? []);
+    eroticDisplayNamesCacheTime = now;
+    return eroticDisplayNamesCache;
+  } catch {
+    return new Set();
+  }
+}
+
 /**
- * タグの質問文を取得（カスタムテンプレートがあればそれを使用）
+ * タグの質問文を取得（カスタムテンプレート > キャラ用 > 汎用）
  */
-function getTagQuestionText(displayName: string): string {
+function getTagQuestionText(displayName: string, tagType?: string): string {
   const templates = loadQuestionTemplates();
   if (templates[displayName]) {
     return templates[displayName];
   }
-  return `この作品は「${displayName}」ですか？`;
+  if (tagType === 'STRUCTURAL') {
+    return CHARACTER_QUESTION_PATTERN(displayName);
+  }
+  return DEFAULT_QUESTION_PATTERN(displayName);
 }
 
 /**
@@ -117,6 +190,9 @@ export interface QuestionData {
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
   hardConfirmValue?: string;
+  isSummaryQuestion?: boolean;
+  summaryQuestionId?: string;
+  summaryDisplayNames?: string[];
 }
 
 /**
@@ -129,6 +205,52 @@ export async function selectNextQuestion(
   questionHistory: QuestionHistoryEntry[],
   config: MvpConfig
 ): Promise<QuestionData | null> {
+  const questionIndex = questionCount + 1; // 次の質問番号（1-based）
+  const usedSummaryIds = new Set(
+    questionHistory
+      .filter((q): q is QuestionHistoryEntry & { summaryQuestionId: string } => !!q.summaryQuestionId)
+      .map(q => q.summaryQuestionId!)
+  );
+
+  // 1問目: 非エロのまとめ質問から完全ランダムで1つ選択
+  if (questionCount === 0) {
+    const summaries = loadSummaryQuestions();
+    const unused = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
+    if (unused.length > 0) {
+      const summary = unused[Math.floor(Math.random() * unused.length)];
+      const tags = await prisma.tag.findMany({
+        where: { displayName: { in: summary.displayNames } },
+        select: { tagKey: true },
+        take: 1,
+      });
+      const tagKey = tags[0]?.tagKey ?? null;
+      if (tagKey) {
+        return {
+          kind: 'EXPLORE_TAG',
+          displayText: summary.questionText,
+          tagKey,
+          isSummaryQuestion: true,
+          summaryQuestionId: summary.id,
+          summaryDisplayNames: summary.displayNames,
+        };
+      }
+      // 選んだまとめの displayNames が DB に1件も無い → ログ＋フォールバック
+      console.warn(
+        `[selectNextQuestion] Q1: まとめ「${summary.id}」の displayNames に一致する Tag が0件でした。displayNames=${JSON.stringify(summary.displayNames)}`
+      );
+    } else {
+      console.warn('[selectNextQuestion] Q1: 非エロの未使用まとめが0件です。');
+    }
+    // フォールバック: 通常タグから1問目を出題（抽象・エロは1問目では出さない）
+    const q1Fallback = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(1));
+    if (q1Fallback) {
+      console.log('[selectNextQuestion] Q1: まとめで出題できなかったため、通常タグでフォールバックしました。');
+      return q1Fallback;
+    }
+    console.warn('[selectNextQuestion] Q1: フォールバック後も候補が無く、null を返します。');
+    return null;
+  }
+
   const confidence = calculateConfidence(probabilities);
   const effectiveCandidates = calculateEffectiveCandidates(probabilities);
   const effectiveConfirmThreshold = calculateEffectiveConfirmThreshold(
@@ -138,7 +260,7 @@ export async function selectNextQuestion(
     config.flow.effectiveConfirmThresholdParams.divisor
   );
 
-  const qIndex = questionCount + 1; // 次の質問番号（1-based）
+  const qIndex = questionIndex;
 
   // 使用済みタグを取得（SOFT_CONFIRMとEXPLORE_TAGの両方で使用）
   const usedTagKeys = new Set(
@@ -287,16 +409,18 @@ export async function selectNextQuestion(
         const selectedTag = usableTags[0];
         console.log(`[SOFT_CONFIRM] p値フィルタ: ${selectedTag.tag.displayName} (p: ${(selectedTag.p * 100).toFixed(1)}%)`);
         
-        const displayText = getTagQuestionText(selectedTag.tag.displayName);
+        const displayText = getTagQuestionText(selectedTag.tag.displayName, 'DERIVED');
         return {
           kind: 'SOFT_CONFIRM',
           displayText,
           tagKey: selectedTag.tag.tagKey,
         };
       } else {
-        // p値が極端なタグしかない → EXPLORE_TAGにフォールバック
-        console.log(`[SOFT_CONFIRM] p値が極端なタグしかないため、EXPLORE_TAGにフォールバック`);
-        return await selectExploreQuestion(weights, probabilities, questionHistory, config);
+        // p値が極端なタグしかない → 統一EXPLORE/まとめにフォールバック
+        console.log(`[SOFT_CONFIRM] p値が極端なタグしかないため、統一選択にフォールバック`);
+        const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
+        if (fallback) return fallback;
+        return await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex));
       }
     }
     
@@ -354,38 +478,328 @@ export async function selectNextQuestion(
       const top1Initial = normalizeTitleForInitial(top1Work.title ?? '');
       const top1Author = top1Work.authorName ?? '(不明)';
       
-      // top1の頭文字が使用済みでなければTITLE_INITIAL
+      // top1の頭文字が使用済みでなければTITLE_INITIAL（稲荷さん口調）
       if (!usedTitleInitials.has(top1Initial)) {
         console.log(`[HARD_CONFIRM] 当てに行く: TITLE_INITIAL "${top1Initial}" (top1: ${top1Work.title})`);
         
         return {
           kind: 'HARD_CONFIRM',
-          displayText: `タイトルは「${top1Initial}」から始まりますか？`,
+          displayText: `……この作品のタイトル、頭文字は「${top1Initial}」かしら？`,
           hardConfirmType: 'TITLE_INITIAL',
           hardConfirmValue: top1Initial,
         };
       }
       
-      // top1の作者名が使用済みでなければAUTHOR
+      // top1の作者名が使用済みでなければAUTHOR（稲荷さん口調）
       if (!usedAuthors.has(top1Author)) {
         console.log(`[HARD_CONFIRM] 当てに行く: AUTHOR "${top1Author}" (top1: ${top1Work.title})`);
         
         return {
           kind: 'HARD_CONFIRM',
-          displayText: `作者（サークル）は「${top1Author}」ですか？`,
+          displayText: `……この作品の作者（サークル）、「${top1Author}」かしら？`,
           hardConfirmType: 'AUTHOR',
           hardConfirmValue: top1Author,
         };
       }
       
-      // top1の頭文字も作者名も使用済み → EXPLORE_TAGにフォールバック
-      console.log(`[HARD_CONFIRM] top1の頭文字・作者名は使用済み、EXPLORE_TAGにフォールバック`);
-      return await selectExploreQuestion(weights, probsForTop1, questionHistory, config);
+      // top1の頭文字も作者名も使用済み → 統一選択にフォールバック
+      console.log(`[HARD_CONFIRM] top1の頭文字・作者名は使用済み、統一選択にフォールバック`);
+      const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probsForTop1, questionHistory, config, usedSummaryIds, usedTagKeys);
+      if (fallback) return fallback;
+      return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, buildExploreOptions(qIndex));
     }
   }
 
-  // EXPLORE_TAG
-  return await selectExploreQuestion(weights, probabilities, questionHistory, config);
+  // Q2,3,4,5,7,8,9,11+: まとめと通常タグを同一ルールで選択（理想フロー）
+  const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
+  if (unified) return unified;
+
+  // p値バンドでEXPLOREが選べなかった場合のフォールバック: HARD_CONFIRM で頭文字/作者を聞く
+  const fallbackEnabled = config.algo.explorePValueFallbackEnabled !== false && getExplorePValueBand(config) != null;
+  if (fallbackEnabled) {
+    const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
+    if (hardFallback) {
+      console.log('[selectNextQuestion] EXPLOREでp値範囲内のタグが無いため、HARD_CONFIRMにフォールバック');
+      return hardFallback;
+    }
+  }
+
+  // フォールバック: 通常タグのみ（Q4以降）
+  if (qIndex >= 4) {
+    const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex));
+    if (exploreResult) return exploreResult;
+    if (fallbackEnabled) {
+      const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
+      if (hardFallback) {
+        console.log('[selectNextQuestion] EXPLOREでp値範囲内のタグが無いため、HARD_CONFIRMにフォールバック');
+        return hardFallback;
+      }
+    }
+  }
+  return null;
+}
+
+interface SelectExploreOptions {
+  summaryOnlyTagKeys?: Set<string>;
+  questionIndex?: number;
+  abstractDisplayNames?: Set<string>;
+  eroticDisplayNames?: Set<string>;
+}
+
+/** Q4以降のフォールバック用: 抽象/エロフィルタのみ（まとめ制限なし） */
+function buildExploreOptions(questionIndex: number): SelectExploreOptions {
+  return {
+    questionIndex,
+    abstractDisplayNames: loadAbstractDisplayNames(),
+    eroticDisplayNames: loadEroticDisplayNames(),
+  };
+}
+
+/** p値バンド用: config から EXPLORE の p 値範囲を取得。未設定なら undefined */
+function getExplorePValueBand(config: MvpConfig): { pValueMin: number; pValueMax: number } | undefined {
+  const min = config.algo.explorePValueMin;
+  const max = config.algo.explorePValueMax;
+  if (min != null && max != null) return { pValueMin: min, pValueMax: max };
+  return undefined;
+}
+
+/**
+ * HARD_CONFIRM を1つ生成（top1の頭文字 or 作者）。使用済みなら null。
+ * p値フォールバック時や Confirm 挿入時に利用。
+ */
+async function tryGetHardConfirmQuestion(
+  weights: WorkWeight[],
+  probabilities: WorkProbability[],
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): Promise<QuestionData | null> {
+  const usedTitleInitials = new Set(
+    questionHistory
+      .filter(q => q.kind === 'HARD_CONFIRM' && q.hardConfirmType === 'TITLE_INITIAL')
+      .map(q => q.hardConfirmValue!)
+      .filter(v => v)
+  );
+  const usedAuthors = new Set(
+    questionHistory
+      .filter(q => q.kind === 'HARD_CONFIRM' && q.hardConfirmType === 'AUTHOR')
+      .map(q => q.hardConfirmValue!)
+      .filter(v => v)
+  );
+  const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
+  const top1WorkId = sorted[0]?.workId;
+  if (!top1WorkId) return null;
+  const top1Work = await prisma.work.findUnique({
+    where: { workId: top1WorkId },
+    select: { workId: true, title: true, authorName: true },
+  });
+  if (!top1Work) return null;
+  const top1Initial = normalizeTitleForInitial(top1Work.title ?? '');
+  const top1Author = top1Work.authorName ?? '(不明)';
+  if (!usedTitleInitials.has(top1Initial)) {
+    return {
+      kind: 'HARD_CONFIRM',
+      displayText: `……この作品のタイトル、頭文字は「${top1Initial}」かしら？`,
+      hardConfirmType: 'TITLE_INITIAL',
+      hardConfirmValue: top1Initial,
+    };
+  }
+  if (!usedAuthors.has(top1Author)) {
+    return {
+      kind: 'HARD_CONFIRM',
+      displayText: `……この作品の作者（サークル）、「${top1Author}」かしら？`,
+      hardConfirmType: 'AUTHOR',
+      hardConfirmValue: top1Author,
+    };
+  }
+  return null;
+}
+
+/**
+ * 理想フロー: まとめと通常タグを同一プールでルールに従って1つ選択
+ * Q2-3: 非エロまとめのみ / Q4-5: 非エロまとめ+通常 / Q7-9: 全まとめ+全タグ(エロ解禁) / Q11+: 抽象も加える
+ */
+async function selectUnifiedExploreOrSummary(
+  questionIndex: number,
+  weights: WorkWeight[],
+  probabilities: WorkProbability[],
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig,
+  usedSummaryIds: Set<string>,
+  usedTagKeys: Set<string>
+): Promise<QuestionData | null> {
+  const workIds = weights.map(w => w.workId);
+  const totalWorks = weights.length;
+  const abstractDisplayNames = loadAbstractDisplayNames();
+  const eroticDisplayNames = loadEroticDisplayNames();
+  const summaries = loadSummaryQuestions();
+
+  // 質問番号ごとのまとめ候補
+  let summaryCandidates: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> = [];
+  if (questionIndex >= 2 && questionIndex <= 3) {
+    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
+  } else if (questionIndex >= 4 && questionIndex <= 5) {
+    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
+  } else if (questionIndex >= 7) {
+    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id));
+  }
+
+  // まとめの displayNames → tagKeys 解決
+  const allSummaryDisplayNames = new Set<string>();
+  for (const s of summaryCandidates) for (const d of s.displayNames) allSummaryDisplayNames.add(d);
+  const summaryDisplayNameToTagKeys = new Map<string, string[]>();
+  if (allSummaryDisplayNames.size > 0) {
+    const tagsInSummaries = await prisma.tag.findMany({
+      where: { displayName: { in: Array.from(allSummaryDisplayNames) } },
+      select: { tagKey: true, displayName: true },
+    });
+    for (const t of tagsInSummaries) {
+      if (!summaryDisplayNameToTagKeys.has(t.displayName)) {
+        summaryDisplayNameToTagKeys.set(t.displayName, []);
+      }
+      summaryDisplayNameToTagKeys.get(t.displayName)!.push(t.tagKey);
+    }
+  }
+
+  const summaryTagKeysMap = new Map<string, string[]>();
+  const allSummaryTagKeys = new Set<string>();
+  for (const s of summaryCandidates) {
+    const tagKeys: string[] = [];
+    for (const dn of s.displayNames) {
+      const keys = summaryDisplayNameToTagKeys.get(dn) ?? [];
+      for (const k of keys) {
+        tagKeys.push(k);
+        allSummaryTagKeys.add(k);
+      }
+    }
+    if (tagKeys.length > 0) summaryTagKeysMap.set(s.id, tagKeys);
+  }
+
+  // 通常タグ候補（カバレッジゲート＋質問番号フィルタ）
+  const workTagsAll = await prisma.workTag.findMany({
+    where: { workId: { in: workIds } },
+    select: { tagKey: true, workId: true },
+  });
+  const tagWorkCountMap = new Map<string, number>();
+  for (const wt of workTagsAll) {
+    tagWorkCountMap.set(wt.tagKey, (tagWorkCountMap.get(wt.tagKey) || 0) + 1);
+  }
+  let passingTagKeys: string[] = [];
+  for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
+    if (usedTagKeys.has(tagKey)) continue;
+    if (!passesCoverageGate(workCount, totalWorks, config.dataQuality.minCoverageMode, config.dataQuality.minCoverageRatio, config.dataQuality.minCoverageWorks, config.dataQuality.maxCoverageRatio ?? null)) continue;
+    passingTagKeys.push(tagKey);
+  }
+  if (questionIndex < 11) {
+    const tagsForFilter = await prisma.tag.findMany({
+      where: { tagKey: { in: passingTagKeys } },
+      select: { tagKey: true, displayName: true },
+    });
+    passingTagKeys = passingTagKeys.filter(tagKey => {
+      const tag = tagsForFilter.find(t => t.tagKey === tagKey);
+      if (!tag) return true;
+      if (questionIndex < 11 && abstractDisplayNames.has(tag.displayName)) return false;
+      if (questionIndex < 7 && eroticDisplayNames.has(tag.displayName)) return false;
+      return true;
+    });
+  }
+
+  const allTagKeysForWork = new Set([...allSummaryTagKeys, ...passingTagKeys]);
+  const workTagMap = new Map<string, Set<string>>();
+  for (const wt of workTagsAll) {
+    if (!allTagKeysForWork.has(wt.tagKey)) continue;
+    if (!workTagMap.has(wt.workId)) workTagMap.set(wt.workId, new Set());
+    workTagMap.get(wt.workId)!.add(wt.tagKey);
+  }
+
+  const workHasTag = (workId: string, key: string): boolean => {
+    if (key.startsWith('summary:')) {
+      const id = key.slice(8);
+      const sTagKeys = summaryTagKeysMap.get(id);
+      if (!sTagKeys?.length) return false;
+      const workSet = workTagMap.get(workId);
+      if (!workSet) return false;
+      return sTagKeys.some(tk => workSet.has(tk));
+    }
+    return workTagMap.get(workId)?.has(key) ?? false;
+  };
+
+  const availableTags: TagInfo[] = [];
+  for (const s of summaryCandidates) {
+    if (!summaryTagKeysMap.has(s.id)) continue;
+    let workCount = 0;
+    for (const wid of workIds) {
+      if (workHasTag(wid, 'summary:' + s.id)) workCount++;
+    }
+    availableTags.push({
+      tagKey: 'summary:' + s.id,
+      displayName: s.label,
+      tagType: 'OFFICIAL',
+      workCount,
+    });
+  }
+
+  // Q4以降のみ通常タグを候補に追加（Q2-3は非エロまとめのみ）
+  if (questionIndex >= 4 && passingTagKeys.length > 0) {
+    const allTags = await prisma.tag.findMany({
+      where: { tagKey: { in: passingTagKeys } },
+      select: { tagKey: true, displayName: true, tagType: true },
+    });
+    for (const tag of allTags) {
+      const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
+      availableTags.push({
+        tagKey: tag.tagKey,
+        displayName: tag.displayName,
+        tagType: (tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL') || 'DERIVED',
+        workCount,
+      });
+    }
+  }
+
+  if (availableTags.length === 0) return null;
+
+  const pValueBand = getExplorePValueBand(config);
+  const selectedKey = selectExploreTag(
+    availableTags,
+    probabilities,
+    workHasTag,
+    0,
+    null,
+    pValueBand
+  );
+  if (!selectedKey) return null;
+
+  if (selectedKey.startsWith('summary:')) {
+    const id = selectedKey.slice(8);
+    const summary = summaryCandidates.find(s => s.id === id);
+    if (!summary) return null;
+    const tags = await prisma.tag.findMany({
+      where: { displayName: { in: summary.displayNames } },
+      select: { tagKey: true },
+      take: 1,
+    });
+    const tagKey = tags[0]?.tagKey ?? null;
+    if (!tagKey) return null;
+    return {
+      kind: 'EXPLORE_TAG',
+      displayText: summary.questionText,
+      tagKey,
+      isSummaryQuestion: true,
+      summaryQuestionId: summary.id,
+      summaryDisplayNames: summary.displayNames,
+    };
+  }
+
+  const selectedTag = await prisma.tag.findUnique({
+    where: { tagKey: selectedKey },
+    select: { displayName: true, tagType: true },
+  });
+  if (!selectedTag) return null;
+  const displayText = getTagQuestionText(selectedTag.displayName, selectedTag.tagType ?? undefined);
+  return {
+    kind: 'EXPLORE_TAG',
+    displayText,
+    tagKey: selectedKey,
+  };
 }
 
 /**
@@ -395,8 +809,14 @@ async function selectExploreQuestion(
   weights: WorkWeight[],
   probabilities: WorkProbability[],
   questionHistory: QuestionHistoryEntry[],
-  config: MvpConfig
+  config: MvpConfig,
+  options?: SelectExploreOptions | null
 ): Promise<QuestionData | null> {
+  const opts = options ?? buildExploreOptions(questionHistory.length + 1);
+  const { summaryOnlyTagKeys, questionIndex = opts.questionIndex ?? 0, abstractDisplayNames = new Set(), eroticDisplayNames = new Set() } = opts;
+  const abstractSet = abstractDisplayNames.size > 0 ? abstractDisplayNames : loadAbstractDisplayNames();
+  const eroticSet = eroticDisplayNames.size > 0 ? eroticDisplayNames : loadEroticDisplayNames();
+
   // 使用済みタグを除外（selectNextQuestionから渡される想定だが、念のため再計算）
   const usedTagKeys = new Set(
     questionHistory
@@ -431,7 +851,7 @@ async function selectExploreQuestion(
   // カバレッジゲートを通過するタグのみをフィルタ
   // 下限: タグを持つ作品が少なすぎるタグを除外
   // 上限: 全員が持っているタグを除外（確度が変わらないため）
-  const passingTagKeys: string[] = [];
+  let passingTagKeys: string[] = [];
   for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
     if (!usedTagKeys.has(tagKey) && passesCoverageGate(
       workCount,
@@ -443,6 +863,11 @@ async function selectExploreQuestion(
     )) {
       passingTagKeys.push(tagKey);
     }
+  }
+
+  // 2・3問目: まとめ質問に含まれるタグのみに制限
+  if (summaryOnlyTagKeys && summaryOnlyTagKeys.size > 0) {
+    passingTagKeys = passingTagKeys.filter(k => summaryOnlyTagKeys!.has(k));
   }
 
   // デバッグ: passingTagKeysの数を表示
@@ -505,6 +930,14 @@ async function selectExploreQuestion(
       console.log(`[selectExploreQuestion] WARNING: tag "${tag.tagKey}" was in allTags but should be excluded`);
       continue;
     }
+    // 抽象質問（旧ふわっと）: 11問目以降のみ候補
+    if (questionIndex < 11 && abstractSet.has(tag.displayName)) {
+      continue;
+    }
+    // エロ質問: 7問目以降のみ候補
+    if (questionIndex < 7 && eroticSet.has(tag.displayName)) {
+      continue;
+    }
     const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
     availableTags.push({
       tagKey: tag.tagKey,
@@ -548,12 +981,14 @@ async function selectExploreQuestion(
   const confidence = sorted[0]?.probability ?? 0;
   const topWorkId = sorted[0]?.workId ?? null;
 
+  const pValueBand = getExplorePValueBand(config);
   const selectedTagKey = selectExploreTag(
     availableTags,
     probabilities,
     workHasTag,
-    confidence, // 確度を渡す
-    topWorkId   // top1のworkIdを渡す
+    confidence,
+    topWorkId,
+    pValueBand
   );
   if (!selectedTagKey) {
     return null;
@@ -564,7 +999,7 @@ async function selectExploreQuestion(
     return null;
   }
 
-  const displayText = getTagQuestionText(selectedTag.displayName);
+  const displayText = getTagQuestionText(selectedTag.displayName, selectedTag.tagType);
 
   return {
     kind: 'EXPLORE_TAG',
@@ -591,51 +1026,69 @@ export async function processAnswer(
     DONT_CARE: 0,
   };
 
-  const strength = strengthMap[answerChoice] ?? 0;
+  let strength = strengthMap[answerChoice] ?? 0;
+  // まとめ質問はすべて ±0.6 に固定（たぶんそう/たぶん違うも 0.6）
+  const isSummaryQuestion = !!(question as QuestionData & { isSummaryQuestion?: boolean }).isSummaryQuestion;
+  if (isSummaryQuestion) {
+    if (strength > 0) strength = 0.6;
+    else if (strength < 0) strength = -0.6;
+  }
 
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
-    // Tag-based質問
+    // Tag-based質問（包括・統合: 同一グループのタグをまとめて判定）
     const tagKey = question.tagKey!;
-    
-    // WorkTagsを取得
-    // パフォーマンス最適化: 必要なフィールドのみ取得
+    const workIds = weights.map(w => w.workId);
+
+    // まとめ質問のときは summaryDisplayNames をグループとして使用
+    const summaryDisplayNames = (question as QuestionData & { summaryDisplayNames?: string[] }).summaryDisplayNames;
+    let groupDisplayNames: string[];
+    if (summaryDisplayNames?.length) {
+      groupDisplayNames = summaryDisplayNames;
+    } else {
+      const askedTag = await prisma.tag.findUnique({
+        where: { tagKey },
+        select: { displayName: true },
+      });
+      const displayName = askedTag?.displayName ?? tagKey;
+      groupDisplayNames = getGroupDisplayNames(displayName);
+    }
+
+    const groupTags = await prisma.tag.findMany({
+      where: { displayName: { in: groupDisplayNames } },
+      select: { tagKey: true },
+    });
+    const groupTagKeys = groupTags.map(t => t.tagKey);
+
     const workTags = await prisma.workTag.findMany({
       where: {
-        workId: { in: weights.map(w => w.workId) },
-        tagKey,
+        workId: { in: workIds },
+        tagKey: { in: groupTagKeys.length > 0 ? groupTagKeys : [tagKey] },
       },
       select: {
         workId: true,
+        tagKey: true,
         derivedConfidence: true,
       },
     });
 
-    const workTagMap = new Map<string, number | null>();
+    const workTagMap = new Map<string, Array<number | null>>();
     for (const wt of workTags) {
-      workTagMap.set(wt.workId, wt.derivedConfidence);
+      if (!workTagMap.has(wt.workId)) workTagMap.set(wt.workId, []);
+      workTagMap.get(wt.workId)!.push(wt.derivedConfidence);
     }
 
     const workHasFeature = (workId: string): boolean => {
-      const derivedConf = workTagMap.get(workId);
-      if (question.kind === 'SOFT_CONFIRM') {
-        // SOFT_CONFIRM: DERIVEDタグのみ（derivedConfidence >= threshold）
-        return hasDerivedFeature(derivedConf, config.algo.derivedConfidenceThreshold);
-      } else {
-        // EXPLORE_TAG:
-        // - WorkTag行が存在しない (undefined) → タグ無し → false
-        // - OFFICIALタグなど derivedConfidence=null → タグが付いているので feature=true
-        // - DERIVEDタグ (number) → threshold で二値化
-        if (derivedConf === undefined) {
-          // WorkTag自体が無い
-          return false;
+      const confs = workTagMap.get(workId);
+      if (!confs || confs.length === 0) return false;
+      const anyPass = confs.some(derivedConf => {
+        if (question.kind === 'SOFT_CONFIRM') {
+          return hasDerivedFeature(derivedConf, config.algo.derivedConfidenceThreshold);
         }
-        if (derivedConf === null) {
-          // OFFICIALタグなど: 「タグが付いている」ので true 扱い
-          return true;
-        }
-        // DERIVEDタグ: thresholdで二値化
+        if (derivedConf === undefined) return false;
+        if (derivedConf === null) return true;
         return hasDerivedFeature(derivedConf, config.algo.derivedConfidenceThreshold);
-      }
+      });
+      return anyPass;
     };
 
     return updateWeightsForTagQuestion(

@@ -130,6 +130,9 @@ export async function POST(request: NextRequest) {
       tagKey: firstQuestion.tagKey,
       hardConfirmType: firstQuestion.hardConfirmType,
       hardConfirmValue: firstQuestion.hardConfirmValue,
+      isSummaryQuestion: firstQuestion.isSummaryQuestion,
+      summaryQuestionId: firstQuestion.summaryQuestionId,
+      summaryDisplayNames: firstQuestion.summaryDisplayNames,
     });
 
     // 返却（最小限の情報のみ）

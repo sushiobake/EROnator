@@ -46,13 +46,11 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: F
           >
             <h3>{work.title}</h3>
             <p>作者: {work.authorName}</p>
-            {work.thumbnailUrl && (
-              <img
-                src={work.thumbnailUrl}
-                alt={work.title}
-                style={{ maxWidth: '150px', margin: '0.5rem 0' }}
-              />
-            )}
+            <img
+              src={work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`}
+              alt={work.title}
+              style={{ maxWidth: '150px', margin: '0.5rem 0' }}
+            />
             <ExternalLink href={work.productUrl} linkText={linkText}>
               {linkText}
             </ExternalLink>

@@ -192,7 +192,7 @@ export async function PUT(
         });
       }
 
-      const defaultQuestionTemplate = (name: string) => `「${name.trim()}」が登場しますか？`;
+      const defaultQuestionTemplate = (name: string) => `${name.trim()}が特徴的だったりするのかしら？`;
 
       const upsertDerived = async (displayName: string, rank: 'A' | 'B' | 'C') => {
         const trimmed = displayName.trim();
@@ -245,13 +245,13 @@ export async function PUT(
               displayName: charName,
               tagType: 'STRUCTURAL',
               category: 'キャラクター',
-              questionTemplate: `「${charName}」が登場しますか？`,
+              questionTemplate: `${charName}というキャラクターが登場する？`,
             },
           });
         } else {
           await tx.tag.updateMany({
             where: { tagKey: charTagKey.tagKey, questionTemplate: null },
-            data: { questionTemplate: `「${charName}」が登場しますか？` },
+            data: { questionTemplate: `${charName}というキャラクターが登場する？` },
           });
         }
         await tx.workTag.upsert({

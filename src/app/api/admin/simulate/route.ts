@@ -246,13 +246,16 @@ export async function POST(request: NextRequest) {
         actualAnswer = correctAnswer === 'YES' ? 'NO' : 'YES';
       }
 
-      // 質問履歴に追加
+      // 質問履歴に追加（まとめ質問のときは summaryQuestionId 等を保存し、同一まとめの重複出題を防ぐ）
       questionHistory.push({
         qIndex,
         kind: question.kind,
         tagKey: question.tagKey,
         hardConfirmType: question.hardConfirmType,
         hardConfirmValue: question.hardConfirmValue,
+        isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
+        summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
+        summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
       });
 
       // 回答処理
@@ -752,6 +755,9 @@ async function runSimulation(
         tagKey: question.tagKey,
         hardConfirmType: question.hardConfirmType,
         hardConfirmValue: question.hardConfirmValue,
+        isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
+        summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
+        summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
       });
 
       // タグのp値（確率ベースカバレッジ）を計算（回答処理前のprobabilitiesで計算）

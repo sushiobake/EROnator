@@ -114,7 +114,8 @@ export async function POST(request: Request) {
             tagKey,
             displayName: trimmedName,
             tagType: 'DERIVED',
-            category: 'その他'
+            category: 'その他',
+            questionTemplate: `${trimmedName}が特徴的だったりするのかしら？`,
           }
         });
         console.log(`[ManualTag] Created new tag: ${trimmedName} (${tag.tagKey})`);

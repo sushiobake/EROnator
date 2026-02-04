@@ -310,6 +310,7 @@ export async function POST(request: Request) {
                     displayName,
                     tagType: 'DERIVED',
                     category: 'その他',
+                    questionTemplate: `${displayName}が特徴的だったりするのかしら？`,
                   },
                 });
               }
@@ -347,6 +348,7 @@ export async function POST(request: Request) {
                     displayName: tag.displayName,
                     tagType: 'DERIVED',
                     category: tag.category || 'その他',
+                    questionTemplate: `${tag.displayName}が特徴的だったりするのかしら？`,
                   },
                 });
               }
@@ -406,6 +408,7 @@ export async function POST(request: Request) {
                 displayName: charName,
                 tagType: 'STRUCTURAL',
                 category: 'キャラクター',
+                questionTemplate: `${charName}というキャラクターが登場する？`,
               },
             });
           }

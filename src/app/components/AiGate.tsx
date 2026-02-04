@@ -1,11 +1,17 @@
 /**
  * AI_GATEコンポーネント
- * AI作品フィルタ選択（3択、アキネーター風レイアウト）
+ * 右中央ホワイトボード内で「あなたが妄想した作品は……」＋AI生成作品選択（3択）。レイアウトは px。
  */
 
 'use client';
 
 import { useState } from 'react';
+
+const AI_GATE_OPTIONS: { value: 'NO' | 'YES' | 'DONT_CARE'; label: string }[] = [
+  { value: 'NO', label: 'AI生成作品ではない' },
+  { value: 'YES', label: 'AI生成作品だ' },
+  { value: 'DONT_CARE', label: 'どちらでも構わない' },
+];
 
 interface AiGateProps {
   onSelect: (choice: 'YES' | 'NO' | 'DONT_CARE') => void;
@@ -15,171 +21,70 @@ export function AiGate({ onSelect }: AiGateProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        minHeight: '100vh',
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '2rem',
-      }}
-    >
-      {/* メインコンテンツエリア - キャラクターと質問を相対配置 */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-start',
-          width: '100%',
-          maxWidth: '1400px',
-          gap: '3rem',
-          position: 'relative',
-        }}
-      >
-        {/* キャラクター - 左側、縦方向は中央 */}
+    <>
+      <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 8px 0' }}>
+        あなたが妄想した作品は……
+      </p>
+      <div style={{ marginBottom: 32 }}>
         <div
           style={{
-            flex: '0 0 auto',
-            width: '35%',
-            maxWidth: '450px',
-            minWidth: '300px',
             display: 'flex',
+            minWidth: 260,
             alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 20,
+            border: '1px solid #e5e7eb',
+            backgroundColor: '#fafafa',
+            padding: '16px 24px',
+            borderRadius: 8,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
           }}
         >
-          {/* キャラクター画像のプレースホルダー（後で差し替え） */}
-          <div
-            style={{
-              width: '100%',
-              aspectRatio: '1',
-              maxHeight: '500px',
-              backgroundColor: '#e8e8e8',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#999',
-              fontSize: '1rem',
-              border: '2px dashed #ccc',
-            }}
-          >
-            キャラクター画像
-          </div>
-        </div>
-
-        {/* 質問と回答エリア - キャラクターの右側、少し右寄り */}
-        <div
-          style={{
-            flex: '1 1 auto',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            marginLeft: '2rem',
-          }}
-        >
-          {/* 質問吹き出し */}
-          <div
-            style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'stretch',
-              marginBottom: '2rem',
-            }}
-          >
-            {/* 質問テキスト - 白背景で清潔に */}
-            <div
-              style={{
-                display: 'flex',
-                minWidth: '260px',
-                alignItems: 'center',
-                border: '1px solid #e5e7eb',
-                backgroundColor: '#fff',
-                padding: '1rem 1.5rem',
-                boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-              }}
-            >
-              <p
-                style={{
-                  fontSize: '1.125rem',
-                  fontWeight: '500',
-                  color: '#1f2937',
-                  margin: 0,
-                }}
-              >
-                それはAI作品？
-              </p>
-            </div>
-          </div>
-
-          {/* 回答ボタン */}
-          <div
-            style={{
-              marginLeft: '1rem',
-              width: '100%',
-              maxWidth: '320px',
-              marginTop: '0.5rem',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db',
-                boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
-              }}
-            >
-              {(['YES', 'NO', 'DONT_CARE'] as const).map((choice, index) => {
-                const labels = { YES: 'はい', NO: 'いいえ', DONT_CARE: '気にしない' };
-                const isFirst = index === 0;
-                return (
-                  <button
-                    key={choice}
-                    onClick={() => onSelect(choice)}
-                    onMouseEnter={() => setHoveredChoice(choice)}
-                    onMouseLeave={() => setHoveredChoice(null)}
-                    style={{
-                      position: 'relative',
-                      width: '100%',
-                      padding: '0.875rem 1.5rem',
-                      textAlign: 'center',
-                      fontSize: '1rem',
-                      fontWeight: '500',
-                      cursor: 'pointer',
-                      backgroundColor: hoveredChoice === choice ? '#eff6ff' : '#fff',
-                      color: hoveredChoice === choice ? '#111827' : '#374151',
-                      border: 'none',
-                      borderTop: !isFirst ? '1px solid #e5e7eb' : 'none',
-                      transition: 'background-color 0.1s, color 0.1s',
-                    }}
-                  >
-                    {labels[choice]}
-                    {hoveredChoice === choice && (
-                      <span
-                        style={{
-                          position: 'absolute',
-                          right: '1rem',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          fontSize: '1rem',
-                          color: '#6b7280',
-                        }}
-                      >
-                        &gt;&gt;
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <p style={{ fontSize: 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
+            AI生成作品ではない？
+          </p>
         </div>
       </div>
-    </div>
+      <div style={{ width: '100%', maxWidth: 320, marginTop: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            borderRadius: 10,
+            border: '1px solid #d1d5db',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+          }}
+        >
+          {AI_GATE_OPTIONS.map(({ value, label }, index) => (
+            <button
+              key={value}
+              onClick={() => onSelect(value)}
+              onMouseEnter={() => setHoveredChoice(value)}
+              onMouseLeave={() => setHoveredChoice(null)}
+              style={{
+                position: 'relative',
+                width: '100%',
+                padding: '14px 24px',
+                textAlign: 'center',
+                fontSize: 16,
+                fontWeight: 500,
+                cursor: 'pointer',
+                backgroundColor: hoveredChoice === value ? '#eff6ff' : '#fff',
+                color: hoveredChoice === value ? '#111827' : '#374151',
+                border: 'none',
+                borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
+                transition: 'background-color 0.1s, color 0.1s',
+              }}
+            >
+              {label}
+              {hoveredChoice === value && (
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#6b7280' }}>
+                  &gt;&gt;
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   );
 }
