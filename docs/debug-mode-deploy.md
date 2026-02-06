@@ -11,14 +11,14 @@
 
 ## 設定する環境変数（Preview のみ）
 
-Vercel の **Preview** 用の環境変数に、次の3つを設定する。
+Vercel の **Preview** 用の環境変数に、次の **2つ** を設定する。
 
 | 変数名 | 値 | 説明 |
 |--------|-----|------|
-| `NEXT_PUBLIC_VERCEL_ENV` | `preview` | プレビューであることをクライアントに伝え、パネル表示を許可する |
 | `NEXT_PUBLIC_DEBUG_TOKEN` | （任意のトークン文字列） | クライアントでデバッグパネルを有効にする判定に使う |
 | `ERONATOR_DEBUG_TOKEN` | 上と同じトークン | API がデバッグデータを返すかどうかの判定に使う |
 
+- **プレビュー判定**: Vercel が自動設定する `VERCEL_ENV` を layout からクライアントに渡しているため、`NEXT_PUBLIC_VERCEL_ENV` は**不要**（設定しなくてよい）。
 - 適用先: **Preview** のみ。Production には設定しない。
 - トークンはローカルで使っている `.env.local` の `NEXT_PUBLIC_DEBUG_TOKEN` / `ERONATOR_DEBUG_TOKEN` と同じにすると、同じトークンでプレビューとローカル両方でデバッグできる。
 

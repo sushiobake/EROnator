@@ -10,6 +10,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const vercelEnv = process.env.VERCEL_ENV ?? '';
   return (
     <html lang="ja">
       <body
@@ -17,6 +18,11 @@ export default function RootLayout({
           fontFamily: '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif',
         }}
       >
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__ERONATOR_VERCEL_ENV=${JSON.stringify(vercelEnv)};`,
+          }}
+        />
         {children}
       </body>
     </html>

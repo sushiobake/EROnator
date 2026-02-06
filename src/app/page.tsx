@@ -38,11 +38,16 @@ interface Work {
 
 // デバッグUI有効化判定（クライアント側）
 // ローカル開発 or Vercelプレビューでトークンが設定されていればパネル表示を許可
+// プレビュー判定: layout で注入した window.__ERONATOR_VERCEL_ENV または NEXT_PUBLIC_VERCEL_ENV を使用
 function isDebugUIEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   if (!process.env.NEXT_PUBLIC_DEBUG_TOKEN) return false;
   if (process.env.NODE_ENV !== 'production') return true;
-  if (process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview') return true;
+  const isPreview =
+    (typeof (window as unknown as { __ERONATOR_VERCEL_ENV?: string }).__ERONATOR_VERCEL_ENV === 'string' &&
+      (window as unknown as { __ERONATOR_VERCEL_ENV?: string }).__ERONATOR_VERCEL_ENV === 'preview') ||
+    process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview';
+  if (isPreview) return true;
   return false;
 }
 
