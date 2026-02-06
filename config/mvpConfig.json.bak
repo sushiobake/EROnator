@@ -3,34 +3,45 @@
   "confirm": {
     "revealThreshold": 0.7,
     "confidenceConfirmBand": [
-      0.3,
+      0.2,
       0.7
     ],
     "qForcedIndices": [
       6,
       10,
-      16,
-      22
+      17
     ],
-    "softConfidenceMin": 0.3,
+    "softConfidenceMin": 0.2,
     "hardConfidenceMin": 0.55
   },
   "algo": {
     "beta": 1.2,
-    "alpha": 0.02,
-    "derivedConfidenceThreshold": 0.7,
-    "revealPenalty": 0.5
+    "alpha": 0,
+    "derivedConfidenceThreshold": 0.5,
+    "revealPenalty": 0.8,
+    "explorePValueMin": 0.05,
+    "explorePValueMax": 0.95,
+    "explorePValueFallbackEnabled": true,
+    "summaryQuestionStrengthScale": 1,
+    "exploreTagStrengthScale": 1,
+    "softConfirmStrengthScale": 1,
+    "useIGForExploreSelection": true,
+    "useBayesianUpdate": true,
+    "bayesianEpsilon": 0.05
   },
   "flow": {
-    "maxQuestions": 40,
+    "maxQuestions": 30,
     "maxRevealMisses": 3,
     "failListN": 5,
     "effectiveConfirmThresholdFormula": "A",
     "effectiveConfirmThresholdParams": {
       "min": 5,
-      "max": 200,
+      "max": 300,
       "divisor": 100
-    }
+    },
+    "consecutiveNoForAtari": 5,
+    "summaryPreferRatio": 0.2,
+    "titleInitialTopN": 2
   },
   "dataQuality": {
     "minCoverageMode": "WORKS",

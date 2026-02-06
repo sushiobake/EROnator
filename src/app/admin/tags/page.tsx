@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
 import ManualTagging from '../components/ManualTagging';
+import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
 import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
 
@@ -53,7 +54,9 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'config' | 'import' | 'manual' | 'simulate';
+type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate';
+
+const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
 export default function AdminTagsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('works');
@@ -84,6 +87,10 @@ export default function AdminTagsPage() {
   const [configSaving, setConfigSaving] = useState(false);
   const [configMessage, setConfigMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
+
+  const fieldDesc = (key: string) => (
+    <small style={{ display: 'block', color: '#666', marginTop: '0.25rem' }}>設定キー: {key}</small>
+  );
 
   // タグリスト用のstate
   const [tags, setTags] = useState<Array<{
@@ -133,7 +140,7 @@ export default function AdminTagsPage() {
     errorMessage?: string;
     steps: Array<{
       qIndex: number;
-      question: { kind: string; displayText: string };
+      question: { kind: string; displayText: string; exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' };
       answer: string;
       wasNoisy: boolean;
       confidenceBefore: number;
@@ -173,7 +180,7 @@ export default function AdminTagsPage() {
       outcome: string;
       steps?: Array<{
         qIndex: number;
-        question: { kind: string; displayText: string };
+        question: { kind: string; displayText: string; exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' };
         answer: string;
         wasNoisy: boolean;
         confidenceBefore: number;
@@ -1294,6 +1301,21 @@ export default function AdminTagsPage() {
             タグ＆質問リスト
           </button>
           <button
+            onClick={() => setActiveTab('summary')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              backgroundColor: activeTab === 'summary' ? '#0070f3' : 'transparent',
+              color: activeTab === 'summary' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'summary' ? '3px solid #0070f3' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'summary' ? 'bold' : 'normal',
+            }}
+          >
+            まとめ質問
+          </button>
+          <button
             onClick={() => setActiveTab('config')}
             style={{
               padding: '0.75rem 1.5rem',
@@ -2151,6 +2173,13 @@ export default function AdminTagsPage() {
         </section>
       )}
 
+      {/* タブコンテンツ まとめ質問 */}
+      {activeTab === 'summary' && (
+        <section style={{ marginBottom: '2rem' }}>
+          <SummaryQuestionEditor adminToken={adminToken} />
+        </section>
+      )}
+
       {/* タブコンテンツ コンフィグ */}
       {activeTab === 'config' && (
         <section style={{ marginBottom: '2rem' }}>
@@ -2187,8 +2216,21 @@ export default function AdminTagsPage() {
                 </div>
               )}
 
-              {/* デバッグモードセクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
+              {/* 目次 */}
+              <nav style={{ marginBottom: '2rem', padding: '1rem 1.25rem', border: '1px solid #ccc', borderRadius: '6px', backgroundColor: '#fafafa' }} aria-label="設定セクション一覧">
+                <h3 style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem' }}>設定のどこを変えたい？</h3>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', columns: 2, columnGap: '2rem', listStyle: 'disc' }}>
+                  <li><a href="#config-debug" style={{ color: '#0066cc' }}>デバッグ表示</a></li>
+                  <li><a href="#config-reveal" style={{ color: '#0066cc' }}>答え合わせ・確認質問のタイミング</a></li>
+                  <li><a href="#config-algo" style={{ color: '#0066cc' }}>アルゴリズム（重み・タグ選択・スケール）</a></li>
+                  <li><a href="#config-flow" style={{ color: '#0066cc' }}>ゲームの流れ（質問数・頭文字など）</a></li>
+                  <li><a href="#config-data" style={{ color: '#0066cc' }}>データ品質（タグの出題条件）</a></li>
+                  <li><a href="#config-popularity" style={{ color: '#0066cc' }}>人気度</a></li>
+                </ul>
+              </nav>
+
+              {/* デバッグ設定 */}
+              <section id="config-debug" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
                 <h3>デバッグ設定</h3>
                 <div style={{ marginBottom: '1rem' }}>
                   <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
@@ -2202,39 +2244,37 @@ export default function AdminTagsPage() {
                   </label>
                   <p style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: '#666' }}>
                     チェックを入れると、ゲーム画面にデバッグパネルが表示されます。
+                    <br />
+                    デバッグパネルには、内部状態（確信度、候補数、重みの変化など）が表示されます。
                   </p>
                 </div>
               </section>
 
-              {/* Confirm セクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Confirm（確認質問）</h3>
+              {/* 答え合わせ・確認質問 */}
+              <section id="config-reveal" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                <h3>答え合わせ・確認質問のタイミング</h3>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>「この作品で合ってる？」をいつ出すか、その前に「〇〇あるかしら？」や頭文字・作者をいつ挟むかを決めます。</p>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>revealThreshold（REVEAL判定の閾値）</strong>
-                    <br />
-                    <small>0.0〜1.0。confidence がこの値以上でREVEALに遷移します。</small>
-                    <br />
+                    <strong>答え合わせを出す確信度のしきい値</strong>
+                    {fieldDesc('revealThreshold')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」と答え合わせするタイミング。候補の確信度がこの値以上になると答え合わせに進みます。0～1（例: 0.7＝70%）</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       max="1"
                       value={config.confirm.revealThreshold}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['confirm', 'revealThreshold'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['confirm', 'revealThreshold'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>confidenceConfirmBand（Confirm挿入のconfidence範囲）</strong>
-                    <br />
-                    <small>[最小値, 最大値]。confidence がこの範囲内だと Confirm 質問が挿入されます。</small>
-                    <br />
+                    <strong>タグで直接聞く質問を挟む確信度の範囲</strong>
+                    {fieldDesc('confidenceConfirmBand')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「〇〇あるかしら？」のような確認質問を、確信度がこの範囲（最小～最大）のときに出します。範囲外だと通常のタグ質問だけになります。</span>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
                       <input
                         type="number"
@@ -2243,14 +2283,12 @@ export default function AdminTagsPage() {
                         max="1"
                         value={config.confirm.confidenceConfirmBand[0]}
                         onChange={(e) => {
-                          const value = e.target.value;
-                          const numValue = value === '' ? 0 : parseFloat(value) || 0;
-                          const newBand: [number, number] = [numValue, config.confirm.confidenceConfirmBand[1]];
+                          const newBand: [number, number] = [parseFloat(e.target.value), config.confirm.confidenceConfirmBand[1]];
                           updateConfig(['confirm', 'confidenceConfirmBand'], newBand);
                         }}
                         style={{ flex: 1, padding: '0.5rem' }}
                       />
-                      <span style={{ lineHeight: '2.5rem' }}>〜</span>
+                      <span style={{ lineHeight: '2.5rem' }}>～</span>
                       <input
                         type="number"
                         step="0.01"
@@ -2258,9 +2296,7 @@ export default function AdminTagsPage() {
                         max="1"
                         value={config.confirm.confidenceConfirmBand[1]}
                         onChange={(e) => {
-                          const value = e.target.value;
-                          const numValue = value === '' ? 0 : parseFloat(value) || 0;
-                          const newBand: [number, number] = [config.confirm.confidenceConfirmBand[0], numValue];
+                          const newBand: [number, number] = [config.confirm.confidenceConfirmBand[0], parseFloat(e.target.value)];
                           updateConfig(['confirm', 'confidenceConfirmBand'], newBand);
                         }}
                         style={{ flex: 1, padding: '0.5rem' }}
@@ -2270,10 +2306,9 @@ export default function AdminTagsPage() {
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>qForcedIndices（強制Confirm位置）</strong>
-                    <br />
-                    <small>カンマ区切りで質問番号を指定（例: 6,10）</small>
-                    <br />
+                    <strong>必ず確認質問を出す質問番号</strong>
+                    {fieldDesc('qForcedIndices')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>指定した質問番号では、確信度に関係なく「確認質問」を1問挟みます。カンマ区切り（例: 6,10,17）</span>
                     <input
                       type="text"
                       value={config.confirm.qForcedIndices.join(',')}
@@ -2287,121 +2322,114 @@ export default function AdminTagsPage() {
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>softConfidenceMin（SOFT_CONFIRMの最小confidence）</strong>
-                    <br />
+                    <strong>タグで直接聞く質問（やわらかめ）の下限確信度</strong>
+                    {fieldDesc('softConfidenceMin')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確信度がこの値以上のとき、「〇〇あるかしら？」のようなタグ確認質問を出します。0～1。</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       max="1"
                       value={config.confirm.softConfidenceMin}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['confirm', 'softConfidenceMin'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['confirm', 'softConfidenceMin'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>hardConfidenceMin（HARD_CONFIRMの最小confidence）</strong>
-                    <br />
+                    <strong>頭文字・作者で聞く質問（きっぱり）の下限確信度</strong>
+                    {fieldDesc('hardConfidenceMin')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確信度がこの値以上のとき、「タイトルの頭文字は〇かしら？」「作者は〇〇かしら？」のような直接質問を出します。0～1。</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       max="1"
                       value={config.confirm.hardConfidenceMin}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['confirm', 'hardConfidenceMin'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['confirm', 'hardConfidenceMin'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
               </section>
 
-              {/* Algo セクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Algo（アルゴリズム）</h3>
+              {/* アルゴリズム（スコア・重み・タグ選択・スケール） */}
+              <section id="config-algo" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                <h3>アルゴリズム（重みの更新・質問の選び方・効かせ方）</h3>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>回答でスコアをどう更新するか、次にどのタグを出すか、1問の効きをどれくらいにするかを決めます。失敗が多いときは「質問の選び方」の useIG を OFF にしたり、ベイズの bayesianEpsilon を大きくすると改善しやすいです。</p>
+
+                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>重みの更新（回答でスコアをどう変えるか）</h4>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>beta（重み更新の強度）</strong>
-                    <br />
+                    <strong>回答によるスコアの動き方（強さ）</strong>
+                    {fieldDesc('beta')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>YES/NOに応じて候補の重みをどれくらい強く変えるか。大きいほど1問の影響が強く、収束が早くなりがちです。</span>
                     <input
                       type="number"
                       step="0.1"
                       min="0.1"
                       value={config.algo.beta}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['algo', 'beta'], value === '' ? 0.1 : parseFloat(value) || 0.1);
-                      }}
+                      onChange={(e) => updateConfig(['algo', 'beta'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>alpha（人気度の重み）</strong>
-                    <br />
+                    <strong>人気度をスコアに混ぜる割合</strong>
+                    {fieldDesc('alpha')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>再生数など「人気」をスコアにどれだけ反映するか。0～1。0だと人気はほぼ無視されます。</span>
                     <input
                       type="number"
                       step="0.001"
                       min="0"
                       max="1"
                       value={config.algo.alpha}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['algo', 'alpha'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['algo', 'alpha'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>derivedConfidenceThreshold（DERIVEDタグの二値化閾値）</strong>
-                    <br />
+                    <strong>タグの「ある/ない」を決めるしきい値</strong>
+                    {fieldDesc('derivedConfidenceThreshold')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>作品ごとのタグの確信度がこの値以上なら「そのタグあり」として扱います。0～1。</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       max="1"
                       value={config.algo.derivedConfidenceThreshold}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['algo', 'derivedConfidenceThreshold'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['algo', 'derivedConfidenceThreshold'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>revealPenalty（REVEAL失敗時のペナルティ）</strong>
-                    <br />
+                    <strong>答え合わせで外れたときのスコアの下げ幅</strong>
+                    {fieldDesc('revealPenalty')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」でNOだった候補のスコアを、どれくらい割り引くか。0～1。大きいほど外れ候補が早く沈みます。</span>
                     <input
                       type="number"
                       step="0.1"
                       min="0"
                       max="1"
                       value={config.algo.revealPenalty}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['algo', 'revealPenalty'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['algo', 'revealPenalty'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
+
+                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>次の質問の選び方（どのタグを出すか・IG／p値）</h4>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>explorePValueMin / explorePValueMax（EXPLOREのp値範囲）</strong>
-                    <br />
-                    <small>この範囲外のp値のタグは出題しない。未設定時はフィルタなし。例: 0.1〜0.9</small>
+                    <strong>タグを出題する「p値」の範囲</strong>
+                    {fieldDesc('explorePValueMin / explorePValueMax')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>この範囲外のp値のタグは出題しません。未設定時はフィルタなし。例: 0.1～0.9</span>
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
                       <input
                         type="number"
@@ -2416,7 +2444,7 @@ export default function AdminTagsPage() {
                         }}
                         style={{ width: '80px', padding: '0.5rem' }}
                       />
-                      <span>〜</span>
+                      <span>～</span>
                       <input
                         type="number"
                         step="0.05"
@@ -2440,110 +2468,203 @@ export default function AdminTagsPage() {
                       checked={config.algo.explorePValueFallbackEnabled !== false}
                       onChange={(e) => updateConfig(['algo', 'explorePValueFallbackEnabled'], e.target.checked)}
                     />
-                    <strong>explorePValueFallbackEnabled</strong>
-                    <small>p値範囲内のタグが無いとき HARD_CONFIRM にフォールバック</small>
+                    <strong>p値範囲内のタグが無いとき、頭文字・作者質問に切り替える</strong>
+                    {fieldDesc('explorePValueFallbackEnabled')}
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.algo.useIGForExploreSelection !== false}
+                      onChange={(e) => updateConfig(['algo', 'useIGForExploreSelection'], e.target.checked)}
+                    />
+                    <strong>タグ質問を「情報利得(IG)」で選ぶ</strong>
+                    {fieldDesc('useIGForExploreSelection')}
+                  </label>
+                  <p style={{ marginTop: '0.35rem', marginLeft: '1.5rem', fontSize: '0.9rem', color: '#555', lineHeight: '1.5' }}>
+                    ON（推奨）：1問で候補が一番分かれるタグを選びます。正答が多いと早く絞れますが、ノイズで1問間違えると確度が大きく崩れやすいです。
+                    <br />
+                    OFF：p値が0.5に近い（どちらとも言いにくい）タグを選びます。1問の効きは穏やかで、ノイズに強くなりやすい代わりに収束はやや遅れます。失敗が多いときはOFFを試してください。
+                  </p>
+                </div>
+
+                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>回答の効かせ方（1問あたりのスケール）</h4>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>まとめ質問の回答強度スケール</strong>
+                    {fieldDesc('summaryQuestionStrengthScale')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>まとめ質問（「学校が舞台？」など）のYES/NOが確度に与える影響の倍率。1＝通常タグと同程度、0.6＝控えめ。未設定時0.6。</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="0.6"
+                      value={config.algo.summaryQuestionStrengthScale ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateConfig(['algo', 'summaryQuestionStrengthScale'], v === '' ? undefined : parseFloat(v));
+                      }}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>通常タグ質問の回答強度スケール</strong>
+                    {fieldDesc('exploreTagStrengthScale')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>まとめ以外のタグ質問（通常・エロ・抽象）のYES/NOが確度に与える影響の倍率。1＝変更なし。未設定時1。</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="1"
+                      value={config.algo.exploreTagStrengthScale ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateConfig(['algo', 'exploreTagStrengthScale'], v === '' ? undefined : parseFloat(v));
+                      }}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>SOFT確認の回答強度スケール</strong>
+                    {fieldDesc('softConfirmStrengthScale')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「〇〇あるかしら？」のようなSOFT確認質問のYES/NOが確度に与える影響の倍率。1＝変更なし。未設定時1。</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      placeholder="1"
+                      value={config.algo.softConfirmStrengthScale ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateConfig(['algo', 'softConfirmStrengthScale'], v === '' ? undefined : parseFloat(v));
+                      }}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={config.algo.useBayesianUpdate !== false}
+                      onChange={(e) => updateConfig(['algo', 'useBayesianUpdate'], e.target.checked)}
+                    />
+                    <strong>タグ・確認質問の重み更新をベイズ（事後確率）で行う</strong>
+                    {fieldDesc('useBayesianUpdate')}
+                  </label>
+                  <span style={{ display: 'block', marginTop: '0.35rem', marginLeft: '1.5rem', fontSize: '0.9rem', color: '#666' }}>OFFにすると従来の強度×betaで更新。未設定時はON（ベイズ使用）。</span>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>ベイズ更新時の尤度の下限（bayesianEpsilon）</strong>
+                    {fieldDesc('bayesianEpsilon')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確率0で重みを殺さないための下限。尤度は [epsilon, 1-epsilon] にクランプされます。0～0.5。未設定時0.02。</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="0.5"
+                      placeholder="0.02"
+                      value={config.algo.bayesianEpsilon ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateConfig(['algo', 'bayesianEpsilon'], v === '' ? undefined : parseFloat(v));
+                      }}
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
                   </label>
                 </div>
               </section>
 
-              {/* Flow セクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Flow（フロー制御）</h3>
+              {/* ゲームの流れ */}
+              <section id="config-flow" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                <h3>ゲームの流れ（質問数・失敗時・頭文字の範囲など）</h3>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>1ゲームの最大質問数、答え合わせを連続で外してよい回数、失敗時に表示する候補数、まとめ質問の優先度、頭文字・作者を何位までから選ぶかなどを決めます。</p>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>maxQuestions（最大質問数）</strong>
-                    <br />
+                    <strong>1ゲームの最大質問数</strong>
+                    {fieldDesc('maxQuestions')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>この回数まで質問したらゲーム終了（正解が出なくても終了）します。</span>
                     <input
                       type="number"
                       min="1"
                       value={config.flow.maxQuestions}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['flow', 'maxQuestions'], value === '' ? 30 : parseInt(value) || 30);
-                      }}
+                      onChange={(e) => updateConfig(['flow', 'maxQuestions'], parseInt(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>maxRevealMisses（最大REVEAL失敗回数）</strong>
-                    <br />
+                    <strong>答え合わせを連続で外してよい回数</strong>
+                    {fieldDesc('maxRevealMisses')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」をこの回数だけ連続で外すと、答え合わせは打ち切られて質問に戻ります。</span>
                     <input
                       type="number"
                       min="1"
                       value={config.flow.maxRevealMisses}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['flow', 'maxRevealMisses'], value === '' ? 3 : parseInt(value) || 3);
-                      }}
+                      onChange={(e) => updateConfig(['flow', 'maxRevealMisses'], parseInt(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>failListN（FAIL_LIST表示件数）</strong>
-                    <br />
+                    <strong>失敗時に表示する候補の数</strong>
+                    {fieldDesc('failListN')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>質問数オーバーなどでゲーム失敗のとき、上位何件の候補を「惜しかった作品」として表示するか。</span>
                     <input
                       type="number"
                       min="1"
                       value={config.flow.failListN}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['flow', 'failListN'], value === '' ? 10 : parseInt(value) || 10);
-                      }}
+                      onChange={(e) => updateConfig(['flow', 'failListN'], parseInt(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>effectiveConfirmThresholdParams（Confirm 挿入の effectiveCandidates 閾値）</strong>
-                    <br />
-                    <small>min: 最小値, max: 最大値, divisor: 作品数/divisorで計算</small>
+                    <strong>確認質問を挟む「候補数しきい値」の計算用</strong>
+                    {fieldDesc('effectiveConfirmThresholdParams')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補数に応じて確認質問を出すかどうかを決める式のパラメータ。通常はそのままで問題ありません。min・max・divisor の3つ。</span>
                     <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
                       <div style={{ flex: 1 }}>
                         <label>
-                          min:
+                          最小:
                           <input
                             type="number"
                             min="1"
                             value={config.flow.effectiveConfirmThresholdParams.min}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              updateConfig(['flow', 'effectiveConfirmThresholdParams', 'min'], value === '' ? 1 : parseInt(value) || 1);
-                            }}
+                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'min'], parseInt(e.target.value))}
                             style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
                           />
                         </label>
                       </div>
                       <div style={{ flex: 1 }}>
                         <label>
-                          max:
+                          最大:
                           <input
                             type="number"
                             min="1"
                             value={config.flow.effectiveConfirmThresholdParams.max}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              updateConfig(['flow', 'effectiveConfirmThresholdParams', 'max'], value === '' ? 1 : parseInt(value) || 1);
-                            }}
+                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'max'], parseInt(e.target.value))}
                             style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
                           />
                         </label>
                       </div>
                       <div style={{ flex: 1 }}>
                         <label>
-                          divisor:
+                          割る数:
                           <input
                             type="number"
                             min="1"
                             value={config.flow.effectiveConfirmThresholdParams.divisor}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              updateConfig(['flow', 'effectiveConfirmThresholdParams', 'divisor'], value === '' ? 1 : parseInt(value) || 1);
-                            }}
+                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'divisor'], parseInt(e.target.value))}
                             style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
                           />
                         </label>
@@ -2551,78 +2672,125 @@ export default function AdminTagsPage() {
                     </div>
                   </label>
                 </div>
-              </section>
-
-              {/* DataQuality セクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>DataQuality（データ品質）</h3>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>minCoverageMode（Coverage Gate のモード）</strong>
-                    <br />
+                    <strong>連続でNOが続いたとき「当たり狙い」にする回数</strong>
+                    {fieldDesc('consecutiveNoForAtari')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>直近の回答がこの回数だけ連続NOのとき、次の1問は当たりやすいタグを選びます。単調さを和らげます。未設定時は3。</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={config.flow.consecutiveNoForAtari ?? 3}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        updateConfig(['flow', 'consecutiveNoForAtari'], v === '' ? undefined : parseInt(v) || 3);
+                      }}
+                      placeholder="3"
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>まとめ質問を優先して選ぶ確率</strong>
+                    {fieldDesc('summaryPreferRatio')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>0～1。この確率で「まとめ質問だけ」に絞ってから1問選びます。0なら優先なし。0.3なら30%の確率でまとめが多く出ます。まとめがなかなか出ないときは0.3～0.5程度に上げて試してください。</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="1"
+                      value={config.flow.summaryPreferRatio ?? 0}
+                      onChange={(e) => updateConfig(['flow', 'summaryPreferRatio'], e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                      placeholder="0"
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>頭文字・作者を聞くとき、候補の上位何件から選ぶか</strong>
+                    {fieldDesc('titleInitialTopN')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「タイトルの頭文字は〇かしら？」「作者は〇〇かしら？」を、確度の高い順に何件目の作品までから選ぶか。1＝1位だけ（従来どおり）。2や3にすると頭文字のバリエーションが増えますが、正解がその範囲に入っていないと正解の頭文字を一度も聞けず終わるリスクがあります。推奨は2か3。</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={config.flow.titleInitialTopN ?? 1}
+                      onChange={(e) => updateConfig(['flow', 'titleInitialTopN'], e.target.value === '' ? undefined : parseInt(e.target.value) || 1)}
+                      placeholder="1"
+                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {/* データ品質（タグの出題条件） */}
+              <section id="config-data" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                <h3>データ品質（タグの出題条件）</h3>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>タグを「出題候補」にするときの条件です。極端に少ない作品にしかないタグや、ほぼ全員が持つタグを出題から外すために使います。</p>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label>
+                    <strong>「何人持ってるタグを出すか」の決め方</strong>
+                    {fieldDesc('minCoverageMode')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>RATIO＝割合でしきい値、WORKS＝作品数でしきい値、AUTO＝自動。通常は WORKS のままで問題ありません。</span>
                     <select
                       value={config.dataQuality.minCoverageMode}
                       onChange={(e) => updateConfig(['dataQuality', 'minCoverageMode'], e.target.value)}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     >
-                      <option value="RATIO">RATIO</option>
-                      <option value="WORKS">WORKS</option>
-                      <option value="AUTO">AUTO</option>
+                      <option value="RATIO">割合でしきい値（RATIO）</option>
+                      <option value="WORKS">作品数でしきい値（WORKS）</option>
+                      <option value="AUTO">自動（AUTO）</option>
                     </select>
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>minCoverageRatio（最小カバレッジ比率）</strong>
-                    <br />
+                    <strong>タグを出題する「最小の割合」</strong>
+                    {fieldDesc('minCoverageRatio')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補作品中、この割合以上の作品が持っているタグだけ出題します。RATIOモードのとき使います。0～1。空なら無効。</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       max="1"
                       value={config.dataQuality.minCoverageRatio ?? ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['dataQuality', 'minCoverageRatio'], value === '' ? null : (parseFloat(value) || null));
-                      }}
+                      onChange={(e) => updateConfig(['dataQuality', 'minCoverageRatio'], e.target.value === '' ? null : parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>minCoverageWorks（最小カバレッジ作品数）</strong>
-                    <br />
+                    <strong>タグを出題する「最小の作品数」</strong>
+                    {fieldDesc('minCoverageWorks')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補作品中、この件数以上の作品が持っているタグだけ出題します。WORKSモードのとき使います。空なら無効。</span>
                     <input
                       type="number"
                       min="0"
                       value={config.dataQuality.minCoverageWorks ?? ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['dataQuality', 'minCoverageWorks'], value === '' ? null : (parseInt(value) || null));
-                      }}
+                      onChange={(e) => updateConfig(['dataQuality', 'minCoverageWorks'], e.target.value === '' ? null : parseInt(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
                 </div>
               </section>
 
-              {/* Popularity セクション */}
-              <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Popularity（人気度）</h3>
+              {/* 人気度 */}
+              <section id="config-popularity" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                <h3>人気度</h3>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>正解したときの「人気」の扱いです。現状はボーナス0で、スコアにはアルゴリズムの alpha で混ぜる形です。</p>
                 <div style={{ marginBottom: '1rem' }}>
                   <label>
-                    <strong>playBonusOnSuccess（REVEAL成功時のボーナス）</strong>
-                    <br />
+                    <strong>正解したときに人気スコアへ加えるボーナス</strong>
+                    {fieldDesc('playBonusOnSuccess')}
+                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>答え合わせで正解した作品に、人気スコアをどれだけ足すか。0なら加算なし。</span>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
                       value={config.popularity.playBonusOnSuccess}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateConfig(['popularity', 'playBonusOnSuccess'], value === '' ? 0 : parseFloat(value) || 0);
-                      }}
+                      onChange={(e) => updateConfig(['popularity', 'playBonusOnSuccess'], parseFloat(e.target.value))}
                       style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
                     />
                   </label>
@@ -2632,10 +2800,10 @@ export default function AdminTagsPage() {
               <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
                 <h3>注意事項</h3>
                 <ul style={{ marginLeft: '1.5rem' }}>
-                  <li>設定変更後は、開発サーバー（<code>npm run dev</code>）を停止して再起動してください。</li>
-                  <li>バリデーションエラーがある場合は保存されません。</li>
-                  <li>保存前に自動的にバックアップが作成されます（<code>config/mvpConfig.json.bak</code>）。</li>
-                  <li>このページは開発環境でのみ利用できます。</li>
+                  <li>設定変更後は開発サーバーを再起動してください（<code>npm run dev</code>を停止して再起動）</li>
+                  <li>バリデーションエラーがある場合は保存されません</li>
+                  <li>保存前に自動的にバックアップが作成されます（<code>config/mvpConfig.json.bak</code>）</li>
+                  <li>このページは開発環境でのみ利用できます</li>
                 </ul>
               </div>
 
@@ -3744,6 +3912,11 @@ export default function AdminTagsPage() {
                                   fontWeight: isReveal ? 'bold' : 'normal',
                                 }}>
                                   {step.question.kind}
+                                  {step.question.exploreTagKind && (
+                                    <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                      {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
+                                    </span>
+                                  )}
                                 </span>
                                 {step.question.displayText}
                                 {revealMiss && (

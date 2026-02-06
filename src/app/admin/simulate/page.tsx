@@ -18,6 +18,8 @@ interface Work {
   isAi: string;
 }
 
+const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
+
 interface SimulationStep {
   qIndex: number;
   question: {
@@ -26,6 +28,7 @@ interface SimulationStep {
     tagKey?: string;
     hardConfirmType?: string;
     hardConfirmValue?: string;
+    exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
   };
   answer: string;
   wasNoisy: boolean;
@@ -430,6 +433,11 @@ export default function SimulatePage() {
                             marginRight: '0.5rem'
                           }}>
                             {step.question.kind}
+                            {step.question.exploreTagKind && (
+                              <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
+                              </span>
+                            )}
                           </span>
                           {step.question.displayText}
                         </td>

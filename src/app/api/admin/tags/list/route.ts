@@ -18,6 +18,8 @@ export interface TagListResponse {
     category: string | null;
     displayCategory: string;
     workCount: number;
+    /** DERIVED のみ。tagRanks.json の A/B/C。未設定は '' */
+    rank?: string;
   }>;
   categoryOrder?: string[];
   stats?: {
@@ -42,6 +44,17 @@ function loadCategoryConfig(): { categoryOrder: string[]; categoryMerge: Record<
     };
   } catch {
     return { categoryOrder: [], categoryMerge: {} };
+  }
+}
+
+function loadTagRanks(): Record<string, string> {
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'tagRanks.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { ranks?: Record<string, string> };
+    return data.ranks ?? {};
+  } catch {
+    return {};
   }
 }
 
@@ -136,10 +149,11 @@ export async function GET(request: NextRequest) {
         };
 
         const { categoryOrder, categoryMerge } = loadCategoryConfig();
+        const tagRanks = loadTagRanks();
         const tagsData = directTags.map(tag => {
           const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
           byType[tagType]++;
-
+          const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
           return {
             tagKey: tag.tagKey,
             displayName: tag.displayName,
@@ -147,6 +161,7 @@ export async function GET(request: NextRequest) {
             category: tag.category,
             displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
             workCount: tag.workCount,
+            ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
           };
         });
 
@@ -175,10 +190,11 @@ export async function GET(request: NextRequest) {
     };
 
     const { categoryOrder, categoryMerge } = loadCategoryConfig();
+    const tagRanks = loadTagRanks();
     const tagsData = tags.map(tag => {
       const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
       byType[tagType]++;
-
+      const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
       return {
         tagKey: tag.tagKey,
         displayName: tag.displayName,
@@ -186,6 +202,7 @@ export async function GET(request: NextRequest) {
         category: tag.category,
         displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
         workCount: tag._count.workTags,
+        ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
       };
     });
 

@@ -13,14 +13,13 @@ import {
 } from '@/server/algo/scoring';
 import {
   selectExploreTag,
-  selectExploreTagByIG,
   shouldInsertConfirm,
   selectConfirmType,
   getNextHardConfirmType,
   type TagInfo,
 } from '@/server/algo/questionSelection';
 import { passesCoverageGate } from '@/server/algo/coverage';
-import { hasDerivedFeature, updateWeightsForTagQuestion, updateWeightsForTagQuestionBayesian } from '@/server/algo/weightUpdate';
+import { hasDerivedFeature, updateWeightsForTagQuestion } from '@/server/algo/weightUpdate';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
@@ -201,12 +200,6 @@ export interface QuestionData {
   exploreTagKind?: ExploreTagKind;
 }
 
-/** selectNextQuestion のオプション（REVEAL失敗直後など） */
-export interface SelectNextQuestionOptions {
-  /** 直前に REVEAL で不正解だった。次の1問は頭文字・作者を優先して正解に当てに行く */
-  afterRevealWrong?: boolean;
-}
-
 /**
  * 次の質問を選択・生成
  */
@@ -215,8 +208,7 @@ export async function selectNextQuestion(
   probabilities: WorkProbability[],
   questionCount: number,
   questionHistory: QuestionHistoryEntry[],
-  config: MvpConfig,
-  options?: SelectNextQuestionOptions
+  config: MvpConfig
 ): Promise<QuestionData | null> {
   const questionIndex = questionCount + 1; // 次の質問番号（1-based）
   const usedSummaryIds = new Set(
@@ -224,7 +216,6 @@ export async function selectNextQuestion(
       .filter((q): q is QuestionHistoryEntry & { summaryQuestionId: string } => !!q.summaryQuestionId)
       .map(q => q.summaryQuestionId!)
   );
-  const usedTagKeys = await buildUsedTagKeysFromHistory(questionHistory);
 
   // 1問目: 非エロのまとめ質問から完全ランダムで1つ選択
   if (questionCount === 0) {
@@ -257,7 +248,7 @@ export async function selectNextQuestion(
       console.warn('[selectNextQuestion] Q1: 非エロの未使用まとめが0件です。');
     }
     // フォールバック: 通常タグから1問目を出題（抽象・エロは1問目では出さない）
-    const q1Fallback = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(1), usedTagKeys);
+    const q1Fallback = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(1));
     if (q1Fallback) {
       console.log('[selectNextQuestion] Q1: まとめで出題できなかったため、通常タグでフォールバックしました。');
       return q1Fallback;
@@ -276,6 +267,13 @@ export async function selectNextQuestion(
   );
 
   const qIndex = questionIndex;
+
+  // 使用済みタグを取得（SOFT_CONFIRMとEXPLORE_TAGの両方で使用）
+  const usedTagKeys = new Set(
+    questionHistory
+      .filter(q => q.tagKey)
+      .map(q => q.tagKey!)
+  );
 
   // Confirm挿入判定
   const shouldConfirm = shouldInsertConfirm(
@@ -381,20 +379,18 @@ export async function selectNextQuestion(
     });
 
     if (confirmType === 'SOFT_CONFIRM' && derivedTags.length > 0) {
-      // SOFT_CONFIRM: top1を狙う（top1が持つDERIVEDタグのうち、p値バンド内で0.5に近いものを選択）
-      // コンフィグの p バンド（explorePValueMin/Max、未設定時 0.05〜0.95）を使用
+      // SOFT_CONFIRM: p値フィルタ付き
+      // p値が10%以上90%以下のタグがある場合のみSOFT_CONFIRMを使用
+      // それ以外はEXPLORE_TAGにフォールバック
+      
       const probabilities = normalizeWeights(weights);
       const probMap = new Map(probabilities.map(p => [p.workId, p.probability]));
-      const sortedByProb = [...probabilities].sort((a, b) => b.probability - a.probability);
-      const top1WorkId = sortedByProb[0]?.workId ?? null;
-
-      const pMin = config.algo.explorePValueMin ?? 0.05;
-      const pMax = config.algo.explorePValueMax ?? 0.95;
-
+      
       // 各タグについてp値を計算
       const tagScores = derivedTags
-        .filter(tag => tag.workTags.length > 0)
+        .filter(tag => tag.workTags.length > 0) // workTagsがあるタグのみ
         .map(tag => {
+          // 確率ベースのカバレッジ（p値）
           const p = tag.workTags.reduce((sum, wt) => {
             return sum + (probMap.get(wt.workId) || 0);
           }, 0);
@@ -402,17 +398,14 @@ export async function selectNextQuestion(
             tag,
             p,
             distanceFromHalf: Math.abs(p - 0.5),
-            top1Has: top1WorkId != null && tag.workTags.some((wt: { workId: string }) => wt.workId === top1WorkId),
           };
         });
-
-      // top1が持つタグのうち、p値バンド内のもの（top1狙い）
-      const top1TagsInBand = tagScores.filter(t => t.top1Has && t.p >= pMin && t.p <= pMax);
-      const usableTags = top1TagsInBand.length > 0
-        ? top1TagsInBand
-        : tagScores.filter(t => t.p >= pMin && t.p <= pMax); // フォールバック: top1のタグがバンド内に無ければ従来どおり全候補から
-
+      
+      // p値が10%〜90%のタグをフィルタ（極端なものを除外）
+      const usableTags = tagScores.filter(t => t.p >= 0.1 && t.p <= 0.9);
+      
       if (usableTags.length > 0) {
+        // 0.5に最も近いタグを選ぶ
         usableTags.sort((a, b) => {
           if (a.distanceFromHalf !== b.distanceFromHalf) {
             return a.distanceFromHalf - b.distanceFromHalf;
@@ -420,8 +413,8 @@ export async function selectNextQuestion(
           return a.tag.tagKey.localeCompare(b.tag.tagKey);
         });
         const selectedTag = usableTags[0];
-        console.log(`[SOFT_CONFIRM] ${top1TagsInBand.length > 0 ? 'top1狙い' : 'フォールバック'}: ${selectedTag.tag.displayName} (p: ${(selectedTag.p * 100).toFixed(1)}%)`);
-
+        console.log(`[SOFT_CONFIRM] p値フィルタ: ${selectedTag.tag.displayName} (p: ${(selectedTag.p * 100).toFixed(1)}%)`);
+        
         const displayText = getTagQuestionText(selectedTag.tag.displayName, 'DERIVED');
         return {
           kind: 'SOFT_CONFIRM',
@@ -429,10 +422,11 @@ export async function selectNextQuestion(
           tagKey: selectedTag.tag.tagKey,
         };
       } else {
-        console.log(`[SOFT_CONFIRM] p値が [${pMin}, ${pMax}] 内のタグがないため、統一選択にフォールバック`);
+        // p値が極端なタグしかない → 統一EXPLORE/まとめにフォールバック
+        console.log(`[SOFT_CONFIRM] p値が極端なタグしかないため、統一選択にフォールバック`);
         const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
         if (fallback) return fallback;
-        return await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
+        return await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex));
       }
     }
     
@@ -447,7 +441,7 @@ export async function selectNextQuestion(
       const lastQuestion = questionHistory[questionHistory.length - 1];
       if (lastQuestion?.kind === 'HARD_CONFIRM') {
         console.log(`[HARD_CONFIRM] 2連続防止: 直前がHARD_CONFIRMのため、EXPLORE_TAGにフォールバック`);
-        return await selectExploreQuestion(weights, probabilities, questionHistory, config, undefined, usedTagKeys);
+        return await selectExploreQuestion(weights, probabilities, questionHistory, config);
       }
 
       // 使用済みの値を取得
@@ -471,7 +465,7 @@ export async function selectNextQuestion(
       const topWorkIds = sortedByProb.slice(0, topN).map(p => p.workId).filter(Boolean);
       
       if (topWorkIds.length === 0) {
-        return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, undefined, usedTagKeys);
+        return await selectExploreQuestion(weights, probsForTop1, questionHistory, config);
       }
       
       const topWorks = await prisma.work.findMany({
@@ -483,7 +477,7 @@ export async function selectNextQuestion(
         .filter((w): w is NonNullable<typeof w> => w != null);
       
       if (orderedWorks.length === 0) {
-        return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, undefined, usedTagKeys);
+        return await selectExploreQuestion(weights, probsForTop1, questionHistory, config);
       }
       
       // 上位から順に、未使用の頭文字があればTITLE_INITIALで返す
@@ -493,7 +487,7 @@ export async function selectNextQuestion(
           console.log(`[HARD_CONFIRM] 当てに行く: TITLE_INITIAL "${initial}" (work: ${w.title})`);
           return {
             kind: 'HARD_CONFIRM',
-            displayText: `タイトルが「${initial}」から始まる？`,
+            displayText: `……この作品のタイトル、頭文字は「${initial}」かしら？`,
             hardConfirmType: 'TITLE_INITIAL',
             hardConfirmValue: initial,
           };
@@ -517,16 +511,7 @@ export async function selectNextQuestion(
       console.log(`[HARD_CONFIRM] 上位${topN}件の頭文字・作者名は使用済み、統一選択にフォールバック`);
       const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probsForTop1, questionHistory, config, usedSummaryIds, usedTagKeys);
       if (fallback) return fallback;
-      return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
-    }
-  }
-
-  // REVEAL 失敗直後: 次の1問は頭文字・作者を聞いて、正解候補に早く当てに行く（EXPLORE の NO 連続を防ぐ）
-  if (options?.afterRevealWrong) {
-    const hardAfterReveal = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
-    if (hardAfterReveal) {
-      console.log('[selectNextQuestion] REVEAL失敗直後のため、HARD_CONFIRM（頭文字・作者）を優先');
-      return hardAfterReveal;
+      return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, buildExploreOptions(qIndex));
     }
   }
 
@@ -546,7 +531,7 @@ export async function selectNextQuestion(
 
   // フォールバック: 通常タグのみ（Q4以降）
   if (qIndex >= 4) {
-    const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
+    const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex));
     if (exploreResult) return exploreResult;
     if (fallbackEnabled) {
       const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
@@ -626,7 +611,7 @@ async function tryGetHardConfirmQuestion(
     if (!usedTitleInitials.has(initial)) {
       return {
         kind: 'HARD_CONFIRM',
-        displayText: `タイトルが「${initial}」から始まる？`,
+        displayText: `……この作品のタイトル、頭文字は「${initial}」かしら？`,
         hardConfirmType: 'TITLE_INITIAL',
         hardConfirmValue: initial,
       };
@@ -688,48 +673,6 @@ async function tryEmergencyExploreFallback(
     tagKey,
     exploreTagKind,
   };
-}
-
-/**
- * 履歴から「使用済みタグ」を構築する（統合・包括を反映）
- * ①通常タグ: 出題した tagKey の displayName が属するグループの全 tagKey を使用済みにする
- * ②まとめ質問: 「いいえ」と答えた場合のみ、そのまとめの summaryDisplayNames に含まれる全 tagKey を使用済みにする
- */
-async function buildUsedTagKeysFromHistory(
-  questionHistory: QuestionHistoryEntry[]
-): Promise<Set<string>> {
-  const displayNamesToMark = new Set<string>();
-  const nonSummaryTagKeys: string[] = [];
-
-  for (const q of questionHistory) {
-    if (q.summaryDisplayNames?.length && q.answer === 'NO') {
-      for (const d of q.summaryDisplayNames) displayNamesToMark.add(d);
-    } else if (q.tagKey && (q.answer === 'YES' || q.answer === 'NO')) {
-      // UNKNOWN / DONT_CARE のときは usedTagKeys を増やさない（情報ゼロで質問資源だけ減らすのを防ぐ）
-      nonSummaryTagKeys.push(q.tagKey);
-    }
-  }
-
-  if (nonSummaryTagKeys.length > 0) {
-    const tags = await prisma.tag.findMany({
-      where: { tagKey: { in: [...new Set(nonSummaryTagKeys)] } },
-      select: { displayName: true },
-    });
-    for (const tag of tags) {
-      if (tag.displayName) {
-        const group = getGroupDisplayNames(tag.displayName);
-        for (const d of group) displayNamesToMark.add(d);
-      }
-    }
-  }
-
-  if (displayNamesToMark.size === 0) return new Set<string>();
-
-  const tags = await prisma.tag.findMany({
-    where: { displayName: { in: Array.from(displayNamesToMark) } },
-    select: { tagKey: true },
-  });
-  return new Set(tags.map(t => t.tagKey));
 }
 
 /**
@@ -895,37 +838,27 @@ async function selectUnifiedExploreOrSummary(
   }
   const consecutiveNoForAtari = config.flow.consecutiveNoForAtari ?? 3;
   const preferHighP = consecutiveNoCount >= consecutiveNoForAtari;
-  const useIG = config.algo.useIGForExploreSelection !== false;
 
   const pValueBand = getExplorePValueBand(config);
-  let selectedKey: string | null;
-  if (useIG && !preferHighP) {
-    selectedKey = selectExploreTagByIG(tagsForSelection, probabilities, workHasTag, pValueBand);
-  } else {
+  let selectedKey = selectExploreTag(
+    tagsForSelection,
+    probabilities,
+    workHasTag,
+    0,
+    null,
+    pValueBand,
+    preferHighP
+  );
+  if (!selectedKey && pValueBand) {
     selectedKey = selectExploreTag(
       tagsForSelection,
       probabilities,
       workHasTag,
       0,
       null,
-      pValueBand,
+      undefined,
       preferHighP
     );
-  }
-  if (!selectedKey && pValueBand) {
-    if (useIG && !preferHighP) {
-      selectedKey = selectExploreTagByIG(tagsForSelection, probabilities, workHasTag, undefined);
-    } else {
-      selectedKey = selectExploreTag(
-        tagsForSelection,
-        probabilities,
-        workHasTag,
-        0,
-        null,
-        undefined,
-        preferHighP
-      );
-    }
     if (selectedKey) {
       console.log('[selectUnifiedExploreOrSummary] p値バンドで候補0のためバンド外しで再選択');
     }
@@ -981,18 +914,22 @@ async function selectExploreQuestion(
   probabilities: WorkProbability[],
   questionHistory: QuestionHistoryEntry[],
   config: MvpConfig,
-  options?: SelectExploreOptions | null,
-  usedTagKeys?: Set<string>
+  options?: SelectExploreOptions | null
 ): Promise<QuestionData | null> {
   const opts = options ?? buildExploreOptions(questionHistory.length + 1);
   const { summaryOnlyTagKeys, questionIndex = opts.questionIndex ?? 0, abstractDisplayNames = new Set(), eroticDisplayNames = new Set() } = opts;
   const abstractSet = abstractDisplayNames.size > 0 ? abstractDisplayNames : loadAbstractDisplayNames();
   const eroticSet = eroticDisplayNames.size > 0 ? eroticDisplayNames : loadEroticDisplayNames();
 
-  const resolvedUsedTagKeys = usedTagKeys ?? await buildUsedTagKeysFromHistory(questionHistory);
-
+  // 使用済みタグを除外（selectNextQuestionから渡される想定だが、念のため再計算）
+  const usedTagKeys = new Set(
+    questionHistory
+      .filter(q => q.tagKey)
+      .map(q => q.tagKey!)
+  );
+  
   // デバッグ: 使用済みタグを表示
-  console.log(`[selectExploreQuestion] usedTagKeys (${resolvedUsedTagKeys.size}): ${Array.from(resolvedUsedTagKeys).slice(0, 10).join(', ')}${resolvedUsedTagKeys.size > 10 ? '...' : ''}`);
+  console.log(`[selectExploreQuestion] usedTagKeys (${usedTagKeys.size}): ${Array.from(usedTagKeys).slice(0, 10).join(', ')}${usedTagKeys.size > 10 ? '...' : ''}`);
 
   // パフォーマンス最適化: WorkTagsを先に取得して、カバレッジゲートを通過するタグのみを取得
   const workIds = weights.map(w => w.workId);
@@ -1020,7 +957,7 @@ async function selectExploreQuestion(
   // 上限: 全員が持っているタグを除外（確度が変わらないため）
   let passingTagKeys: string[] = [];
   for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
-    if (!resolvedUsedTagKeys.has(tagKey) && passesCoverageGate(
+    if (!usedTagKeys.has(tagKey) && passesCoverageGate(
       workCount,
       totalWorks,
       config.dataQuality.minCoverageMode,
@@ -1093,7 +1030,7 @@ async function selectExploreQuestion(
   const availableTags: TagInfo[] = [];
   for (const tag of allTags) {
     // 使用済みタグを再度チェック（安全策）
-    if (resolvedUsedTagKeys.has(tag.tagKey)) {
+    if (usedTagKeys.has(tag.tagKey)) {
       console.log(`[selectExploreQuestion] WARNING: tag "${tag.tagKey}" was in allTags but should be excluded`);
       continue;
     }
@@ -1149,17 +1086,14 @@ async function selectExploreQuestion(
   const topWorkId = sorted[0]?.workId ?? null;
 
   const pValueBand = getExplorePValueBand(config);
-  const useIG = config.algo.useIGForExploreSelection !== false;
-  const selectedTagKey = useIG
-    ? selectExploreTagByIG(availableTags, probabilities, workHasTag, pValueBand)
-    : selectExploreTag(
-        availableTags,
-        probabilities,
-        workHasTag,
-        confidence,
-        topWorkId,
-        pValueBand
-      );
+  const selectedTagKey = selectExploreTag(
+    availableTags,
+    probabilities,
+    workHasTag,
+    confidence,
+    topWorkId,
+    pValueBand
+  );
   if (!selectedTagKey) {
     return null;
   }
@@ -1203,14 +1137,11 @@ export async function processAnswer(
   };
 
   let strength = strengthMap[answerChoice] ?? 0;
+  // まとめ質問はすべて ±0.6 に固定（たぶんそう/たぶん違うも 0.6）
   const isSummaryQuestion = !!(question as QuestionData & { isSummaryQuestion?: boolean }).isSummaryQuestion;
   if (isSummaryQuestion) {
-    const scale = config.algo.summaryQuestionStrengthScale ?? 0.6;
-    strength = (strength > 0 ? 1 : strength < 0 ? -1 : 0) * scale;
-  } else if (question.kind === 'EXPLORE_TAG') {
-    strength *= config.algo.exploreTagStrengthScale ?? 1.0;
-  } else if (question.kind === 'SOFT_CONFIRM') {
-    strength *= config.algo.softConfirmStrengthScale ?? 1.0;
+    if (strength > 0) strength = 0.6;
+    else if (strength < 0) strength = -0.6;
   }
 
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
@@ -1270,15 +1201,10 @@ export async function processAnswer(
       return anyPass;
     };
 
-    const useBayesian = config.algo.useBayesianUpdate !== false;
-    if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
-      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
-    }
     return updateWeightsForTagQuestion(
       weights,
       workHasFeature,
-      strength,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
       config.algo.beta
     );
   } else {
@@ -1312,11 +1238,6 @@ export async function processAnswer(
       };
     }
 
-    const useBayesian = config.algo.useBayesianUpdate !== false;
-    if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
-      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
-    }
     return updateWeightsForTagQuestion(
       weights,
       workHasFeature,

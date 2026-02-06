@@ -27,12 +27,18 @@ export interface QuestionHistoryEntry {
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
   hardConfirmValue?: string;
+  /** 表示用文言（修正するで戻ったときに同じ文言を出すため） */
+  displayText?: string;
   /** まとめ質問のとき true。回答時の strength を ±0.6 に固定する */
   isSummaryQuestion?: boolean;
   /** まとめ質問の id（同じまとめを重複出題しないため） */
   summaryQuestionId?: string;
   /** まとめ質問の displayNames（回答時のグループ判定に使用） */
   summaryDisplayNames?: string[];
+  /** 回答（連続NOで当たりを挟む判定に使用） */
+  answer?: 'YES' | 'NO';
+  /** EXPLORE_TAG の出所（まとめ/エロ/抽象/通常）。表示は変えずタグ・バッジ用 */
+  exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
 }
 
 /**
@@ -216,7 +222,8 @@ export class SessionManager {
 
   /**
    * 指定した質問番号までロールバック（修正機能用）
-   * スナップショットが完全一致しない場合は、最も近い（小さい）ものを使用
+   * - 復元する重みは「その質問に回答する前」の状態（qIndex のスナップショット＝回答前）
+   * - ロールバック後は weightsHistory からその qIndex を除く（再度回答したときに重複しないように）
    */
   static async rollbackToQuestion(
     sessionId: string,
@@ -231,45 +238,46 @@ export class SessionManager {
     console.log('[rollbackToQuestion] questionHistory:', current.questionHistory.map(q => q.qIndex));
     console.log('[rollbackToQuestion] weightsHistory:', current.weightsHistory.map(w => w.qIndex));
 
-    // 指定した質問番号以下の履歴をフィルタ
+    // 表示する質問履歴: 指定質問番号以下
     const filteredHistory = current.questionHistory.filter(q => q.qIndex <= targetQIndex);
-    const filteredWeightsHistory = current.weightsHistory.filter(w => w.qIndex <= targetQIndex);
-
     if (filteredHistory.length === 0) {
       console.error('[rollbackToQuestion] No question history found for qIndex <=', targetQIndex);
       return { success: false };
     }
 
-    // 指定した質問番号の重みを復元（完全一致がなければ最も近いもの）
-    let targetSnapshot = filteredWeightsHistory.find(w => w.qIndex === targetQIndex);
-    if (!targetSnapshot && filteredWeightsHistory.length > 0) {
-      // 最も近い（最大の）スナップショットを使用
-      targetSnapshot = filteredWeightsHistory.reduce((a, b) => a.qIndex > b.qIndex ? a : b);
-      console.log('[rollbackToQuestion] Using closest snapshot:', targetSnapshot.qIndex);
+    // 復元する重み: qIndex === targetQIndex のスナップショット（＝その質問に回答する前の状態）
+    let targetSnapshot = current.weightsHistory.find(w => w.qIndex === targetQIndex);
+    if (!targetSnapshot && targetQIndex > 0) {
+      // フォールバック: targetQIndex 未満で最大のスナップショット（質問 N の直前＝N-1 の回答後）
+      const below = current.weightsHistory.filter(w => w.qIndex < targetQIndex);
+      if (below.length > 0) {
+        targetSnapshot = below.reduce((a, b) => (a.qIndex > b.qIndex ? a : b));
+        console.log('[rollbackToQuestion] Using snapshot before target:', targetSnapshot.qIndex);
+      }
     }
     if (!targetSnapshot) {
-      console.error('[rollbackToQuestion] No weights snapshot found');
+      console.error('[rollbackToQuestion] No weights snapshot found for qIndex', targetQIndex);
       return { success: false };
     }
 
-    // 指定した質問番号の質問を取得（完全一致がなければ最も近いもの）
-    let targetQuestion = filteredHistory.find(q => q.qIndex === targetQIndex);
+    // 戻す質問は必ず qIndex === targetQIndex の1件（同じ質問にならないケースを防ぐ）
+    const targetQuestion = filteredHistory.find(q => q.qIndex === targetQIndex);
     if (!targetQuestion) {
-      // 最も近い（最大の）質問を使用
-      targetQuestion = filteredHistory.reduce((a, b) => a.qIndex > b.qIndex ? a : b);
-      console.log('[rollbackToQuestion] Using closest question:', targetQuestion.qIndex);
+      console.error('[rollbackToQuestion] No question entry for qIndex', targetQIndex);
+      return { success: false };
     }
 
-    // セッションを更新（実際に戻る質問のqIndexを使用）
-    const actualTargetQIndex = targetQuestion.qIndex;
+    // ロールバック後は weightsHistory を qIndex < targetQIndex のみに（使用したスナップショットを削除し、再回答時に重複しないようにする）
+    const weightsHistoryAfterRollback = current.weightsHistory.filter(w => w.qIndex < targetQIndex);
+
     await this.updateSession(sessionId, {
-      questionHistory: current.questionHistory.filter(q => q.qIndex <= actualTargetQIndex),
-      weightsHistory: current.weightsHistory.filter(w => w.qIndex <= actualTargetQIndex),
+      questionHistory: filteredHistory,
+      weightsHistory: weightsHistoryAfterRollback,
       weights: targetSnapshot.weights,
-      questionCount: actualTargetQIndex,
+      questionCount: targetQIndex,
     });
 
-    console.log('[rollbackToQuestion] Rolled back to qIndex:', actualTargetQIndex);
+    console.log('[rollbackToQuestion] Rolled back to qIndex:', targetQIndex);
     return { success: true, question: targetQuestion };
   }
 

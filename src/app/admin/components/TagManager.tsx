@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
+import { getWorkCountIntensity, getWorkCountRowAlphaHex } from '../utils/tagWorkCount';
 
 interface TagItem {
   tagKey: string;
@@ -1018,11 +1019,13 @@ export default function TagManager({ adminToken }: Props) {
             const template = templates[tag.displayName];
             const displayCategory = (tag as TagItem).displayCategory ?? tag.category ?? 'その他';
             const questionText = template || (displayCategory === 'キャラタグ' ? getCharacterQuestion(tag.displayName) : getDefaultQuestion(tag.displayName));
+            const intensity = getWorkCountIntensity(tag.workCount);
+            const rowAlpha = getWorkCountRowAlphaHex(intensity);
             return (
               <tr 
                 key={tag.tagKey}
                 style={{ 
-                  backgroundColor: selectedTags.has(tag.tagKey) ? '#e8f5e9' : getRankBgColor(unifiedRank) + '40'
+                  backgroundColor: selectedTags.has(tag.tagKey) ? '#e8f5e9' : getRankBgColor(unifiedRank) + rowAlpha
                 }}
               >
                 <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>

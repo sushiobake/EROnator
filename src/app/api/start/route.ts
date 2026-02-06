@@ -123,13 +123,14 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 質問履歴に追加
+    // 質問履歴に追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
     await SessionManager.addQuestionHistory(sessionId, {
       qIndex: 1,
       kind: firstQuestion.kind,
       tagKey: firstQuestion.tagKey,
       hardConfirmType: firstQuestion.hardConfirmType,
       hardConfirmValue: firstQuestion.hardConfirmValue,
+      displayText: firstQuestion.displayText,
       isSummaryQuestion: firstQuestion.isSummaryQuestion,
       summaryQuestionId: firstQuestion.summaryQuestionId,
       summaryDisplayNames: firstQuestion.summaryDisplayNames,

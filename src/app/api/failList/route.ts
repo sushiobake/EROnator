@@ -9,7 +9,7 @@ import { normalizeWeights } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
-import type { WorkResponse, FailListResponse } from '@/server/api/types';
+import type { FailListResponse } from '@/server/api/types';
 import { toWorkResponse } from '@/server/api/dto';
 
 /**
@@ -56,24 +56,33 @@ export async function GET(request: NextRequest) {
       return a.workId.localeCompare(b.workId);
     });
 
-    // 上位N件のみ取得（Data exposure policy: 全量は返さない）
-    const topN = sorted.slice(0, config.flow.failListN as number);
+    // 既出（REVEALで不正解だった作品）を候補から除外
+    const rejectedIds = new Set<string>(
+      (typeof session.revealRejectedWorkIds === 'string'
+        ? JSON.parse(session.revealRejectedWorkIds || '[]')
+        : session.revealRejectedWorkIds ?? []) as string[]
+    );
+    const filtered = sorted.filter(p => !rejectedIds.has(p.workId));
 
-    // Work情報を取得
-    const workIds = topN.map(p => p.workId);
+    // 最大5件・同一作者は1本まで
+    const candidateProbs = filtered.slice(0, 30); // 十分な候補から選ぶ
+    const workIds = candidateProbs.map(p => p.workId);
     const works = await prisma.work.findMany({
       where: { workId: { in: workIds } },
+      select: { workId: true, title: true, authorName: true, productUrl: true, thumbnailUrl: true },
     });
-
     const workMap = new Map(works.map(w => [w.workId, w]));
-
-    const candidates: WorkResponse[] = topN
-      .map(p => {
-        const work = workMap.get(p.workId);
-        if (!work) return null;
-        return toWorkResponse(work);
-      })
-      .filter((w): w is WorkResponse => w !== null);
+    const seenAuthors = new Set<string>();
+    const candidates: FailListResponse['candidates'] = [];
+    for (const p of candidateProbs) {
+      if (candidates.length >= 5) break;
+      const work = workMap.get(p.workId);
+      if (!work || seenAuthors.has(work.authorName)) continue;
+      seenAuthors.add(work.authorName);
+      candidates.push({
+        ...toWorkResponse(work),
+      });
+    }
 
     const response: FailListResponse = {
       candidates,

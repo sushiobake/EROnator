@@ -3,8 +3,11 @@
  * normalizeTitleForInitial(title)
  */
 
+const TITLE_INITIAL_LENGTH = 3;
+
 /**
- * タイトルから先頭1文字を抽出（正規化後）
+ * タイトルから先頭（最大3文字）を抽出（正規化後）。
+ * ズルい質問で思い出しやすくするため3文字に統一。他作品との被りは無視する。
  */
 export function normalizeTitleForInitial(title: string): string {
   if (title == null || typeof title !== 'string') return '?';
@@ -66,7 +69,8 @@ export function normalizeTitleForInitial(title: string): string {
     normalized = normalized.replace(/^[\s\u3000\t]+/, '');
   }
   
-  // 5. 先頭1文字を返す（空なら'?'）
-  const firstChar = normalized.trim()[0];
-  return firstChar || '?';
+  // 5. 先頭最大3文字を返す（空なら'?'）
+  const trimmed = normalized.trim();
+  if (!trimmed.length) return '?';
+  return trimmed.slice(0, TITLE_INITIAL_LENGTH);
 }

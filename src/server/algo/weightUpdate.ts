@@ -1,4 +1,4 @@
-import type { WorkWeight, AnswerStrength } from './types';
+import type { WorkWeight } from './types';
 
 /**
  * Weight Update (Spec §5)
@@ -18,6 +18,50 @@ export function hasDerivedFeature(
   return derivedConfidence >= threshold;
 }
 
+/** ベイズ更新: 回答 a が観測されたときの尤度 P(a|w,q)。epsilon で 0 を避ける。 */
+function getLikelihood(
+  workHasFeature: boolean,
+  answerChoice: string,
+  epsilon: number
+): number {
+  const ep = Math.max(0, Math.min(0.5, epsilon));
+  const high = 1 - ep;
+  const low = ep;
+  switch (answerChoice) {
+    case 'YES':
+      return workHasFeature ? high : low;
+    case 'NO':
+      return workHasFeature ? low : high;
+    case 'PROBABLY_YES': {
+      const v = workHasFeature ? 0.7 : 0.3;
+      return Math.max(low, Math.min(high, v));
+    }
+    case 'PROBABLY_NO': {
+      const v = workHasFeature ? 0.3 : 0.7;
+      return Math.max(low, Math.min(high, v));
+    }
+    case 'UNKNOWN':
+    case 'DONT_CARE':
+    default:
+      return 1;
+  }
+}
+
+/**
+ * ベイズ更新: W(w) *= P(observed|w,q)。正規化は呼び出し側の normalizeWeights に任せる。
+ */
+export function updateWeightsForTagQuestionBayesian(
+  weights: WorkWeight[],
+  workHasFeature: (workId: string) => boolean,
+  answerChoice: string,
+  epsilon: number = 0.02
+): WorkWeight[] {
+  return weights.map(w => ({
+    workId: w.workId,
+    weight: w.weight * getLikelihood(workHasFeature(w.workId), answerChoice, epsilon),
+  }));
+}
+
 /**
  * Tag-based質問の重み更新 (Spec §5.1)
  * - feature present: mult = exp(+beta * s)
@@ -27,7 +71,8 @@ export function hasDerivedFeature(
 export function updateWeightsForTagQuestion(
   weights: WorkWeight[],
   workHasFeature: (workId: string) => boolean,
-  answerStrength: AnswerStrength,
+  /** 回答強度（正でYES方向・負でNO方向）。コンフィグで1より大きくできる */
+  answerStrength: number,
   beta: number
 ): WorkWeight[] {
   return weights.map(w => {

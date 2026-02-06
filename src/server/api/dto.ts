@@ -49,35 +49,44 @@ export function toTagResponse(tag: Tag): TagResponse {
 
 /**
  * QuestionHistoryEntry → QuestionResponse変換
- * 質問履歴から質問レスポンスを生成
+ * 質問履歴から質問レスポンスを生成（displayText が保存されていればそのまま使用）
  */
 export async function toQuestionResponse(
   entry: QuestionHistoryEntry
 ): Promise<QuestionResponse> {
+  // 履歴に表示文言が保存されていればそのまま使う（修正するで戻ったときに同じ文言にする）
+  if (entry.displayText != null && entry.displayText !== '') {
+    return {
+      kind: entry.kind,
+      displayText: entry.displayText,
+      tagKey: entry.tagKey,
+      hardConfirmType: entry.hardConfirmType,
+      hardConfirmValue: entry.hardConfirmValue,
+    };
+  }
   if (entry.kind === 'HARD_CONFIRM') {
     return {
       kind: entry.kind,
       displayText: entry.hardConfirmType === 'TITLE_INITIAL'
-        ? `タイトルは「${entry.hardConfirmValue}」から始まりますか？`
+        ? `タイトルが「${entry.hardConfirmValue}」から始まる？`
         : `作者（サークル）は「${entry.hardConfirmValue}」ですか？`,
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
     };
-  } else {
-    // EXPLORE_TAG or SOFT_CONFIRM
-    if (!entry.tagKey) {
-      throw new Error('tagKey is required for EXPLORE_TAG or SOFT_CONFIRM');
-    }
-    const tag = await prisma.tag.findUnique({
-      where: { tagKey: entry.tagKey },
-    });
-    if (!tag) {
-      throw new Error(`Tag not found: ${entry.tagKey}`);
-    }
-    return {
-      kind: entry.kind,
-      displayText: `この作品は「${tag.displayName}」ですか？`,
-      tagKey: entry.tagKey,
-    };
   }
+  // EXPLORE_TAG or SOFT_CONFIRM
+  if (!entry.tagKey) {
+    throw new Error('tagKey is required for EXPLORE_TAG or SOFT_CONFIRM');
+  }
+  const tag = await prisma.tag.findUnique({
+    where: { tagKey: entry.tagKey },
+  });
+  if (!tag) {
+    throw new Error(`Tag not found: ${entry.tagKey}`);
+  }
+  return {
+    kind: entry.kind,
+    displayText: `この作品は「${tag.displayName}」ですか？`,
+    tagKey: entry.tagKey,
+  };
 }

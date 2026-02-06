@@ -116,6 +116,14 @@ export async function POST(request: NextRequest) {
     }
     const newQuestionCount = session.questionCount + 1;
     
+    // 直近の質問に回答を付与（連続NOで当たりを挟む判定に使用）
+    const answerValue: 'YES' | 'NO' | undefined = choice === 'YES' ? 'YES' : choice === 'NO' ? 'NO' : undefined;
+    const historyWithAnswer = session.questionHistory.length > 0 && answerValue != null
+      ? session.questionHistory.map((entry, i) =>
+          i === session.questionHistory.length - 1 ? { ...entry, answer: answerValue } : entry
+        )
+      : session.questionHistory;
+    
     // 重みのスナップショットを保存（修正機能用）
     const currentWeightsHistory = session.weightsHistory || [];
     const newWeightsHistory = [...currentWeightsHistory, {
@@ -127,24 +135,23 @@ export async function POST(request: NextRequest) {
       weights: weightsMap,
       questionCount: newQuestionCount,
       weightsHistory: newWeightsHistory,
+      questionHistory: historyWithAnswer,
     }, session); // 既に取得済みのsessionを渡すことでgetSessionをスキップ
 
-    // REVEAL判定
+    // REVEAL判定（一度外した作品は候補から外し、確度順で未出の先頭をREVEAL）
     if (confidence >= config.confirm.revealThreshold) {
-      // top1を取得（REVEAL再出防止チェック）
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) {
           return b.probability - a.probability;
         }
         return a.workId.localeCompare(b.workId);
       });
-      const topWorkId = sorted[0]?.workId;
+      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
+      const revealWorkId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? null;
 
-      if (topWorkId && !session.revealRejectedWorkIds.includes(topWorkId)) {
-        // REVEAL可能
-        // パフォーマンス最適化: 必要なフィールドのみ取得
+      if (revealWorkId) {
         const topWork = await prisma.work.findUnique({
-          where: { workId: topWorkId },
+          where: { workId: revealWorkId },
           select: {
             workId: true,
             title: true,
@@ -195,52 +202,109 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // FAIL_LIST判定
-    if (
-      session.questionCount + 1 >= (config.flow.maxQuestions as number) ||
-      session.revealMissCount >= (config.flow.maxRevealMisses as number)
-    ) {
-      // FAIL_LISTに遷移（/api/failListで処理）
+    // REVEAL失敗回数上限のみ FAIL_LIST（maxQuestions は強制 REVEAL にする）
+    if (session.revealMissCount >= (config.flow.maxRevealMisses as number)) {
       return NextResponse.json({
         state: 'FAIL_LIST',
-        // 候補は/failListで返す（ここでは返さない）
       });
     }
 
-    // 次の質問を選択
+    // maxQuestions 到達時は確度に関係なく強制 REVEAL（既出は候補から外す）
+    if (session.questionCount + 1 >= (config.flow.maxQuestions as number)) {
+      const sorted = [...probabilities].sort((a, b) => {
+        if (a.probability !== b.probability) return b.probability - a.probability;
+        return a.workId.localeCompare(b.workId);
+      });
+      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
+      const forceRevealId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId;
+      if (forceRevealId) {
+        const topWork = await prisma.work.findUnique({
+          where: { workId: forceRevealId },
+          select: {
+            workId: true,
+            title: true,
+            authorName: true,
+            isAi: true,
+            productUrl: true,
+            thumbnailUrl: true,
+          },
+        });
+        if (topWork) {
+          return NextResponse.json({
+            state: 'REVEAL',
+            work: toWorkResponse(topWork),
+            forcedReveal: true, // maxQuestions 到達のため強制
+          });
+        }
+      }
+    }
+
+    // 次の質問を選択（回答付き履歴を渡して連続NO判定に使う）
     const nextQuestion = await selectNextQuestion(
       updatedWeights,
       probabilities,
       session.questionCount + 1,
-      session.questionHistory,
+      historyWithAnswer,
       config
     );
 
     if (!nextQuestion) {
-      // 質問が無い → FAIL_LIST
-      return NextResponse.json({
-        state: 'FAIL_LIST',
+      // 質問が無い → 強制 REVEAL（既出は候補から外す）
+      const sorted = [...probabilities].sort((a, b) => {
+        if (a.probability !== b.probability) return b.probability - a.probability;
+        return a.workId.localeCompare(b.workId);
       });
+      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
+      const forceRevealId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId;
+      if (forceRevealId) {
+        const topWork = await prisma.work.findUnique({
+          where: { workId: forceRevealId },
+          select: {
+            workId: true,
+            title: true,
+            authorName: true,
+            isAi: true,
+            productUrl: true,
+            thumbnailUrl: true,
+          },
+        });
+        if (topWork) {
+          return NextResponse.json({
+            state: 'REVEAL',
+            work: toWorkResponse(topWork),
+            forcedReveal: true, // 次の質問が null のため強制
+          });
+        }
+      }
+      return NextResponse.json({ state: 'FAIL_LIST' });
     }
 
-    // パフォーマンス最適化: 質問履歴追加（既に更新済みの状態を使用）
-    const newHistory = [...session.questionHistory, {
+    // パフォーマンス最適化: 質問履歴追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
+    const newHistory = [...historyWithAnswer, {
       qIndex: newQuestionCount,
       kind: nextQuestion.kind,
       tagKey: nextQuestion.tagKey,
       hardConfirmType: nextQuestion.hardConfirmType,
       hardConfirmValue: nextQuestion.hardConfirmValue,
+      displayText: nextQuestion.displayText,
       isSummaryQuestion: nextQuestion.isSummaryQuestion,
       summaryQuestionId: nextQuestion.summaryQuestionId,
       summaryDisplayNames: nextQuestion.summaryDisplayNames,
+      exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+    }];
+    // 次質問(N+1)に戻ったときに使うスナップショット＝今の回答後なので追加する
+    const weightsHistoryWithNext = [...newWeightsHistory, {
+      qIndex: newQuestionCount,
+      weights: weightsMap,
     }];
     await SessionManager.updateSession(sessionId, {
       questionHistory: newHistory,
+      weightsHistory: weightsHistoryWithNext,
     }, { 
       ...session, 
       questionCount: newQuestionCount, 
       weights: weightsMap,
-      weightsHistory: newWeightsHistory,
+      weightsHistory: weightsHistoryWithNext,
     }); // 既に更新済みの状態を渡すことでgetSessionをスキップ
 
     // 返却（最小限の情報のみ）

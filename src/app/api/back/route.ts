@@ -45,20 +45,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 現在の質問番号（最後の質問）
-    const currentQIndex = session.questionHistory[session.questionHistory.length - 1]?.qIndex;
-    console.log('[/api/back] Current qIndex:', currentQIndex);
+    // 現在の質問番号（最後の質問＝今表示している質問）
+    const currentQIndex = session.questionHistory[session.questionHistory.length - 1]?.qIndex ?? 1;
+    const previousQIndex = currentQIndex - 1;
+    console.log('[/api/back] Current qIndex:', currentQIndex, 'previousQIndex:', previousQIndex);
 
-    // 1問目の場合はAIゲートに戻る
-    if (currentQIndex === 1 || session.questionHistory.length === 1) {
-      console.log('[/api/back] Returning to AI_GATE');
+    // 戻り先が「1問目より前」のときだけAIゲートへ（2問目で戻る→1問目に戻すのでAI_GATEにしない）
+    if (previousQIndex < 1) {
+      console.log('[/api/back] Returning to AI_GATE (no previous question)');
       return NextResponse.json({
         state: 'AI_GATE',
       });
     }
 
-    // 前の質問番号
-    const previousQIndex = currentQIndex ? currentQIndex - 1 : 1;
     console.log('[/api/back] Rolling back to qIndex:', previousQIndex);
 
     // ロールバック実行

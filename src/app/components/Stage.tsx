@@ -1,6 +1,6 @@
 /**
- * ステージ：固定 px サイズのキャンバスを viewport に合わせて scale する
- * 背景・キャラ・ホワイトボードのバランスを保ったまま全体を拡大縮小する
+ * ステージ：固定 px サイズのキャンバスを viewport いっぱいに表示（余白なし）
+ * scale は「cover」で画面を埋め、はみ出しは overflow: hidden でクリップ。縦横スクロールなし。
  */
 
 'use client';
@@ -26,11 +26,12 @@ interface StageProps {
   children: React.ReactNode;
 }
 
+/** 画面いっぱいに表示（余白なし）。cover なので scale = max(幅比, 高さ比)。はみ出しはクリップ。 */
 function getScale(): number {
   if (typeof window === 'undefined') return 1;
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const scale = Math.min(w / STAGE_WIDTH_PX, h / STAGE_HEIGHT_PX);
+  const scale = Math.max(w / STAGE_WIDTH_PX, h / STAGE_HEIGHT_PX);
   return Math.max(0.2, Math.min(2, scale));
 }
 

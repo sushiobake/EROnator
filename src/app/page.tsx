@@ -20,7 +20,8 @@ type GameState =
   | 'QUIZ'
   | 'REVEAL'
   | 'SUCCESS'
-  | 'FAIL_LIST';
+  | 'FAIL_LIST'
+  | 'ALMOST_SUCCESS';
 
 interface Question {
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
@@ -36,11 +37,13 @@ interface Work {
 }
 
 // デバッグUI有効化判定（クライアント側）
+// ローカル開発 or Vercelプレビューでトークンが設定されていればパネル表示を許可
 function isDebugUIEnabled(): boolean {
   if (typeof window === 'undefined') return false;
-  if (process.env.NODE_ENV === 'production') return false;
   if (!process.env.NEXT_PUBLIC_DEBUG_TOKEN) return false;
-  return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  if (process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview') return true;
+  return false;
 }
 
 interface DebugPayload {
@@ -114,6 +117,8 @@ export default function Home() {
   const [successWork, setSuccessWork] = useState<Work | null>(null);
   const [successRecommendedWorks, setSuccessRecommendedWorks] = useState<Work[]>([]);
   const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
+  const [almostSuccessWork, setAlmostSuccessWork] = useState<Work | null>(null);
+  const [almostSuccessRecommendedWorks, setAlmostSuccessRecommendedWorks] = useState<(Work & { matchRate?: number })[]>([]);
   const [debugData, setDebugData] = useState<DebugPayload | null>(null);
   const [revealAnalysis, setRevealAnalysis] = useState<any>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
@@ -373,9 +378,21 @@ export default function Home() {
     }
   };
 
-  const handleFailListSelectWork = (workId: string) => {
-    // 作品選択時は終了（SUCCESSボーナスなし）
-    alert(`作品を選択しました: ${workId}`);
+  const handleFailListSelectWork = async (workId: string) => {
+    if (!sessionId) return;
+    try {
+      const response = await fetch(
+        `/api/failList/selected?sessionId=${encodeURIComponent(sessionId)}&workId=${encodeURIComponent(workId)}`
+      );
+      if (!response.ok) throw new Error('Failed to load selected work');
+      const data = await response.json();
+      setAlmostSuccessWork(data.work);
+      setAlmostSuccessRecommendedWorks(data.recommendedWorks ?? []);
+      setState('ALMOST_SUCCESS');
+    } catch (error) {
+      console.error('Error loading selected work:', error);
+      alert('データの取得に失敗しました');
+    }
   };
 
   const handleFailListNotInList = async (submittedTitleText: string) => {
@@ -391,8 +408,6 @@ export default function Home() {
       if (!response.ok) {
         throw new Error('Failed to submit not in list');
       }
-
-      alert('送信しました。ありがとうございます。');
     } catch (error) {
       console.error('Error submitting not in list:', error);
       alert('送信に失敗しました');
@@ -484,6 +499,30 @@ export default function Home() {
           <DebugPanel
             debug={debugData}
             revealAnalysis={revealAnalysis}
+            open={debugPanelOpen}
+            onToggle={() => setDebugPanelOpen(v => !v)}
+          />
+        )}
+      </>
+      </Stage>
+    );
+  }
+
+  if (state === 'ALMOST_SUCCESS' && almostSuccessWork) {
+    return (
+      <Stage>
+      <>
+        <Success
+          work={almostSuccessWork}
+          recommendedWorks={almostSuccessRecommendedWorks}
+          onRestart={handleRestart}
+          successTitle="それか～～～！次回は当てるからね！"
+          recommendTitle="そんなあなたには…おすすめもあるわ！"
+        />
+        {debugUIEnabled && debugEnabled && (
+          <DebugPanel
+            debug={debugData}
+            revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
           />

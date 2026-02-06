@@ -21,6 +21,7 @@ import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPayload';
 import { buildRevealAnalysis } from '@/server/debug/buildRevealAnalysis';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
+import { computeTagBasedMatchRate } from '@/server/utils/tagMatchRate';
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,6 +87,7 @@ export async function POST(request: NextRequest) {
       // SUCCESS
       const topWork = await prisma.work.findUnique({
         where: { workId: topWorkId },
+        include: { workTags: { select: { tagKey: true } } },
       });
 
       if (topWork) {
@@ -111,22 +113,33 @@ export async function POST(request: NextRequest) {
           ? await buildRevealAnalysis(session, topWorkId, probabilities)
           : undefined;
 
-        // 推奨作品: その時点の推測 top2～4（確率ランキング2～4位）
-        const recommendedWorkIds = [sorted[1]?.workId, sorted[2]?.workId, sorted[3]?.workId].filter(
-          (id): id is string => !!id
-        );
-        const recommendedRows = recommendedWorkIds.length > 0
+        // 推奨作品: 最大5件・同一作者は1本まで（正解作品の作者は除外）、確度順。似てる度は正解作品とのタグ一致で算出
+        const correctAuthor = topWork.authorName ?? '';
+        const correctTagKeys = (topWork.workTags ?? []).map(wt => wt.tagKey);
+        const candidateProbs = sorted.slice(1).filter(p => p.workId !== topWorkId);
+        const candidateIds = candidateProbs.map(p => p.workId);
+        const candidateRows = candidateIds.length > 0
           ? await prisma.work.findMany({
-              where: { workId: { in: recommendedWorkIds } },
+              where: { workId: { in: candidateIds } },
+              include: { workTags: { select: { tagKey: true } } },
             })
           : [];
-        const recommendedWorks = recommendedRows
-          .map((w) => toWorkResponse(w))
-          .sort((a, b) => {
-            const ia = recommendedWorkIds.indexOf(a.workId);
-            const ib = recommendedWorkIds.indexOf(b.workId);
-            return ia - ib;
+        const workMap = new Map(candidateRows.map(w => [w.workId, w]));
+        const seenAuthors = new Set<string>();
+        const recommended: Array<{ work: ReturnType<typeof toWorkResponse>; matchRate: number }> = [];
+        for (const p of candidateProbs) {
+          if (recommended.length >= 5) break;
+          const w = workMap.get(p.workId);
+          if (!w || w.authorName === correctAuthor || seenAuthors.has(w.authorName)) continue;
+          seenAuthors.add(w.authorName);
+          const recTagKeys = (w.workTags ?? []).map(wt => wt.tagKey);
+          const matchRate = computeTagBasedMatchRate(correctTagKeys, recTagKeys);
+          recommended.push({
+            work: toWorkResponse(w),
+            matchRate,
           });
+        }
+        const recommendedWorks = recommended.map(({ work, matchRate }) => ({ ...work, matchRate }));
 
         return NextResponse.json({
           state: 'SUCCESS',
@@ -169,14 +182,15 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // QUIZに戻る（次の質問を選択）
+      // QUIZに戻る（次の質問を選択）。REVEAL失敗直後は頭文字・作者を優先する
       const updatedProbabilities = normalizeWeights(penalizedWeights);
       const nextQuestion = await selectNextQuestion(
         penalizedWeights,
         updatedProbabilities,
         updatedSession.questionCount,
         updatedSession.questionHistory,
-        config
+        config,
+        { afterRevealWrong: true }
       );
 
       if (!nextQuestion) {
@@ -186,7 +200,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // 質問履歴に追加
+      // 質問履歴に追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
       const newQIndex = updatedSession.questionCount + 1;
       await SessionManager.addQuestionHistory(sessionId, {
         qIndex: newQIndex,
@@ -194,6 +208,7 @@ export async function POST(request: NextRequest) {
         tagKey: nextQuestion.tagKey,
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
+        displayText: nextQuestion.displayText,
       });
 
       // questionCountをインクリメント

@@ -37,6 +37,8 @@
     "compare:api-scraping": "tsx scripts/compare-api-vs-scraping.ts",
     "generate:derived-tags": "tsx scripts/generate-derived-tags-batch.ts",
     "import:from-json": "tsx scripts/import-from-json.ts",
+    "deduplicate:works": "tsx scripts/deduplicate-works-by-title.ts",
+    "deduplicate:works:run": "tsx scripts/deduplicate-works-by-title.ts --run",
     "check:db-status": "tsx scripts/check-db-status.ts",
     "delete:api-works": "tsx scripts/delete-api-works.ts",
     "cache:official-tags": "node scripts/generate-official-cache.js",

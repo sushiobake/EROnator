@@ -10,6 +10,7 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { getMvpConfig } from '@/server/config/loader';
 import { selectNextQuestion, processAnswer, filterWorksByAiGate } from '@/server/game/engine';
 import { normalizeWeights, calculateConfidence } from '@/server/algo/scoring';
+import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 
@@ -53,6 +54,15 @@ interface WorkDetails {
   }>;
 }
 
+/** Task A: 失敗型の切り分け用（(1)終了条件 (2)誤排除 (3)収束しない） */
+export interface SimulationDiagnostic {
+  endedBy: 'REVEAL' | 'MAX_QUESTIONS' | 'NO_MORE_QUESTIONS' | 'OTHER';
+  correctRank: number; // 正解の順位（1-based、候補にいなければ -1）
+  correctStillInCandidates: boolean;
+  top1Confidence: number;
+  candidatesCount: number;
+}
+
 interface SimulationResult {
   success: boolean;
   targetWorkId: string;
@@ -62,9 +72,48 @@ interface SimulationResult {
   questionCount: number;
   steps: SimulationStep[];
   outcome: 'SUCCESS' | 'WRONG_REVEAL' | 'FAIL_LIST' | 'MAX_QUESTIONS' | 'ERROR';
+  /** Task A: 失敗型の確定用 */
+  diagnostic?: SimulationDiagnostic;
   workDetails?: WorkDetails;
   /** 実行時エラー時のみ */
   errorMessage?: string;
+}
+
+/** シミュ用: 正解作品に基づく正答を1か所で判定（まとめ質問・頭文字正規化対応）。両ループで共通利用。 */
+function getCorrectAnswer(
+  question: {
+    kind: string;
+    tagKey?: string;
+    hardConfirmType?: string;
+    hardConfirmValue?: string;
+    isSummaryQuestion?: boolean;
+    summaryDisplayNames?: string[];
+  },
+  targetWork: { title: string | null; authorName: string | null },
+  targetTags: Set<string>,
+  targetWorkTags: { displayName: string }[]
+): string {
+  if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
+    const summaryDisplayNames = question.summaryDisplayNames;
+    const isSummaryQuestion = !!question.isSummaryQuestion || (summaryDisplayNames?.length ?? 0) > 0;
+    let hasTag: boolean;
+    if (isSummaryQuestion && summaryDisplayNames?.length) {
+      const targetDisplayNames = new Set(targetWorkTags.map(t => t.displayName));
+      hasTag = summaryDisplayNames.some(d => targetDisplayNames.has(d));
+    } else {
+      hasTag = targetTags.has(question.tagKey!);
+    }
+    return hasTag ? 'YES' : 'NO';
+  }
+  if (question.kind === 'HARD_CONFIRM') {
+    if (question.hardConfirmType === 'TITLE_INITIAL') {
+      const targetInitial = normalizeTitleForInitial(targetWork.title ?? '');
+      const questionInitial = question.hardConfirmValue ?? '';
+      return targetInitial === questionInitial ? 'YES' : 'NO';
+    }
+    return (targetWork.authorName ?? '') === question.hardConfirmValue ? 'YES' : 'NO';
+  }
+  return 'DONT_CARE';
 }
 
 export async function POST(request: NextRequest) {
@@ -180,6 +229,9 @@ export async function POST(request: NextRequest) {
     let outcome: SimulationResult['outcome'] = 'MAX_QUESTIONS';
     let finalWorkId: string | null = null;
     let revealMissCount = 0;
+    let endedBy: SimulationDiagnostic['endedBy'] = 'OTHER';
+    /** REVEALで不正解だった workId。同じ作品は再REVEALしない。 */
+    const revealedWrongWorkIds = new Set<string>();
 
     while (questionCount < config.flow.maxQuestions) {
       // 正規化
@@ -203,33 +255,48 @@ export async function POST(request: NextRequest) {
       );
 
       if (!question) {
-        outcome = 'FAIL_LIST';
+        // 質問が null → 強制 REVEAL（終了条件で負けないようにする）
+        endedBy = 'NO_MORE_QUESTIONS';
+        const forceRevealWorkId = sorted[0]?.workId;
+        if (forceRevealWorkId) {
+          const revealWork = await prisma.work.findUnique({
+            where: { workId: forceRevealWorkId },
+            select: { title: true },
+          });
+          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const isCorrect = forceRevealWorkId === targetWorkId;
+          questionCount++;
+          steps.push({
+            qIndex: questionCount,
+            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？` },
+            answer: isCorrect ? 'CORRECT' : 'WRONG',
+            wasNoisy: false,
+            confidenceBefore: confidence,
+            confidenceAfter: confidence,
+            top1WorkId: forceRevealWorkId,
+            top1Probability: confidence,
+            revealWorkId: forceRevealWorkId,
+            revealWorkTitle,
+            revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          });
+          outcome = isCorrect ? 'SUCCESS' : 'FAIL_LIST';
+          finalWorkId = forceRevealWorkId;
+        } else {
+          outcome = 'FAIL_LIST';
+        }
         break;
       }
 
       questionCount++;
       const qIndex = questionCount;
 
-      // 自動回答を決定
-      let correctAnswer: string;
-      
-      if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
-        // タグ質問: 正解作品がそのタグを持っているかで判定
-        const hasTag = targetTags.has(question.tagKey!);
-        correctAnswer = hasTag ? 'YES' : 'NO';
-      } else if (question.kind === 'HARD_CONFIRM') {
-        // HARD_CONFIRM: タイトル頭文字または作者名
-        if (question.hardConfirmType === 'TITLE_INITIAL') {
-          const targetInitial = targetWork.title.charAt(0).toUpperCase();
-          const questionInitial = question.hardConfirmValue?.toUpperCase() ?? '';
-          correctAnswer = targetInitial === questionInitial ? 'YES' : 'NO';
-        } else {
-          // AUTHOR
-          correctAnswer = targetWork.authorName === question.hardConfirmValue ? 'YES' : 'NO';
-        }
-      } else {
-        correctAnswer = 'DONT_CARE';
-      }
+      // 自動回答を決定（共通ヘルパーでまとめ・頭文字正規化対応）
+      const correctAnswer = getCorrectAnswer(
+        question as { kind: string; tagKey?: string; hardConfirmType?: string; hardConfirmValue?: string; isSummaryQuestion?: boolean; summaryDisplayNames?: string[] },
+        targetWork,
+        targetTags,
+        targetWorkTags
+      );
 
       // ノイズを適用（質問タイプ別の確率で逆回答）
       let noiseRateForQuestion = 0;
@@ -246,7 +313,7 @@ export async function POST(request: NextRequest) {
         actualAnswer = correctAnswer === 'YES' ? 'NO' : 'YES';
       }
 
-      // 質問履歴に追加（まとめ質問のときは summaryQuestionId 等を保存し、同一まとめの重複出題を防ぐ）
+      // 質問履歴に追加（まとめ質問のときは summaryQuestionId 等を保存し、同一まとめの重複出題を防ぐ。answer は連続NOで当たりを挟む判定に使用）
       questionHistory.push({
         qIndex,
         kind: question.kind,
@@ -256,6 +323,8 @@ export async function POST(request: NextRequest) {
         isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
         summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
+        answer: actualAnswer === 'YES' ? 'YES' : 'NO',
+        exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
       });
 
       // 回答処理
@@ -295,7 +364,7 @@ export async function POST(request: NextRequest) {
           .reduce((sum, p) => sum + p.probability, 0);
       }
 
-      // ステップを記録
+      // ステップを記録（EXPLORE_TAG のとき exploreTagKind を付与し、シミュで種別がわかるようにする）
       steps.push({
         qIndex,
         question: {
@@ -304,6 +373,7 @@ export async function POST(request: NextRequest) {
           tagKey: question.tagKey,
           hardConfirmType: question.hardConfirmType,
           hardConfirmValue: question.hardConfirmValue,
+          exploreTagKind: question.kind === 'EXPLORE_TAG' ? (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind : undefined,
         },
         answer: actualAnswer,
         wasNoisy,
@@ -314,61 +384,97 @@ export async function POST(request: NextRequest) {
         tagCoverage,
       });
 
-      // REVEAL判定
+      // REVEAL判定（既出＝一度不正解だった作品は候補から外す）
       if (newConfidence >= config.confirm.revealThreshold) {
-        const revealWorkId = newSorted[0]?.workId;
-        
-        // REVEAL対象の作品タイトルを取得
+        const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
+        if (revealWorkId) {
+          // REVEAL対象の作品タイトルを取得
+          const revealWork = await prisma.work.findUnique({
+            where: { workId: revealWorkId },
+            select: { title: true },
+          });
+          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const isCorrect = revealWorkId === targetWorkId;
+
+          // REVEALステップを追加
+          questionCount++;
+          steps.push({
+            qIndex: questionCount,
+            question: {
+              kind: 'REVEAL',
+              displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
+            },
+            answer: isCorrect ? 'CORRECT' : 'WRONG',
+            wasNoisy: false,
+            confidenceBefore: newConfidence,
+            confidenceAfter: newConfidence,
+            top1WorkId: revealWorkId,
+            top1Probability: newConfidence,
+            revealWorkId: revealWorkId,
+            revealWorkTitle: revealWorkTitle,
+            revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          });
+
+          if (isCorrect) {
+            endedBy = 'REVEAL';
+            outcome = 'SUCCESS';
+            finalWorkId = revealWorkId;
+            break;
+          } else {
+            revealedWrongWorkIds.add(revealWorkId);
+            revealMissCount++;
+            if (revealMissCount >= config.flow.maxRevealMisses) {
+              endedBy = 'REVEAL';
+              outcome = 'FAIL_LIST';
+              finalWorkId = revealWorkId;
+              break;
+            }
+            // ペナルティ: revealされた作品の重みを下げる
+            weights = weights.map(w => ({
+              workId: w.workId,
+              weight: w.workId === revealWorkId
+                ? w.weight * config.algo.revealPenalty
+                : w.weight,
+            }));
+          }
+        }
+        // revealWorkId が null（上位がすべて既出）の場合は REVEAL せず次の質問へ
+      }
+    }
+
+    // ループ正常終了（maxQuestions 到達）→ 強制 REVEAL（既出は候補から外す）
+    if (outcome === 'MAX_QUESTIONS' && questionCount >= config.flow.maxQuestions) {
+      endedBy = 'MAX_QUESTIONS';
+      const finalProbs = normalizeWeights(weights);
+      const finalSorted = [...finalProbs].sort((a, b) => {
+        if (a.probability !== b.probability) return b.probability - a.probability;
+        return a.workId.localeCompare(b.workId);
+      });
+      const forceRevealId = finalSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? finalSorted[0]?.workId;
+      const forceRevealConf = finalSorted.find(p => p.workId === forceRevealId)?.probability ?? finalSorted[0]?.probability ?? 0;
+      if (forceRevealId) {
         const revealWork = await prisma.work.findUnique({
-          where: { workId: revealWorkId },
+          where: { workId: forceRevealId },
           select: { title: true },
         });
         const revealWorkTitle = revealWork?.title ?? '(不明)';
-        
-        const isCorrect = revealWorkId === targetWorkId;
-        
-        // REVEALステップを追加
+        const isCorrect = forceRevealId === targetWorkId;
         questionCount++;
         steps.push({
           qIndex: questionCount,
-          question: {
-            kind: 'REVEAL',
-            displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
-          },
+          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？` },
           answer: isCorrect ? 'CORRECT' : 'WRONG',
           wasNoisy: false,
-          confidenceBefore: newConfidence,
-          confidenceAfter: newConfidence,
-          top1WorkId: revealWorkId ?? '',
-          top1Probability: newConfidence,
-          revealWorkId: revealWorkId,
-          revealWorkTitle: revealWorkTitle,
+          confidenceBefore: forceRevealConf,
+          confidenceAfter: forceRevealConf,
+          top1WorkId: forceRevealId,
+          top1Probability: forceRevealConf,
+          revealWorkId: forceRevealId,
+          revealWorkTitle,
           revealResult: isCorrect ? 'SUCCESS' : 'MISS',
         });
-        
-        if (isCorrect) {
-          // 正解！
-          outcome = 'SUCCESS';
-          finalWorkId = revealWorkId;
-          break;
-        } else {
-          // 不正解 → ペナルティを適用して続行
-          revealMissCount++;
-          
-          if (revealMissCount >= config.flow.maxRevealMisses) {
-            outcome = 'FAIL_LIST';
-            finalWorkId = revealWorkId;
-            break;
-          }
-          
-          // ペナルティ: revealされた作品の重みを下げる
-          weights = weights.map(w => ({
-            workId: w.workId,
-            weight: w.workId === revealWorkId 
-              ? w.weight * config.algo.revealPenalty 
-              : w.weight,
-          }));
-        }
+        outcome = isCorrect ? 'SUCCESS' : 'MAX_QUESTIONS';
+        finalWorkId = forceRevealId;
       }
     }
 
@@ -382,6 +488,26 @@ export async function POST(request: NextRequest) {
       finalWorkTitle = finalWork?.title ?? null;
     }
 
+    // Task A: 失敗型の確定用診断（endedBy, correctRank, correctStillInCandidates, top1Confidence, candidatesCount）
+    const finalProbsForDiag = normalizeWeights(weights);
+    const sortedForDiag = [...finalProbsForDiag].sort((a, b) => {
+      if (a.probability !== b.probability) return b.probability - a.probability;
+      return a.workId.localeCompare(b.workId);
+    });
+    const correctRankIdx = sortedForDiag.findIndex(p => p.workId === targetWorkId);
+    const diagnostic: SimulationDiagnostic = {
+      endedBy,
+      correctRank: correctRankIdx === -1 ? -1 : correctRankIdx + 1,
+      correctStillInCandidates: weights.some(w => w.workId === targetWorkId),
+      top1Confidence: sortedForDiag[0]?.probability ?? 0,
+      candidatesCount: weights.length,
+    };
+    if (outcome !== 'SUCCESS') {
+      console.log(
+        `[simulate] Task A diagnostic: endedBy=${diagnostic.endedBy} correctRank=${diagnostic.correctRank} correctStillInCandidates=${diagnostic.correctStillInCandidates} top1Confidence=${diagnostic.top1Confidence.toFixed(3)} candidatesCount=${diagnostic.candidatesCount} targetWorkId=${targetWorkId}`
+      );
+    }
+
     const result: SimulationResult = {
       success: outcome === 'SUCCESS',
       targetWorkId,
@@ -391,6 +517,7 @@ export async function POST(request: NextRequest) {
       questionCount,
       steps,
       outcome,
+      diagnostic,
     };
 
     // 作品詳細情報を追加
@@ -633,6 +760,7 @@ async function runSimulation(
     if (!targetWork) return null;
 
     const targetTags = new Set(targetWork.workTags.map(wt => wt.tagKey));
+    const targetWorkTagsForAnswer = targetWork.workTags.map(wt => ({ displayName: wt.tag.displayName }));
     
     // 作品詳細を整形
     const workDetails: WorkDetails = {
@@ -691,6 +819,8 @@ async function runSimulation(
     let outcome: SimulationResult['outcome'] = 'MAX_QUESTIONS';
     let finalWorkId: string | null = null;
     let revealMissCount = 0;
+    let endedBy: SimulationDiagnostic['endedBy'] = 'OTHER';
+    const revealedWrongWorkIds = new Set<string>();
 
     while (questionCount < config.flow.maxQuestions) {
       const probabilities = normalizeWeights(weights);
@@ -712,28 +842,47 @@ async function runSimulation(
       );
 
       if (!question) {
-        outcome = 'FAIL_LIST';
+        endedBy = 'NO_MORE_QUESTIONS';
+        const forceRevealWorkId = sorted[0]?.workId;
+        if (forceRevealWorkId) {
+          const revealWork = await prisma.work.findUnique({
+            where: { workId: forceRevealWorkId },
+            select: { title: true },
+          });
+          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const isCorrect = forceRevealWorkId === targetWorkId;
+          questionCount++;
+          steps.push({
+            qIndex: questionCount,
+            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？` },
+            answer: isCorrect ? 'CORRECT' : 'WRONG',
+            wasNoisy: false,
+            confidenceBefore: confidence,
+            confidenceAfter: confidence,
+            top1WorkId: forceRevealWorkId,
+            top1Probability: confidence,
+            revealWorkId: forceRevealWorkId,
+            revealWorkTitle,
+            revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          });
+          outcome = isCorrect ? 'SUCCESS' : 'FAIL_LIST';
+          finalWorkId = forceRevealWorkId;
+        } else {
+          outcome = 'FAIL_LIST';
+        }
         break;
       }
 
       questionCount++;
       const qIndex = questionCount;
 
-      // 自動回答
-      let correctAnswer: string;
-      if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
-        correctAnswer = targetTags.has(question.tagKey!) ? 'YES' : 'NO';
-      } else if (question.kind === 'HARD_CONFIRM') {
-        if (question.hardConfirmType === 'TITLE_INITIAL') {
-          const targetTitle = targetWork.title ?? '';
-          const targetInitial = targetTitle.charAt(0).toUpperCase();
-          correctAnswer = targetInitial === question.hardConfirmValue?.toUpperCase() ? 'YES' : 'NO';
-        } else {
-          correctAnswer = (targetWork.authorName ?? '') === question.hardConfirmValue ? 'YES' : 'NO';
-        }
-      } else {
-        correctAnswer = 'DONT_CARE';
-      }
+      // 自動回答（共通ヘルパーでまとめ・頭文字正規化対応）
+      const correctAnswer = getCorrectAnswer(
+        question as { kind: string; tagKey?: string; hardConfirmType?: string; hardConfirmValue?: string; isSummaryQuestion?: boolean; summaryDisplayNames?: string[] },
+        targetWork,
+        targetTags,
+        targetWorkTagsForAnswer
+      );
 
       // ノイズを適用（質問タイプ別の確率で逆回答）
       let noiseRateForQuestion = 0;
@@ -758,6 +907,7 @@ async function runSimulation(
         isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
         summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
+        answer: actualAnswer === 'YES' ? 'YES' : actualAnswer === 'NO' ? 'NO' : undefined,
       });
 
       // タグのp値（確率ベースカバレッジ）を計算（回答処理前のprobabilitiesで計算）
@@ -795,6 +945,7 @@ async function runSimulation(
           tagKey: question.tagKey,
           hardConfirmType: question.hardConfirmType,
           hardConfirmValue: question.hardConfirmValue,
+          exploreTagKind: question.kind === 'EXPLORE_TAG' ? (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind : undefined,
         },
         answer: actualAnswer,
         wasNoisy,
@@ -806,55 +957,111 @@ async function runSimulation(
       });
 
       if (newConfidence >= config.confirm.revealThreshold) {
-        const revealWorkId = newSorted[0]?.workId;
-        
-        // REVEAL対象の作品タイトルを取得
+        const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
+        if (revealWorkId) {
+          const revealWork = await prisma.work.findUnique({
+            where: { workId: revealWorkId },
+            select: { title: true },
+          });
+          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const isCorrect = revealWorkId === targetWorkId;
+          questionCount++;
+          steps.push({
+            qIndex: questionCount,
+            question: {
+              kind: 'REVEAL',
+              displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
+            },
+            answer: isCorrect ? 'CORRECT' : 'WRONG',
+            wasNoisy: false,
+            confidenceBefore: newConfidence,
+            confidenceAfter: newConfidence,
+            top1WorkId: revealWorkId,
+            top1Probability: newConfidence,
+            revealWorkId: revealWorkId,
+            revealWorkTitle: revealWorkTitle,
+            revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          });
+          if (isCorrect) {
+            endedBy = 'REVEAL';
+            outcome = 'SUCCESS';
+            finalWorkId = revealWorkId;
+            break;
+          } else {
+            revealedWrongWorkIds.add(revealWorkId);
+            revealMissCount++;
+            if (revealMissCount >= config.flow.maxRevealMisses) {
+              endedBy = 'REVEAL';
+              outcome = 'FAIL_LIST';
+              finalWorkId = revealWorkId;
+              break;
+            }
+            weights = weights.map(w => ({
+              workId: w.workId,
+              weight: w.workId === revealWorkId ? w.weight * config.algo.revealPenalty : w.weight,
+            }));
+          }
+        }
+      }
+    }
+
+    // ループ正常終了（maxQuestions 到達）→ 強制 REVEAL（既出は候補から外す）
+    if (outcome === 'MAX_QUESTIONS' && questionCount >= config.flow.maxQuestions) {
+      endedBy = 'MAX_QUESTIONS';
+      const finalProbs = normalizeWeights(weights);
+      const finalSorted = [...finalProbs].sort((a, b) => {
+        if (a.probability !== b.probability) return b.probability - a.probability;
+        return a.workId.localeCompare(b.workId);
+      });
+      const forceRevealId = finalSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? finalSorted[0]?.workId;
+      const forceRevealConf = finalSorted.find(p => p.workId === forceRevealId)?.probability ?? finalSorted[0]?.probability ?? 0;
+      if (forceRevealId) {
         const revealWork = await prisma.work.findUnique({
-          where: { workId: revealWorkId },
+          where: { workId: forceRevealId },
           select: { title: true },
         });
         const revealWorkTitle = revealWork?.title ?? '(不明)';
-        
-        const isCorrect = revealWorkId === targetWorkId;
-        
-        // REVEALステップを追加
+        const isCorrect = forceRevealId === targetWorkId;
         questionCount++;
         steps.push({
           qIndex: questionCount,
-          question: {
-            kind: 'REVEAL',
-            displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
-          },
+          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？` },
           answer: isCorrect ? 'CORRECT' : 'WRONG',
           wasNoisy: false,
-          confidenceBefore: newConfidence,
-          confidenceAfter: newConfidence,
-          top1WorkId: revealWorkId ?? '',
-          top1Probability: newConfidence,
-          revealWorkId: revealWorkId,
-          revealWorkTitle: revealWorkTitle,
+          confidenceBefore: forceRevealConf,
+          confidenceAfter: forceRevealConf,
+          top1WorkId: forceRevealId,
+          top1Probability: forceRevealConf,
+          revealWorkId: forceRevealId,
+          revealWorkTitle,
           revealResult: isCorrect ? 'SUCCESS' : 'MISS',
         });
-        
-        if (isCorrect) {
-          outcome = 'SUCCESS';
-          finalWorkId = revealWorkId;
-          break;
-        } else {
-          revealMissCount++;
-          if (revealMissCount >= config.flow.maxRevealMisses) {
-            outcome = 'FAIL_LIST';
-            finalWorkId = revealWorkId;
-            break;
-          }
-          weights = weights.map(w => ({
-            workId: w.workId,
-            weight: w.workId === revealWorkId 
-              ? w.weight * config.algo.revealPenalty 
-              : w.weight,
-          }));
-        }
+        outcome = isCorrect ? 'SUCCESS' : 'MAX_QUESTIONS';
+        finalWorkId = forceRevealId;
       }
+    }
+
+    const finalProbsDiag = normalizeWeights(weights);
+    const sortedDiag = [...finalProbsDiag].sort((a, b) => {
+      if (a.probability !== b.probability) return b.probability - a.probability;
+      return a.workId.localeCompare(b.workId);
+    });
+    const correctRankIdx = sortedDiag.findIndex(p => p.workId === targetWorkId);
+    const diagnostic: SimulationDiagnostic = {
+      endedBy,
+      correctRank: correctRankIdx === -1 ? -1 : correctRankIdx + 1,
+      correctStillInCandidates: weights.some(w => w.workId === targetWorkId),
+      top1Confidence: sortedDiag[0]?.probability ?? 0,
+      candidatesCount: weights.length,
+    };
+
+    let finalWorkTitle: string | null = null;
+    if (finalWorkId) {
+      const fw = await prisma.work.findUnique({
+        where: { workId: finalWorkId },
+        select: { title: true },
+      });
+      finalWorkTitle = fw?.title ?? null;
     }
 
     return {
@@ -862,10 +1069,11 @@ async function runSimulation(
       targetWorkId,
       targetWorkTitle: targetWork.title,
       finalWorkId,
-      finalWorkTitle: null,
+      finalWorkTitle,
       questionCount,
       steps,
       outcome,
+      diagnostic,
       workDetails,
     };
   } catch (error) {

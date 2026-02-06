@@ -47,11 +47,18 @@ export interface SessionStateResponse {
 }
 
 /**
- * FAIL_LIST応答（上位N件のみ）
+ * FAIL_LIST候補1件（惜しかった画面で似てる度％表示用に matchRate を付与することがある）
+ */
+export interface FailListCandidate extends WorkResponse {
+  matchRate?: number; // 50-100（小数1桁）、似てる度（表示用・タグ一致ベース）
+}
+
+/**
+ * FAIL_LIST応答（上位N件のみ・既出除外・同一作者1本まで）
  * - 候補作品の全量や上位大量リストは返さない（Brief: 上位K件以上は返さない）
  */
 export interface FailListResponse {
-  candidates: WorkResponse[]; // 最大N件（config.failListN）
+  candidates: FailListCandidate[]; // 最大5件
 }
 
 /**

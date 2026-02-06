@@ -27,6 +27,26 @@ const AlgoSchema = z.object({
   explorePValueMax: z.number().min(0).max(1).optional(),
   /** p値が範囲内のタグが無いときHARD_CONFIRM/REVEALにフォールバックする */
   explorePValueFallbackEnabled: z.boolean().optional(),
+  /** まとめ質問の回答強度のスケール。1.0=通常タグと同程度、0.6=控えめ。未設定時0.6 */
+  summaryQuestionStrengthScale: z.number().positive().optional(),
+  /** EXPLORE_TAG（まとめ以外）の回答強度のスケール。1.0=変更なし。未設定時1.0 */
+  exploreTagStrengthScale: z.number().positive().optional(),
+  /** SOFT_CONFIRMの回答強度のスケール。1.0=変更なし。未設定時1.0 */
+  softConfirmStrengthScale: z.number().positive().optional(),
+  /**
+   * EXPLORE_TAGの質問選択を情報利得(IG)で行う。false なら従来の p≈0.5 に近いタグを選ぶ。
+   * ロールバック時は false にすると従来挙動に戻る。未設定時は true（IGを使用）。
+   */
+  useIGForExploreSelection: z.boolean().optional(),
+  /**
+   * タグ質問・HARD_CONFIRMの重み更新をベイズ（事後確率）で行う。false なら従来の強度×beta。
+   * ロールバック時は false にすると従来挙動に戻る。未設定時は true（ベイズを使用）。
+   */
+  useBayesianUpdate: z.boolean().optional(),
+  /**
+   * ベイズ更新時の尤度の下限（確率0で殺さない）。0.02 なら尤度は [0.02, 0.98]。未設定時 0.02。
+   */
+  bayesianEpsilon: z.number().min(0).max(0.5).optional(),
 }).strict();
 
 const FlowSchema = z.object({
@@ -42,6 +62,18 @@ const FlowSchema = z.object({
     (val) => val.max >= val.min,
     { message: 'effectiveConfirmThresholdParams.max must be >= min' }
   ),
+  /** 連続NOがこの数以上なら次の1問は「当たり」狙い（p高めのタグを選ぶ）。未設定時は3 */
+  consecutiveNoForAtari: z.number().int().min(1).optional(),
+  /** まとめ質問を優先して選ぶ確率。0〜1。未設定時は0（優先なし） */
+  summaryPreferRatio: z.number().min(0).max(1).optional(),
+  /**
+   * HARD_CONFIRMでタイトル頭文字・作者を選ぶとき、確度順の上位何件の作品から選ぶか。
+   * - 1: 確度1位のみ（従来どおり）。正解が1位になればその頭文字を聞ける。
+   * - 2以上: 1位〜N位から未使用の頭文字・作者を順に選ぶ。バリエーションは増えるが、
+   *   正解がtop-Nに入らないと正解の頭文字を聞けずMAX_QUESTIONSで終わるリスクあり。
+   * 推奨: 2か3で試す。未設定時は1。
+   */
+  titleInitialTopN: z.number().int().min(1).optional(),
 }).strict();
 
 const DataQualitySchema = z.object({

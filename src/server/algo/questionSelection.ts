@@ -29,6 +29,86 @@ export interface ExplorePValueBand {
 }
 
 /**
+ * 確率分布のエントロピー H = -Σ p_i log2(p_i)
+ */
+function entropy(probs: number[]): number {
+  const sum = probs.reduce((a, b) => a + b, 0);
+  if (sum <= 0) return 0;
+  let h = 0;
+  for (const p of probs) {
+    const q = p / sum;
+    if (q > 0) h -= q * Math.log2(q);
+  }
+  return h;
+}
+
+/** 尤度: 作品がタグを持つとき YES が出る確率 / 持たないとき YES が出る確率（epsilon 込み） */
+const L_YES_HAS = 0.9;
+const L_NO_HAS = 0.1;
+
+/**
+ * EXPLORE_TAG選択（情報利得 IG = 期待事後エントロピー最小）
+ * 各候補タグについて E[H'] = P(YES|q)*H(事後|YES) + P(NO|q)*H(事後|NO) を計算し、最小のタグを返す。
+ * pValueBand 指定時はその範囲内の候補のみ。preferHighP は呼び出し元で分岐するため未使用。
+ */
+export function selectExploreTagByIG(
+  availableTags: TagInfo[],
+  probabilities: WorkProbability[],
+  workHasTag: (workId: string, tagKey: string) => boolean,
+  pValueBand?: ExplorePValueBand | null
+): string | null {
+  if (availableTags.length === 0) return null;
+
+  const candidates = availableTags.map(tag => {
+    const pYes = probabilities.reduce((sum, prob) => {
+      const likeYes = workHasTag(prob.workId, tag.tagKey) ? L_YES_HAS : L_NO_HAS;
+      return sum + prob.probability * likeYes;
+    }, 0);
+    const pNo = 1 - pYes;
+    const postYes = probabilities.map(prob => {
+      const likeYes = workHasTag(prob.workId, tag.tagKey) ? L_YES_HAS : L_NO_HAS;
+      return prob.probability * likeYes;
+    });
+    const postNo = probabilities.map(prob => {
+      const likeNo = workHasTag(prob.workId, tag.tagKey) ? L_NO_HAS : L_YES_HAS;
+      return prob.probability * likeNo;
+    });
+    const sumYes = postYes.reduce((a, b) => a + b, 0);
+    const sumNo = postNo.reduce((a, b) => a + b, 0);
+    const normYes = sumYes > 0 ? postYes.map(p => p / sumYes) : postYes;
+    const normNo = sumNo > 0 ? postNo.map(p => p / sumNo) : postNo;
+    const H_yes = entropy(normYes);
+    const H_no = entropy(normNo);
+    const expectedEntropy = pYes * H_yes + pNo * H_no;
+    const p = pYes; // coverage (for pValueBand)
+    return { tagKey: tag.tagKey, expectedEntropy, pYes: p, p };
+  });
+
+  let filtered = candidates;
+  if (pValueBand != null) {
+    filtered = candidates.filter(
+      c => c.p >= pValueBand.pValueMin && c.p <= pValueBand.pValueMax
+    );
+    if (filtered.length === 0) {
+      console.log(
+        `[selectExploreTagByIG] p値が [${pValueBand.pValueMin}, ${pValueBand.pValueMax}] 内のタグが0件のため null`
+      );
+      return null;
+    }
+  }
+
+  filtered.sort((a, b) => {
+    if (a.expectedEntropy !== b.expectedEntropy) return a.expectedEntropy - b.expectedEntropy;
+    return a.tagKey.localeCompare(b.tagKey);
+  });
+  const selected = filtered[0];
+  console.log(
+    `[selectExploreTagByIG] ${selected.tagKey} (expectedEntropy: ${selected.expectedEntropy.toFixed(3)}, pYes: ${selected.pYes.toFixed(2)})`
+  );
+  return selected.tagKey;
+}
+
+/**
  * EXPLORE_TAG選択 (Spec §6.1 - シンプル版)
  * 
  * - 全タグの中から、pが0.5に最も近いものを選ぶ
@@ -41,7 +121,9 @@ export function selectExploreTag(
   workHasTag: (workId: string, tagKey: string) => boolean,
   confidence: number = 0, // 現在の確度（未使用だが互換性のため残す）
   topWorkId: string | null = null, // top1のworkId（未使用だが互換性のため残す）
-  pValueBand?: ExplorePValueBand | null
+  pValueBand?: ExplorePValueBand | null,
+  /** 連続NO時: true なら p が高いタグを選ぶ（当たりを挟む） */
+  preferHighP: boolean = false
 ): string | null {
   if (availableTags.length === 0) {
     return null;
@@ -74,16 +156,20 @@ export function selectExploreTag(
     }
   }
   
-  // 0.5に最も近いものを選ぶ
+  // 通常: 0.5に最も近いものを選ぶ / 連続NO時: p が高いものを選ぶ（当たり狙い）
   filtered.sort((a, b) => {
-    if (a.distanceFromHalf !== b.distanceFromHalf) {
-      return a.distanceFromHalf - b.distanceFromHalf;
+    if (preferHighP) {
+      if (a.coverage !== b.coverage) return b.coverage - a.coverage;
+    } else {
+      if (a.distanceFromHalf !== b.distanceFromHalf) {
+        return a.distanceFromHalf - b.distanceFromHalf;
+      }
     }
     return a.tagKey.localeCompare(b.tagKey);
   });
   
   const selected = filtered[0];
-  console.log(`[selectExploreTag] シンプル: ${selected.tagKey} (p: ${selected.coverage.toFixed(2)})`);
+  console.log(`[selectExploreTag] ${preferHighP ? '当たり狙い' : 'シンプル'}: ${selected.tagKey} (p: ${selected.coverage.toFixed(2)})`);
   return selected.tagKey;
 }
 
@@ -143,7 +229,10 @@ export function selectConfirmType(
     return 'SOFT_CONFIRM';
   }
   
-  // Fallback
+  // Fallback: 単調にならないよう、SOFT のデータがあるときは 50% で SOFT / 50% で HARD にする
+  if (hasSoftConfirmData) {
+    return Math.random() < 0.5 ? 'SOFT_CONFIRM' : 'HARD_CONFIRM';
+  }
   return 'HARD_CONFIRM';
 }
 

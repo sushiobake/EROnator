@@ -61,18 +61,65 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   try {
-    const body = await request.json();
-    const { id, questionText, erotic } = body as { id?: string; questionText?: string; erotic?: boolean };
+    const body = await request.json() as {
+      action?: 'create' | 'delete';
+      id?: string;
+      label?: string;
+      questionText?: string;
+      displayNames?: string[];
+      erotic?: boolean;
+    };
+    const { summaryQuestions } = await loadSummary();
+
+    if (body.action === 'delete') {
+      if (!body.id) {
+        return NextResponse.json({ error: 'id required for delete' }, { status: 400 });
+      }
+      const next = summaryQuestions.filter((q) => q.id !== body.id);
+      await saveSummary(next);
+      return NextResponse.json({ success: true, summaryQuestions: next });
+    }
+
+    if (body.action === 'create') {
+      const { id, label, questionText, displayNames, erotic } = body;
+      if (!id || typeof label !== 'string' || typeof questionText !== 'string' || !Array.isArray(displayNames)) {
+        return NextResponse.json({ error: 'create requires id, label, questionText, displayNames' }, { status: 400 });
+      }
+      if (summaryQuestions.some((q) => q.id === id)) {
+        return NextResponse.json({ error: 'id already exists' }, { status: 400 });
+      }
+      const newItem: SummaryQuestion = {
+        id,
+        label: label.trim(),
+        questionText: questionText.trim(),
+        displayNames: displayNames.filter((d): d is string => typeof d === 'string' && d.trim() !== ''),
+        erotic: !!erotic,
+      };
+      const next = [...summaryQuestions, newItem];
+      await saveSummary(next);
+      return NextResponse.json({ success: true, summaryQuestions: next });
+    }
+
+    // update (existing behaviour + label, displayNames)
+    const { id, questionText, label, displayNames, erotic } = body;
     if (!id) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
-    const { summaryQuestions } = await loadSummary();
     const idx = summaryQuestions.findIndex((q) => q.id === id);
     if (idx === -1) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (typeof questionText === 'string') {
-      summaryQuestions[idx] = { ...summaryQuestions[idx], questionText };
+      summaryQuestions[idx] = { ...summaryQuestions[idx], questionText: questionText.trim() };
+    }
+    if (typeof label === 'string') {
+      summaryQuestions[idx] = { ...summaryQuestions[idx], label: label.trim() };
+    }
+    if (Array.isArray(displayNames)) {
+      summaryQuestions[idx] = {
+        ...summaryQuestions[idx],
+        displayNames: displayNames.filter((d): d is string => typeof d === 'string' && d.trim() !== ''),
+      };
     }
     if (typeof erotic === 'boolean') {
       summaryQuestions[idx] = { ...summaryQuestions[idx], erotic };
