@@ -126,7 +126,15 @@ export default function Home() {
 
   useEffect(() => {
     setIsClient(true);
-    const de = localStorage.getItem('eronator.debugEnabled') === '1';
+    let de = localStorage.getItem('eronator.debugEnabled') === '1';
+    const isPreviewWithToken =
+      process.env.NODE_ENV === 'production' &&
+      process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' &&
+      !!process.env.NEXT_PUBLIC_DEBUG_TOKEN;
+    if (!de && isPreviewWithToken) {
+      de = true;
+      localStorage.setItem('eronator.debugEnabled', '1');
+    }
     const po = localStorage.getItem('eronator.debugPanel.open') === '1';
     setDebugEnabled(de);
     setDebugPanelOpen(po);
