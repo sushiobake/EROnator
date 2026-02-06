@@ -22,6 +22,7 @@ interface SimulationStep {
     tagKey?: string;
     hardConfirmType?: string;
     hardConfirmValue?: string;
+    exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
   };
   answer: string;
   wasNoisy: boolean; // ノイズで間違えたか
