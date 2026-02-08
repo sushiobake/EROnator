@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useMediaQuery } from './useMediaQuery';
 
 interface QuizProps {
   question: {
@@ -29,13 +30,22 @@ const ANSWER_CHOICES = [
 
 export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: QuizProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const isMobile = useMediaQuery(768);
 
   return (
     <>
-      <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 8px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
-      <div style={{ display: 'flex', alignItems: 'stretch', marginBottom: 32 }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'stretch' : 'stretch',
+          gap: isMobile ? 10 : 0,
+          marginBottom: isMobile ? 24 : 32,
+        }}
+      >
         <div
           style={{
             position: 'relative',
@@ -47,41 +57,54 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             justifyContent: 'center',
             backgroundColor: '#334155',
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+            alignSelf: isMobile ? 'flex-start' : undefined,
           }}
         >
           <span style={{ fontSize: 24, fontWeight: 'bold', color: '#fff' }}>{questionCount}</span>
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: '50%',
-              transform: 'translate(-100%, -50%)',
-              width: 0,
-              height: 0,
-              borderTop: '10px solid transparent',
-              borderBottom: '10px solid transparent',
-              borderRight: '14px solid #334155',
-            }}
-          />
+          {!isMobile && (
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: '50%',
+                transform: 'translate(-100%, -50%)',
+                width: 0,
+                height: 0,
+                borderTop: '10px solid transparent',
+                borderBottom: '10px solid transparent',
+                borderRight: '14px solid #334155',
+              }}
+            />
+          )}
         </div>
         <div
           style={{
             display: 'flex',
-            minWidth: 260,
+            flex: 1,
+            minWidth: 0,
             alignItems: 'center',
             border: '1px solid #e5e7eb',
             backgroundColor: '#fff',
-            padding: '16px 24px',
+            padding: isMobile ? '12px 16px' : '16px 24px',
             borderRadius: 10,
             boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
           }}
         >
-          <p style={{ fontSize: 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
+          <p
+            style={{
+              fontSize: isMobile ? 18 : 18,
+              fontWeight: 500,
+              color: '#1f2937',
+              margin: 0,
+              wordBreak: 'break-word',
+              overflowWrap: 'break-word',
+            }}
+          >
             {question.displayText}
           </p>
         </div>
       </div>
-      <div style={{ width: '100%', maxWidth: 320, marginTop: 8 }}>
+      <div style={{ width: '100%', maxWidth: 320, marginTop: isMobile ? 6 : 8 }}>
         <div
           style={{
             display: 'flex',
@@ -101,9 +124,10 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
               style={{
                 position: 'relative',
                 width: '100%',
-                padding: '14px 24px',
+                padding: isMobile ? '14px 20px' : '16px 24px',
+                minHeight: 48,
                 textAlign: 'center',
-                fontSize: 16,
+                fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
                 backgroundColor: hoveredChoice === choice.value ? '#eff6ff' : '#fff',

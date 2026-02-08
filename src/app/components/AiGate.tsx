@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useMediaQuery } from './useMediaQuery';
 
 const AI_GATE_OPTIONS: { value: 'NO' | 'YES' | 'DONT_CARE'; label: string }[] = [
   { value: 'NO', label: 'AI生成作品ではない' },
@@ -19,13 +20,14 @@ interface AiGateProps {
 
 export function AiGate({ onSelect }: AiGateProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const isMobile = useMediaQuery(768);
 
   return (
     <>
-      <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 8px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: isMobile ? 20 : 32 }}>
         <div
           style={{
             display: 'flex',
@@ -33,12 +35,12 @@ export function AiGate({ onSelect }: AiGateProps) {
             alignItems: 'center',
             border: '1px solid #e5e7eb',
             backgroundColor: '#fafafa',
-            padding: '16px 24px',
+            padding: isMobile ? '12px 16px' : '16px 24px',
             borderRadius: 8,
             boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
           }}
         >
-          <p style={{ fontSize: 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
+          <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
             AI生成作品ではない？
           </p>
         </div>
@@ -63,9 +65,10 @@ export function AiGate({ onSelect }: AiGateProps) {
               style={{
                 position: 'relative',
                 width: '100%',
-                padding: '14px 24px',
+                padding: isMobile ? '14px 20px' : '16px 24px',
+                minHeight: 48,
                 textAlign: 'center',
-                fontSize: 16,
+                fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
                 backgroundColor: hoveredChoice === value ? '#eff6ff' : '#fff',

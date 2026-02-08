@@ -1,6 +1,8 @@
 /**
  * ステージ：PCは 1200×800 を cover で表示。
  * スマホは 800×800 の正方形ステージを中央に（横長 contain をやめた）。白板はキャラに寄せる。
+ *
+ * バックアップ：キャラ左見切れ・白板重ね横長 を入れる前の状態
  */
 
 'use client';
@@ -45,13 +47,14 @@ function getMobileCenterScale(containerWidth: number, containerHeight: number): 
 const MOBILE_HEADER_HEIGHT = 20;
 const MOBILE_FOOTER_HEIGHT = 28;
 const MOBILE_SQ_CHAR_LEFT = 0;
-const MOBILE_SQ_CHAR_WIDTH = 360;
-const MOBILE_SQ_GAP = 8;
+const MOBILE_SQ_CHAR_WIDTH = 520;
+const MOBILE_SQ_GAP = 4;
 const MOBILE_SQ_CONTENT_LEFT = MOBILE_SQ_CHAR_LEFT + MOBILE_SQ_CHAR_WIDTH + MOBILE_SQ_GAP;
-const MOBILE_SQ_CHAR_HEIGHT = 720;
-const MOBILE_SQ_WHITEBOARD_SIZE = 400;
+const MOBILE_SQ_CHAR_HEIGHT = MOBILE_STAGE_PX;
+const MOBILE_SQ_WHITEBOARD_MAX_W = MOBILE_STAGE_PX - MOBILE_SQ_CONTENT_LEFT - 12;
+const MOBILE_SQ_WHITEBOARD_MIN_H = 360;
 const MOBILE_SQ_WHITEBOARD_PADDING = '28px 22px 28px 22px';
-const MOBILE_SQ_WHITEBOARD_TOP_OFFSET = 160;
+const MOBILE_SQ_WHITEBOARD_TOP_OFFSET = 72;
 
 function MobileStageInner({ children }: { children: React.ReactNode }) {
   return (
@@ -105,10 +108,9 @@ function MobileStageInner({ children }: { children: React.ReactNode }) {
       >
         <div
           style={{
-            width: MOBILE_SQ_WHITEBOARD_SIZE,
-            minWidth: MOBILE_SQ_WHITEBOARD_SIZE,
-            height: MOBILE_SQ_WHITEBOARD_SIZE,
-            minHeight: MOBILE_SQ_WHITEBOARD_SIZE,
+            width: '100%',
+            maxWidth: MOBILE_SQ_WHITEBOARD_MAX_W,
+            minHeight: MOBILE_SQ_WHITEBOARD_MIN_H,
             backgroundColor: '#fff',
             borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
             padding: MOBILE_SQ_WHITEBOARD_PADDING,

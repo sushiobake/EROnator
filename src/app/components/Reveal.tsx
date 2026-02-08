@@ -6,6 +6,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useMediaQuery } from './useMediaQuery';
 
 interface RevealProps {
   work: {
@@ -20,40 +21,44 @@ interface RevealProps {
 
 export function Reveal({ work, onAnswer }: RevealProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const isMobile = useMediaQuery(768);
 
   return (
     <>
-      <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 8px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
-      <p style={{ fontSize: 18, fontWeight: 600, color: '#1f2937', margin: '0 0 16px 0' }}>
+      <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 600, color: '#1f2937', margin: '0 0 12px 0' }}>
         ズバリ！コレ…でしょ！
       </p>
       <div
         style={{
           display: 'flex',
-          gap: 20,
-          alignItems: 'flex-start',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 10 : 20,
+          alignItems: isMobile ? 'stretch' : 'flex-start',
           flexWrap: 'wrap',
-          marginBottom: 24,
+          marginBottom: isMobile ? 16 : 24,
         }}
       >
         <img
           src={work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`}
           alt={work.title}
           style={{
-            width: 140,
+            width: isMobile ? '100%' : 140,
+            maxWidth: isMobile ? 200 : undefined,
             height: 'auto',
             objectFit: 'cover',
             borderRadius: 8,
             flexShrink: 0,
+            alignSelf: isMobile ? 'center' : undefined,
           }}
         />
         <div>
-          <h2 style={{ fontSize: 19, fontWeight: 'bold', color: '#1f2937', margin: '0 0 4px 0' }}>
+          <h2 style={{ fontSize: isMobile ? 18 : 19, fontWeight: 'bold', color: '#1f2937', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
             {work.title}
           </h2>
-          <p style={{ fontSize: 16, color: '#6b7280', margin: 0 }}>{work.authorName}</p>
+          <p style={{ fontSize: isMobile ? 16 : 16, color: '#6b7280', margin: 0 }}>{work.authorName}</p>
         </div>
       </div>
       <div
@@ -79,9 +84,10 @@ export function Reveal({ work, onAnswer }: RevealProps) {
               style={{
                 position: 'relative',
                 width: '100%',
-                padding: '14px 24px',
+                padding: isMobile ? '14px 20px' : '16px 24px',
+                minHeight: 48,
                 textAlign: 'center',
-                fontSize: 16,
+                fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
                 backgroundColor: hoveredChoice === choice ? '#eff6ff' : '#fff',

@@ -1,0 +1,205 @@
+/**
+ * ステージ：固定 px サイズのキャンバスを viewport いっぱいに表示（余白なし）
+ * scale は「cover」で画面を埋め、はみ出しは overflow: hidden でクリップ。縦横スクロールなし。
+ *
+ * バックアップ: スマホ時は縦スクロール＋白板＋左下固定キャラ のレイアウト
+ */
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import {
+  STAGE_WIDTH_PX,
+  STAGE_HEIGHT_PX,
+  CHARACTER_LEFT_PX,
+  CHARACTER_WIDTH_PX,
+  CHARACTER_HEIGHT_PX,
+  CONTENT_OFFSET_LEFT_PX,
+  WHITEBOARD_MAX_WIDTH_PX,
+  WHITEBOARD_PADDING_PX,
+  WHITEBOARD_BORDER_RADIUS_PX,
+} from './gameLayoutConstants';
+import { useMediaQuery } from './useMediaQuery';
+
+const BACKGROUND_URL = '/ilust/back.png';
+const CHARACTER_URL = '/ilust/inari_1.png';
+const fontFamily = '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif';
+
+interface StageProps {
+  children: React.ReactNode;
+}
+
+/** 画面いっぱいに表示（余白なし）。cover なので scale = max(幅比, 高さ比)。はみ出しはクリップ。 */
+function getScale(): number {
+  if (typeof window === 'undefined') return 1;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const scale = Math.max(w / STAGE_WIDTH_PX, h / STAGE_HEIGHT_PX);
+  return Math.max(0.2, Math.min(2, scale));
+}
+
+export function Stage({ children }: StageProps) {
+  const [scale, setScale] = useState(1);
+  const isMobile = useMediaQuery(768);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setScale(getScale());
+      const onResize = () => setScale(getScale());
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    }
+  }, [isMobile]);
+
+  if (isMobile) {
+    const MOBILE_CHARACTER_HEIGHT = 220;
+    const MOBILE_PADDING_BOTTOM = MOBILE_CHARACTER_HEIGHT + 24;
+    return (
+      <div
+        style={{
+          minHeight: '100dvh',
+          width: '100%',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          fontFamily,
+          backgroundImage: `url(${BACKGROUND_URL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          paddingBottom: MOBILE_PADDING_BOTTOM,
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 480,
+            margin: '0 auto',
+            padding: '12px 12px 16px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'rgba(255,255,255,0.98)',
+              borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
+              padding: 16,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            {children}
+          </div>
+        </div>
+        {/* スマホ用: キャラを左下に固定・やや大きめ */}
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            bottom: 0,
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={CHARACTER_URL}
+            alt=""
+            style={{
+              height: MOBILE_CHARACTER_HEIGHT,
+              width: 'auto',
+              maxWidth: '75vw',
+              objectFit: 'contain',
+              objectPosition: 'left bottom',
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily,
+      }}
+    >
+      <div
+        style={{
+          width: STAGE_WIDTH_PX,
+          height: STAGE_HEIGHT_PX,
+          position: 'relative',
+          transform: `scale(${scale})`,
+          transformOrigin: 'center center',
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `url(${BACKGROUND_URL})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            zIndex: 0,
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: CHARACTER_LEFT_PX,
+            bottom: 0,
+            width: CHARACTER_WIDTH_PX,
+            height: CHARACTER_HEIGHT_PX,
+            zIndex: 1,
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={CHARACTER_URL}
+            alt=""
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              objectPosition: 'left bottom',
+            }}
+          />
+        </div>
+        <div
+          style={{
+            position: 'absolute',
+            left: CONTENT_OFFSET_LEFT_PX,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-start',
+            padding: '32px 32px 32px 0',
+            zIndex: 2,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: WHITEBOARD_MAX_WIDTH_PX,
+              backgroundColor: '#fff',
+              borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
+              padding: WHITEBOARD_PADDING_PX,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+              border: '1px solid #e5e7eb',
+            }}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

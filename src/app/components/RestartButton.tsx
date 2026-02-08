@@ -5,19 +5,23 @@
 
 'use client';
 
+import { useMediaQuery } from './useMediaQuery';
+
 interface RestartButtonProps {
   onRestart: () => void;
   label?: string;
 }
 
 export function RestartButton({ onRestart, label = 'もう１度妄想する' }: RestartButtonProps) {
+  const isMobile = useMediaQuery(768);
   return (
-    <div style={{ marginTop: 32, textAlign: 'center' }}>
+    <div style={{ marginTop: isMobile ? 20 : 32, textAlign: 'center' }}>
       <button
         onClick={onRestart}
         style={{
-          padding: '12px 32px',
-          fontSize: 16,
+          padding: isMobile ? '12px 24px' : '14px 32px',
+          minHeight: 48,
+          fontSize: isMobile ? 14 : 16,
           cursor: 'pointer',
           backgroundColor: '#0070f3',
           color: 'white',
