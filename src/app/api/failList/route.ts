@@ -11,6 +11,7 @@ import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { FailListResponse } from '@/server/api/types';
 import { toWorkResponse } from '@/server/api/dto';
+import { updatePlayHistoryNotInList } from '@/server/playHistory/savePlayHistory';
 
 /**
  * GET: FAIL_LIST候補取得（上位N件のみ）
@@ -149,6 +150,13 @@ export async function POST(request: NextRequest) {
         topCandidates: JSON.stringify(topCandidates),
       },
     });
+
+    // プレイ履歴を NOT_IN_LIST に更新（1プレイ＝1レコード）
+    try {
+      await updatePlayHistoryNotInList(sessionId, submittedTitleText);
+    } catch (e) {
+      console.error('[PlayHistory] update NOT_IN_LIST failed:', e);
+    }
 
     return NextResponse.json({
       success: true,

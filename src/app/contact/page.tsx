@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { APP_VERSION } from '@/config/app';
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -234,6 +235,10 @@ export default function ContactPage() {
           {isSubmitting ? '送信中...' : '送信'}
         </button>
       </form>
+
+      <p style={{ marginTop: '2rem', fontSize: '0.875rem', color: '#9ca3af' }}>
+        {APP_VERSION}
+      </p>
     </div>
   );
 }

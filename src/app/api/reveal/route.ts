@@ -22,6 +22,7 @@ import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPa
 import { buildRevealAnalysis } from '@/server/debug/buildRevealAnalysis';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { computeTagBasedMatchRate } from '@/server/utils/tagMatchRate';
+import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
   try {
@@ -141,6 +142,13 @@ export async function POST(request: NextRequest) {
         }
         const recommendedWorks = recommended.map(({ work, matchRate }) => ({ ...work, matchRate }));
 
+        // プレイ履歴: 1プレイ＝1レコード（SUCCESS）
+        try {
+          await createPlayHistory(session, 'SUCCESS', topWorkId);
+        } catch (e) {
+          console.error('[PlayHistory] create SUCCESS failed:', e);
+        }
+
         return NextResponse.json({
           state: 'SUCCESS',
           workId: topWorkId,
@@ -177,6 +185,11 @@ export async function POST(request: NextRequest) {
 
       // FAIL_LIST判定
       if (updatedSession.revealMissCount >= (config.flow.maxRevealMisses as number)) {
+        try {
+          await createPlayHistory(updatedSession, 'FAIL_LIST');
+        } catch (e) {
+          console.error('[PlayHistory] create FAIL_LIST failed:', e);
+        }
         return NextResponse.json({
           state: 'FAIL_LIST',
         });

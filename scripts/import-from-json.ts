@@ -164,13 +164,38 @@ async function saveWorkToDb(item: Item): Promise<{ saved: boolean; workId: strin
   const reviewCount = item.review?.count ? parseInt(item.review.count.toString(), 10) : null;
   const reviewAverage = item.review?.average ? parseFloat(item.review.average) : null;
 
-  // 既存チェック
+  // 既存チェック（workId）
   const existing = await prisma.work.findUnique({
     where: { workId },
   });
 
   if (existing) {
     return { saved: false, workId };
+  }
+
+  // 同一作品の重複防止: タイトル＋作者が同じ既存作品があればそちらにタグだけ付与
+  const title = (item.title ?? '').trim();
+  const existingByTitleAuthor = await prisma.work.findFirst({
+    where: { title, authorName },
+    select: { workId: true },
+  });
+
+  if (existingByTitleAuthor) {
+    const canonicalWorkId = existingByTitleAuthor.workId;
+    if (item.iteminfo.genre) {
+      for (const genre of item.iteminfo.genre) {
+        const displayName = genre.name;
+        if (isTagBanned(displayName)) continue;
+        const tagKey = await resolveOfficialTagKeyByDisplayName(prisma, displayName);
+        if (!tagKey) continue;
+        await prisma.workTag.upsert({
+          where: { workId_tagKey: { workId: canonicalWorkId, tagKey } },
+          update: {},
+          create: { workId: canonicalWorkId, tagKey },
+        });
+      }
+    }
+    return { saved: true, workId: canonicalWorkId };
   }
 
   // シリーズ情報（最初の1つのみ）

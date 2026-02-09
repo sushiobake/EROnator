@@ -21,10 +21,13 @@ import { useMediaQuery } from './useMediaQuery';
 
 const BACKGROUND_URL = '/ilust/back.png';
 const CHARACTER_URL = '/ilust/inari_1.png';
+const LOGO_URL = '/ilust/eronator_logo.jpg';
 const fontFamily = '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif';
 
 interface StageProps {
   children: React.ReactNode;
+  /** トップ画面のみロゴを表示する */
+  showLogo?: boolean;
 }
 
 function getScale(): number {
@@ -53,7 +56,7 @@ const MOBILE_SQ_WHITEBOARD_SIZE = 400;
 const MOBILE_SQ_WHITEBOARD_PADDING = '28px 22px 28px 22px';
 const MOBILE_SQ_WHITEBOARD_TOP_OFFSET = 160;
 
-function MobileStageInner({ children }: { children: React.ReactNode }) {
+function MobileStageInner({ children, showLogo }: { children: React.ReactNode; showLogo?: boolean }) {
   return (
     <>
       <div
@@ -67,6 +70,32 @@ function MobileStageInner({ children }: { children: React.ReactNode }) {
           zIndex: 0,
         }}
       />
+      {showLogo && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 12,
+            top: 12,
+            width: 72,
+            height: 72,
+            zIndex: 1,
+            pointerEvents: 'none',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          }}
+        >
+          <img
+            src={LOGO_URL}
+            alt="ERONATOR"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
+      )}
       <div
         style={{
           position: 'absolute',
@@ -125,7 +154,7 @@ function MobileStageInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StageInner({ children }: { children: React.ReactNode }) {
+function StageInner({ children, showLogo }: { children: React.ReactNode; showLogo?: boolean }) {
   return (
     <>
       <div
@@ -139,6 +168,32 @@ function StageInner({ children }: { children: React.ReactNode }) {
           zIndex: 0,
         }}
       />
+      {showLogo && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 16,
+            top: 16,
+            width: 88,
+            height: 88,
+            zIndex: 1,
+            pointerEvents: 'none',
+            borderRadius: 8,
+            overflow: 'hidden',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          }}
+        >
+          <img
+            src={LOGO_URL}
+            alt="ERONATOR"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+            }}
+          />
+        </div>
+      )}
       <div
         style={{
           position: 'absolute',
@@ -194,7 +249,7 @@ function StageInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Stage({ children }: StageProps) {
+export function Stage({ children, showLogo }: StageProps) {
   const [scale, setScale] = useState(1);
   const [mobileCenterScale, setMobileCenterScale] = useState(0.3);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -271,7 +326,7 @@ export function Stage({ children }: StageProps) {
               transformOrigin: 'center center',
             }}
           >
-            <MobileStageInner>{children}</MobileStageInner>
+            <MobileStageInner showLogo={showLogo}>{children}</MobileStageInner>
           </div>
         </div>
         <footer
@@ -315,7 +370,7 @@ export function Stage({ children }: StageProps) {
           flexShrink: 0,
         }}
       >
-        <StageInner>{children}</StageInner>
+        <StageInner showLogo={showLogo}>{children}</StageInner>
       </div>
     </div>
   );

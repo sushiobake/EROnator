@@ -10,6 +10,7 @@ import { normalizeWeights } from '@/server/algo/scoring';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { toWorkResponse } from '@/server/api/dto';
 import { computeTagBasedMatchRate } from '@/server/utils/tagMatchRate';
+import { updatePlayHistoryAlmostSuccess } from '@/server/playHistory/savePlayHistory';
 
 export async function GET(request: NextRequest) {
   try {
@@ -88,6 +89,13 @@ export async function GET(request: NextRequest) {
         work: toWorkResponse(w),
         matchRate,
       });
+    }
+
+    // プレイ履歴を ALMOST_SUCCESS に更新（候補から選択）
+    try {
+      await updatePlayHistoryAlmostSuccess(sessionId, workId);
+    } catch (e) {
+      console.error('[PlayHistory] update ALMOST_SUCCESS failed:', e);
     }
 
     return NextResponse.json({

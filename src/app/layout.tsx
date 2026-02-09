@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
+import { SITE_TITLE } from '@/config/app';
 
 export const metadata: Metadata = {
-  title: 'エロネーター MVP0',
+  title: SITE_TITLE,
   description: 'Akinator風の同人作品推測ゲーム',
 };
 

@@ -270,11 +270,12 @@ export class SessionManager {
     // ロールバック後は weightsHistory を qIndex < targetQIndex のみに（使用したスナップショットを削除し、再回答時に重複しないようにする）
     const weightsHistoryAfterRollback = current.weightsHistory.filter(w => w.qIndex < targetQIndex);
 
+    // questionCount は「回答数」（0始まり）。表示は questionCount+1 なので、targetQIndex 問目に戻すときは questionCount = targetQIndex - 1
     await this.updateSession(sessionId, {
       questionHistory: filteredHistory,
       weightsHistory: weightsHistoryAfterRollback,
       weights: targetSnapshot.weights,
-      questionCount: targetQIndex,
+      questionCount: targetQIndex - 1,
     });
 
     console.log('[rollbackToQuestion] Rolled back to qIndex:', targetQIndex);

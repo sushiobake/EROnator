@@ -82,7 +82,8 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             display: 'flex',
             flex: 1,
             minWidth: 0,
-            alignItems: 'center',
+            alignItems: 'flex-start',
+            minHeight: isMobile ? 56 : 72,
             border: '1px solid #e5e7eb',
             backgroundColor: '#fff',
             padding: isMobile ? '12px 16px' : '16px 24px',
@@ -96,6 +97,7 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
               fontWeight: 500,
               color: '#1f2937',
               margin: 0,
+              lineHeight: 1.4,
               wordBreak: 'break-word',
               overflowWrap: 'break-word',
             }}

@@ -165,25 +165,34 @@ async function main() {
     }
     console.log(`   ✅ Work: ${workRows.length} 件`);
 
-    for (const row of workTagRows) {
-      await prisma.workTag.upsert({
-        where: {
-          workId_tagKey: {
-            workId: row.workId as string,
-            tagKey: row.tagKey as string,
-          },
-        },
-        create: {
-          workId: row.workId as string,
-          tagKey: row.tagKey as string,
-          derivedSource: rowToStr(row.derivedSource),
-          derivedConfidence: rowToNum(row.derivedConfidence) ?? null,
-        },
-        update: {
-          derivedSource: rowToStr(row.derivedSource),
-          derivedConfidence: rowToNum(row.derivedConfidence) ?? null,
-        },
-      });
+    // WorkTag はバッチで投入（1件ずつだと13450件で10分以上かかるため）
+    const WORKTAG_BATCH_SIZE = 500;
+    for (let i = 0; i < workTagRows.length; i += WORKTAG_BATCH_SIZE) {
+      const batch = workTagRows.slice(i, i + WORKTAG_BATCH_SIZE);
+      await prisma.$transaction(
+        batch.map((row) =>
+          prisma.workTag.upsert({
+            where: {
+              workId_tagKey: {
+                workId: row.workId as string,
+                tagKey: row.tagKey as string,
+              },
+            },
+            create: {
+              workId: row.workId as string,
+              tagKey: row.tagKey as string,
+              derivedSource: rowToStr(row.derivedSource),
+              derivedConfidence: rowToNum(row.derivedConfidence) ?? null,
+            },
+            update: {
+              derivedSource: rowToStr(row.derivedSource),
+              derivedConfidence: rowToNum(row.derivedConfidence) ?? null,
+            },
+          })
+        )
+      );
+      const done = Math.min(i + WORKTAG_BATCH_SIZE, workTagRows.length);
+      console.log(`   WorkTag: ${done} / ${workTagRows.length} 件`);
     }
     console.log(`   ✅ WorkTag: ${workTagRows.length} 件`);
 

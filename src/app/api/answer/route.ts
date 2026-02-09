@@ -20,6 +20,7 @@ import { toWorkResponse } from '@/server/api/dto';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPayload';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
+import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
   try {
@@ -124,19 +125,12 @@ export async function POST(request: NextRequest) {
         )
       : session.questionHistory;
     
-    // 重みのスナップショットを保存（修正機能用）
+    // 重みのスナップショット（修正機能用）。QUIZ 返却時は次の質問追加とまとめて1回で更新する
     const currentWeightsHistory = session.weightsHistory || [];
     const newWeightsHistory = [...currentWeightsHistory, {
       qIndex: currentQuestion.qIndex,
       weights: weights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
     }];
-    
-    await SessionManager.updateSession(sessionId, {
-      weights: weightsMap,
-      questionCount: newQuestionCount,
-      weightsHistory: newWeightsHistory,
-      questionHistory: historyWithAnswer,
-    }, session); // 既に取得済みのsessionを渡すことでgetSessionをスキップ
 
     // REVEAL判定（一度外した作品は候補から外し、確度順で未出の先頭をREVEAL）
     if (confidence >= config.confirm.revealThreshold) {
@@ -164,16 +158,20 @@ export async function POST(request: NextRequest) {
 
         if (topWork) {
           const workResponse = toWorkResponse(topWork);
+          await SessionManager.updateSession(sessionId, {
+            weights: weightsMap,
+            questionCount: newQuestionCount,
+            weightsHistory: newWeightsHistory,
+            questionHistory: historyWithAnswer,
+          }, session);
 
           // デバッグペイロード構築（3重ロック成立時のみ）
-          // パフォーマンス最適化: セッション再取得を削除（既に取得済みのsessionを使用）
           let debug;
           if (allowed && session && beforeState) {
             const touchedTagKeys: string[] = [];
             if (currentQuestion.tagKey) {
               touchedTagKeys.push(currentQuestion.tagKey);
             }
-            // セッション状態を更新（デバッグ用）
             const updatedSessionForDebug = {
               ...session,
               questionCount: session.questionCount + 1,
@@ -196,7 +194,6 @@ export async function POST(request: NextRequest) {
             state: 'REVEAL',
             work: workResponse,
             ...(debug ? { debug } : {}),
-            // 内部確率・重みは返さない（Data exposure policy）
           });
         }
       }
@@ -204,6 +201,20 @@ export async function POST(request: NextRequest) {
 
     // REVEAL失敗回数上限のみ FAIL_LIST（maxQuestions は強制 REVEAL にする）
     if (session.revealMissCount >= (config.flow.maxRevealMisses as number)) {
+      await SessionManager.updateSession(sessionId, {
+        weights: weightsMap,
+        questionCount: newQuestionCount,
+        weightsHistory: newWeightsHistory,
+        questionHistory: historyWithAnswer,
+      }, session);
+      try {
+        await createPlayHistory(
+          { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
+          'FAIL_LIST'
+        );
+      } catch (e) {
+        console.error('[PlayHistory] create FAIL_LIST failed:', e);
+      }
       return NextResponse.json({
         state: 'FAIL_LIST',
       });
@@ -230,6 +241,12 @@ export async function POST(request: NextRequest) {
           },
         });
         if (topWork) {
+          await SessionManager.updateSession(sessionId, {
+            weights: weightsMap,
+            questionCount: newQuestionCount,
+            weightsHistory: newWeightsHistory,
+            questionHistory: historyWithAnswer,
+          }, session);
           return NextResponse.json({
             state: 'REVEAL',
             work: toWorkResponse(topWork),
@@ -249,7 +266,13 @@ export async function POST(request: NextRequest) {
     );
 
     if (!nextQuestion) {
-      // 質問が無い → 強制 REVEAL（既出は候補から外す）
+      // 質問が無い → 強制 REVEAL または FAIL_LIST（いずれも1回だけセッション更新）
+      await SessionManager.updateSession(sessionId, {
+        weights: weightsMap,
+        questionCount: newQuestionCount,
+        weightsHistory: newWeightsHistory,
+        questionHistory: historyWithAnswer,
+      }, session);
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) return b.probability - a.probability;
         return a.workId.localeCompare(b.workId);
@@ -276,12 +299,21 @@ export async function POST(request: NextRequest) {
           });
         }
       }
+      try {
+        await createPlayHistory(
+          { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
+          'FAIL_LIST'
+        );
+      } catch (e) {
+        console.error('[PlayHistory] create FAIL_LIST failed:', e);
+      }
       return NextResponse.json({ state: 'FAIL_LIST' });
     }
 
-    // パフォーマンス最適化: 質問履歴追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
+    // 次の質問の qIndex は「今答えた質問 + 1」（1問目=1, 2問目=2）。newQuestionCount は「回答数」なので 2問目でも 1 になり誤って qIndex が被る
+    const nextQIndex = currentQuestion.qIndex + 1;
     const newHistory = [...historyWithAnswer, {
-      qIndex: newQuestionCount,
+      qIndex: nextQIndex,
       kind: nextQuestion.kind,
       tagKey: nextQuestion.tagKey,
       hardConfirmType: nextQuestion.hardConfirmType,
@@ -292,20 +324,21 @@ export async function POST(request: NextRequest) {
       summaryDisplayNames: nextQuestion.summaryDisplayNames,
       exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
     }];
-    // 次質問(N+1)に戻ったときに使うスナップショット＝今の回答後なので追加する
     const weightsHistoryWithNext = [...newWeightsHistory, {
-      qIndex: newQuestionCount,
+      qIndex: nextQIndex,
       weights: weightsMap,
     }];
     await SessionManager.updateSession(sessionId, {
+      weights: weightsMap,
+      questionCount: newQuestionCount,
       questionHistory: newHistory,
       weightsHistory: weightsHistoryWithNext,
-    }, { 
-      ...session, 
-      questionCount: newQuestionCount, 
+    }, {
+      ...session,
+      questionCount: newQuestionCount,
       weights: weightsMap,
       weightsHistory: weightsHistoryWithNext,
-    }); // 既に更新済みの状態を渡すことでgetSessionをスキップ
+    });
 
     // 返却（最小限の情報のみ）
     const questionResponse: QuestionResponse = {
