@@ -54,7 +54,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate';
+type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate' | 'history';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
@@ -220,6 +220,24 @@ export default function AdminTagsPage() {
   const [simBatchLoading, setSimBatchLoading] = useState(false);
   const [simSampleSize, setSimSampleSize] = useState<number>(0); // 0=全件
   const [simSaving, setSimSaving] = useState(false);
+
+  // サービスプレイ履歴タブ用
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<Array<{
+    id: string;
+    sessionId: string;
+    outcome: string;
+    questionCount: number;
+    questionHistory: unknown;
+    aiGateChoice: string | null;
+    resultWorkId: string | null;
+    submittedTitleText: string | null;
+    createdAt: string;
+  }>>([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyLimit] = useState(50);
+  const [historyOutcome, setHistoryOutcome] = useState<string>('');
 
   // 初回読み込み時にlocalStorageからトークンを取得し、自動でDBを読み込む
   useEffect(() => {
@@ -1239,6 +1257,43 @@ export default function AdminTagsPage() {
     }
   };
 
+  const fetchPlayHistory = async (page: number = 1) => {
+    if (!adminToken) return;
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(historyLimit));
+      if (historyOutcome) params.set('outcome', historyOutcome);
+      const response = await fetch(`/api/admin/play-history?${params.toString()}`, {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
+      if (!response.ok) {
+        if (response.status === 403) throw new Error('アクセスが拒否されました');
+        throw new Error(`取得に失敗しました (${response.status})`);
+      }
+      const data = await response.json();
+      if (data.success && Array.isArray(data.items)) {
+        setHistoryItems(data.items);
+        setHistoryTotal(data.total ?? 0);
+        setHistoryPage(page);
+      }
+    } catch (e) {
+      console.error('[play-history]', e);
+      setHistoryItems([]);
+      setHistoryTotal(0);
+      if (adminToken) alert(e instanceof Error ? e.message : '履歴の取得に失敗しました');
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'history' && adminToken) {
+      fetchPlayHistory(1);
+    }
+  }, [activeTab, adminToken, historyOutcome]);
+
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h1>管理画面</h1>
@@ -1374,6 +1429,21 @@ export default function AdminTagsPage() {
             }}
           >
             シミュレーション
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              backgroundColor: activeTab === 'history' ? '#6b21a8' : 'transparent',
+              color: activeTab === 'history' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'history' ? '3px solid #6b21a8' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'history' ? 'bold' : 'normal',
+            }}
+          >
+            サービスプレイ履歴
           </button>
         </div>
       </div>
@@ -4142,6 +4212,134 @@ export default function AdminTagsPage() {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* サービスプレイ履歴タブ */}
+      {activeTab === 'history' && (
+        <section style={{ marginTop: '1rem' }}>
+          <h2 style={{ marginBottom: '1rem' }}>サービスプレイ履歴</h2>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            1プレイ＝1レコード。質問列・回答・結果・時刻は本番で保存されています。離脱・失敗分析やタグ修正の参照用です。
+          </p>
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label>
+              結果で絞る:
+              <select
+                value={historyOutcome}
+                onChange={(e) => setHistoryOutcome(e.target.value)}
+                style={{ marginLeft: '0.5rem', padding: '0.35rem 0.5rem' }}
+              >
+                <option value="">すべて</option>
+                <option value="SUCCESS">SUCCESS（正解）</option>
+                <option value="FAIL_LIST">FAIL_LIST（候補から未選択）</option>
+                <option value="ALMOST_SUCCESS">ALMOST_SUCCESS（候補から選択）</option>
+                <option value="NOT_IN_LIST">NOT_IN_LIST（リスト外入力）</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => fetchPlayHistory(1)}
+              disabled={historyLoading}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: historyLoading ? '#ccc' : '#6b21a8',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: historyLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {historyLoading ? '読込中...' : '再読み込み'}
+            </button>
+            <span style={{ color: '#666', fontSize: '0.9rem' }}>
+              全 {historyTotal} 件 {historyPage > 1 && `（ページ ${historyPage}）`}
+            </span>
+          </div>
+          {historyLoading && historyItems.length === 0 ? (
+            <p>読み込み中...</p>
+          ) : historyItems.length === 0 ? (
+            <p style={{ color: '#666' }}>履歴がありません。</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>日時</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>結果</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>質問数</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>正解/作品ID</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>リスト外入力</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>sessionId</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyItems.map((row) => (
+                    <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+                        {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '-'}
+                      </td>
+                      <td style={{ padding: '0.5rem' }}>
+                        <span style={{
+                          color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : '#666',
+                          fontWeight: 'bold',
+                        }}>
+                          {row.outcome}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>{row.questionCount}</td>
+                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                        {row.resultWorkId ?? '-'}
+                      </td>
+                      <td style={{ padding: '0.5rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {row.submittedTitleText ?? '-'}
+                      </td>
+                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.8rem' }} title={row.sessionId}>
+                        {row.sessionId.slice(0, 12)}…
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {historyTotal > historyLimit && (
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => fetchPlayHistory(historyPage - 1)}
+                disabled={historyLoading || historyPage <= 1}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: historyPage <= 1 ? '#ccc' : '#6b21a8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: historyPage <= 1 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                前へ
+              </button>
+              <span style={{ fontSize: '0.9rem' }}>
+                ページ {historyPage} / {Math.ceil(historyTotal / historyLimit) || 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => fetchPlayHistory(historyPage + 1)}
+                disabled={historyLoading || historyPage >= Math.ceil(historyTotal / historyLimit)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  backgroundColor: historyPage >= Math.ceil(historyTotal / historyLimit) ? '#ccc' : '#6b21a8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: historyPage >= Math.ceil(historyTotal / historyLimit) ? 'not-allowed' : 'pointer',
+                }}
+              >
+                次へ
+              </button>
             </div>
           )}
         </section>

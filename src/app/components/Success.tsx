@@ -157,8 +157,45 @@ export function Success({
       )}
 
       {onRestart && (
-        <div style={{ width: '100%', marginTop: isMobile ? 16 : 24 }}>
-          <RestartButton onRestart={onRestart} />
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 12,
+            width: '100%',
+            marginTop: isMobile ? 16 : 24,
+          }}
+        >
+          <RestartButton onRestart={onRestart} inline />
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              const text = `【ERONATOR】「${work.title}」が当たった！ あなたの妄想、当ててみる？`;
+              const url = typeof window !== 'undefined' ? window.location.origin : '';
+              const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+              window.open(intent, '_blank', 'noopener,noreferrer');
+            }}
+            style={{
+              padding: isMobile ? '12px 20px' : '14px 24px',
+              minHeight: 48,
+              fontSize: isMobile ? 14 : 15,
+              fontWeight: 600,
+              color: '#0f1419',
+              backgroundColor: '#fff',
+              border: '1px solid #cfd9de',
+              borderRadius: 8,
+              cursor: 'pointer',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            Xでポストする
+          </a>
         </div>
       )}
     </>

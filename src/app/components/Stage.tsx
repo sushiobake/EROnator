@@ -1,6 +1,7 @@
 /**
  * ステージ：PCは 1200×800 を cover で表示。
  * スマホは 800×800 の正方形ステージを中央に（横長 contain をやめた）。白板はキャラに寄せる。
+ * スマホ縦: 中央エリアに合わせて scale。横: visualViewport で確実に収め、スクロール・見切れなし。
  */
 
 'use client';
@@ -39,10 +40,22 @@ function getScale(): number {
 }
 
 const MOBILE_STAGE_PX = 800;
+const MOBILE_LANDSCAPE_MARGIN = 12; // 横のときの余裕（見切れ・スクロール防止）
+/** 横のときの安全マージン（高さ方向） */
+const MOBILE_LANDSCAPE_SAFE_HEIGHT = 32;
+/** Android 横のみ: visualViewport が実際より大きい場合の追加マージン＋高さを保守的に */
+const ANDROID_LANDSCAPE_SAFE_HEIGHT = 40;
+
+function isAndroid(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+/** 縦: 中央エリアの幅・高さに収める。 */
 function getMobileCenterScale(containerWidth: number, containerHeight: number): number {
   if (containerWidth <= 0 || containerHeight <= 0) return 0.3;
   const scale = Math.min(containerWidth / MOBILE_STAGE_PX, containerHeight / MOBILE_STAGE_PX);
-  return Math.max(0.3, Math.min(1.1, scale));
+  return Math.max(0.25, Math.min(1.1, scale));
 }
 
 const MOBILE_HEADER_HEIGHT = 20;
@@ -74,23 +87,25 @@ function MobileStageInner({ children, showLogo }: { children: React.ReactNode; s
         <div
           style={{
             position: 'absolute',
-            left: 12,
-            top: 12,
-            width: 72,
-            height: 72,
+            left: 0,
+            top: 0,
+            right: 0,
+            height: 120,
             zIndex: 1,
             pointerEvents: 'none',
-            borderRadius: 8,
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingTop: 28,
           }}
         >
           <img
             src={LOGO_URL}
             alt="ERONATOR"
             style={{
-              width: '100%',
-              height: '100%',
+              height: 64,
+              width: 'auto',
+              maxWidth: '70%',
               objectFit: 'contain',
             }}
           />
@@ -141,8 +156,7 @@ function MobileStageInner({ children, showLogo }: { children: React.ReactNode; s
             backgroundColor: '#fff',
             borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
             padding: MOBILE_SQ_WHITEBOARD_PADDING,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
             textAlign: 'left',
             boxSizing: 'border-box',
           }}
@@ -172,23 +186,25 @@ function StageInner({ children, showLogo }: { children: React.ReactNode; showLog
         <div
           style={{
             position: 'absolute',
-            left: 16,
-            top: 16,
-            width: 88,
-            height: 88,
+            left: 0,
+            top: 0,
+            right: 0,
+            height: 120,
             zIndex: 1,
             pointerEvents: 'none',
-            borderRadius: 8,
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingTop: 32,
           }}
         >
           <img
             src={LOGO_URL}
             alt="ERONATOR"
             style={{
-              width: '100%',
-              height: '100%',
+              height: 72,
+              width: 'auto',
+              maxWidth: '60%',
               objectFit: 'contain',
             }}
           />
@@ -237,8 +253,7 @@ function StageInner({ children, showLogo }: { children: React.ReactNode; showLog
             backgroundColor: '#fff',
             borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
             padding: WHITEBOARD_PADDING_PX,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
             boxSizing: 'border-box',
           }}
         >
@@ -252,8 +267,18 @@ function StageInner({ children, showLogo }: { children: React.ReactNode; showLog
 export function Stage({ children, showLogo }: StageProps) {
   const [scale, setScale] = useState(1);
   const [mobileCenterScale, setMobileCenterScale] = useState(0.3);
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [landscapeViewport, setLandscapeViewport] = useState({ w: 0, h: 0 });
   const centerRef = useRef<HTMLDivElement>(null);
   const isMobile = useMediaQuery(768);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const check = () => setIsLandscape(window.innerWidth > window.innerHeight);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     if (!isMobile) {
@@ -264,8 +289,43 @@ export function Stage({ children, showLogo }: StageProps) {
     }
   }, [isMobile]);
 
+  // 縦: centerRef のサイズで scale。横: visualViewport でコンテナと scale を一致。Android 横のみ保守的にして見切れ防止。
   useEffect(() => {
-    if (!isMobile || !centerRef.current) return;
+    if (!isMobile) return;
+    if (isLandscape) {
+      const update = () => {
+        const android = isAndroid();
+        const vv = window.visualViewport;
+        const w = vv?.width ?? window.innerWidth;
+        let h = vv?.height ?? window.innerHeight;
+        if (android) {
+          h = Math.min(h, window.innerHeight);
+        }
+        setLandscapeViewport({ w, h });
+        const margin = MOBILE_LANDSCAPE_MARGIN * 2;
+        const availW = w - margin;
+        let availH = h - MOBILE_HEADER_HEIGHT - MOBILE_FOOTER_HEIGHT - margin - MOBILE_LANDSCAPE_SAFE_HEIGHT;
+        if (android) availH -= ANDROID_LANDSCAPE_SAFE_HEIGHT;
+        if (availW <= 0 || availH <= 0) return;
+        const s = android
+          ? availH / MOBILE_STAGE_PX
+          : Math.min(availW / MOBILE_STAGE_PX, availH / MOBILE_STAGE_PX);
+        setMobileCenterScale(Math.max(0.25, Math.min(1.1, s)));
+      };
+      update();
+      const vv = window.visualViewport;
+      if (vv) {
+        vv.addEventListener('resize', update);
+        vv.addEventListener('scroll', update);
+        return () => {
+          vv.removeEventListener('resize', update);
+          vv.removeEventListener('scroll', update);
+        };
+      }
+      window.addEventListener('resize', update);
+      return () => window.removeEventListener('resize', update);
+    }
+    if (!centerRef.current) return;
     const el = centerRef.current;
     const update = () => {
       if (!el) return;
@@ -275,21 +335,46 @@ export function Stage({ children, showLogo }: StageProps) {
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isMobile]);
+  }, [isMobile, isLandscape]);
+
+  // 横のときは body のスクロールを止める（固定レイヤーで見えている範囲だけにする）
+  useEffect(() => {
+    if (!isMobile || !isLandscape) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isMobile, isLandscape]);
 
   if (isMobile) {
-    return (
-      <div
-        style={{
-          minHeight: '100dvh',
-          width: '100%',
+    const isLandscapeActive = isLandscape && landscapeViewport.h > 0;
+    const wrapperStyle = isLandscapeActive
+      ? {
+          position: 'fixed' as const,
+          top: 0,
+          left: 0,
+          width: landscapeViewport.w,
+          height: landscapeViewport.h,
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: 'column' as const,
           overflow: 'hidden',
           fontFamily,
           backgroundColor: '#e8eaed',
-        }}
-      >
+          zIndex: 9999,
+        }
+      : {
+          minHeight: '100dvh',
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column' as const,
+          overflow: 'hidden',
+          fontFamily,
+          backgroundColor: '#e8eaed',
+        };
+
+    return (
+      <div style={wrapperStyle}>
         <header
           style={{
             flexShrink: 0,
@@ -324,6 +409,9 @@ export function Stage({ children, showLogo }: StageProps) {
               flexShrink: 0,
               transform: `scale(${mobileCenterScale})`,
               transformOrigin: 'center center',
+              borderRadius: 14,
+              overflow: 'hidden',
+              boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.5), 0 0 0 4px #9ca89c, 0 6px 24px rgba(0,0,0,0.14)',
             }}
           >
             <MobileStageInner showLogo={showLogo}>{children}</MobileStageInner>
@@ -368,6 +456,9 @@ export function Stage({ children, showLogo }: StageProps) {
           transform: `scale(${scale})`,
           transformOrigin: 'center center',
           flexShrink: 0,
+          borderRadius: 16,
+          overflow: 'hidden',
+          boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.45), 0 0 0 5px #9ca89c, 0 10px 36px rgba(0,0,0,0.16)',
         }}
       >
         <StageInner showLogo={showLogo}>{children}</StageInner>

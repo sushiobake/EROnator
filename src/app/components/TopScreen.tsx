@@ -5,7 +5,7 @@
 
 'use client';
 
-import { APP_VERSION, SITE_TITLE } from '@/config/app';
+import { APP_VERSION } from '@/config/app';
 import { Stage } from './Stage';
 import { useMediaQuery } from './useMediaQuery';
 
@@ -17,26 +17,11 @@ const fontFamily = '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メ
 
 export function TopScreen({ onPlay }: TopScreenProps) {
   const isMobile = useMediaQuery(768);
-  const titleSize = isMobile ? 22 : 28;
   const textSize = isMobile ? 17 : 16;
   const subSize = isMobile ? 15 : 13;
   const btnSize = isMobile ? 18 : 18;
   return (
     <Stage showLogo>
-      <h1
-        style={{
-          margin: 0,
-          marginBottom: isMobile ? 16 : 24,
-          fontSize: titleSize,
-          fontWeight: 700,
-          textAlign: 'center',
-          color: '#1f2937',
-          fontFamily,
-          lineHeight: 1.3,
-        }}
-      >
-        {SITE_TITLE}
-      </h1>
       <p style={{ margin: 0, fontSize: textSize, lineHeight: 1.6, color: '#1f2937' }}>
         あなたが好きな同人誌を妄想してみて。私が当ててあげるわ。何でもお見通しだから。
       </p>
@@ -79,7 +64,7 @@ export function TopScreen({ onPlay }: TopScreenProps) {
             fontFamily,
           }}
         >
-          推薦モードをプレイする（18歳以上）
+          推薦モードをプレイする（18歳以上）※近日実装
         </button>
       </div>
       <div style={{ marginTop: isMobile ? 20 : 32, marginBottom: isMobile ? 16 : 24 }}>

@@ -10,12 +10,14 @@ import { useMediaQuery } from './useMediaQuery';
 interface RestartButtonProps {
   onRestart: () => void;
   label?: string;
+  /** 横並びで使うときは true（余白・中央寄せなし） */
+  inline?: boolean;
 }
 
-export function RestartButton({ onRestart, label = 'もう１度妄想する' }: RestartButtonProps) {
+export function RestartButton({ onRestart, label = 'もう１度妄想する', inline = false }: RestartButtonProps) {
   const isMobile = useMediaQuery(768);
   return (
-    <div style={{ marginTop: isMobile ? 20 : 32, textAlign: 'center' }}>
+    <div style={{ marginTop: inline ? 0 : isMobile ? 20 : 32, textAlign: inline ? 'left' : 'center' }}>
       <button
         onClick={onRestart}
         style={{
