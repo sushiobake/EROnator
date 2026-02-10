@@ -74,16 +74,19 @@ async function main() {
     }
   }
 
-  // 未コミットの変更があるか確認
+  // 追跡済みファイルの未コミット変更があるか確認（未追跡＝backups等は無視。prismaの一時ファイルも除外）
   try {
-    const status = execSync('git status --porcelain', { encoding: 'utf-8' });
-    if (status.trim()) {
-      console.log('⚠️  未コミットの変更があります:');
-      console.log(status);
+    const filter = (names) => names.filter((n) => !/^prisma\/.*\.db-(shm|wal)$/.test(n));
+    const diffWork = filter((execSync('git diff --name-only', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)));
+    const diffCached = filter((execSync('git diff --cached --name-only', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)));
+    if (diffWork.length > 0 || diffCached.length > 0) {
+      console.log('⚠️  追跡済みファイルに未コミットの変更があります:');
+      if (diffWork.length) diffWork.forEach((l) => console.log('  M ' + l));
+      if (diffCached.length) diffCached.forEach((l) => console.log('  S ' + l));
       const answer = await question('\n変更をコミットしますか？ (y/n): ');
       if (answer.toLowerCase() === 'y') {
         const message = await question('コミットメッセージを入力してください: ');
-        execSync(`git add .`, { stdio: 'inherit' });
+        execSync('git add .', { stdio: 'inherit' });
         execSync(`git commit -m "${message}"`, { stdio: 'inherit' });
         execSync('git push origin develop', { stdio: 'inherit' });
       } else {
@@ -93,7 +96,7 @@ async function main() {
       }
     }
   } catch (error) {
-    // エラーは無視（git statusが失敗することは通常ない）
+    // エラーは無視
   }
 
   // developブランチの最新を取得
