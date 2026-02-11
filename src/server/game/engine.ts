@@ -692,7 +692,7 @@ async function tryEmergencyExploreFallback(
 
 /**
  * 履歴から「使用済みタグ」を構築する（統合・包括を反映）
- * ①通常タグ: 出題した tagKey の displayName が属するグループの全 tagKey を使用済みにする
+ * ①通常タグ: 出題した tagKey は回答が — でも使用済み。その displayName が属するグループの全 tagKey を使用済みにする
  * ②まとめ質問: 「いいえ」と答えた場合のみ、そのまとめの summaryDisplayNames に含まれる全 tagKey を使用済みにする
  */
 async function buildUsedTagKeysFromHistory(
@@ -704,8 +704,8 @@ async function buildUsedTagKeysFromHistory(
   for (const q of questionHistory) {
     if (q.summaryDisplayNames?.length && q.answer === 'NO') {
       for (const d of q.summaryDisplayNames) displayNamesToMark.add(d);
-    } else if (q.tagKey && (q.answer === 'YES' || q.answer === 'NO')) {
-      // UNKNOWN / DONT_CARE のときは usedTagKeys を増やさない（情報ゼロで質問資源だけ減らすのを防ぐ）
+    } else if (q.tagKey) {
+      // 一度出した質問は — でも使用済みにする（同じ質問の繰り返しを防ぐ）
       nonSummaryTagKeys.push(q.tagKey);
     }
   }

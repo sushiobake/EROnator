@@ -35,8 +35,8 @@ export interface QuestionHistoryEntry {
   summaryQuestionId?: string;
   /** まとめ質問の displayNames（回答時のグループ判定に使用） */
   summaryDisplayNames?: string[];
-  /** 回答（連続NOで当たりを挟む判定に使用） */
-  answer?: 'YES' | 'NO';
+  /** 回答（YES / NO / PROBABLY_YES / PROBABLY_NO / UNKNOWN / DONT_CARE。表示・リプレイ用にそのまま保存） */
+  answer?: string;
   /** EXPLORE_TAG の出所（まとめ/エロ/抽象/通常）。表示は変えずタグ・バッジ用 */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
 }

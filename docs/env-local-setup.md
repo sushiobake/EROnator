@@ -36,6 +36,10 @@ AFFILIATE_ID=
 ERONATOR_ADMIN=1
 ERONATOR_ADMIN_TOKEN=your-secret-token-here
 
+# 本番の履歴をローカル管理画面で見る場合（オプション）
+# PRODUCTION_APP_URL=https://eronator.vercel.app
+# NEXT_PUBLIC_PRODUCTION_APP_URL=https://eronator.vercel.app
+
 # デバッグ設定（オプション）
 ERONATOR_DEBUG=1
 ERONATOR_DEBUG_TOKEN=devtoken

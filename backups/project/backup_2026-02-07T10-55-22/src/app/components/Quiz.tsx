@@ -1,0 +1,161 @@
+/**
+ * QUIZコンポーネント
+ * 右中央ホワイトボード内で質問＋6択。レイアウトは px。
+ */
+
+'use client';
+
+import { useState } from 'react';
+
+interface QuizProps {
+  question: {
+    kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+    displayText: string;
+  };
+  questionCount: number;
+  onAnswer: (choice: string) => void;
+  onBack?: () => void;
+  canGoBack?: boolean;
+}
+
+const ANSWER_CHOICES = [
+  { value: 'YES', label: 'はい' },
+  { value: 'PROBABLY_YES', label: 'たぶんそう' },
+  { value: 'UNKNOWN', label: 'わからない' },
+  { value: 'PROBABLY_NO', label: 'たぶん違う' },
+  { value: 'NO', label: 'いいえ' },
+  { value: 'DONT_CARE', label: 'どっちでもいい' },
+] as const;
+
+export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: QuizProps) {
+  const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+
+  return (
+    <>
+      <p style={{ fontSize: 15, color: '#6b7280', margin: '0 0 8px 0' }}>
+        あなたが妄想した作品は……
+      </p>
+      <div style={{ display: 'flex', alignItems: 'stretch', marginBottom: 32 }}>
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            height: 56,
+            width: 56,
+            flexShrink: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#334155',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+          }}
+        >
+          <span style={{ fontSize: 24, fontWeight: 'bold', color: '#fff' }}>{questionCount}</span>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: '50%',
+              transform: 'translate(-100%, -50%)',
+              width: 0,
+              height: 0,
+              borderTop: '10px solid transparent',
+              borderBottom: '10px solid transparent',
+              borderRight: '14px solid #334155',
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            minWidth: 260,
+            alignItems: 'center',
+            border: '1px solid #e5e7eb',
+            backgroundColor: '#fff',
+            padding: '16px 24px',
+            borderRadius: 10,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+          }}
+        >
+          <p style={{ fontSize: 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
+            {question.displayText}
+          </p>
+        </div>
+      </div>
+      <div style={{ width: '100%', maxWidth: 320, marginTop: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            borderRadius: 10,
+            border: '1px solid #d1d5db',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+          }}
+        >
+          {ANSWER_CHOICES.map((choice, index) => (
+            <button
+              key={choice.value}
+              onClick={() => onAnswer(choice.value)}
+              onMouseEnter={() => setHoveredChoice(choice.value)}
+              onMouseLeave={() => setHoveredChoice(null)}
+              style={{
+                position: 'relative',
+                width: '100%',
+                padding: '14px 24px',
+                textAlign: 'center',
+                fontSize: 16,
+                fontWeight: 500,
+                cursor: 'pointer',
+                backgroundColor: hoveredChoice === choice.value ? '#eff6ff' : '#fff',
+                color: hoveredChoice === choice.value ? '#111827' : '#374151',
+                border: 'none',
+                borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
+                transition: 'background-color 0.1s, color 0.1s',
+              }}
+            >
+              {choice.label}
+              {hoveredChoice === choice.value && (
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#6b7280' }}>
+                  &gt;&gt;
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      {canGoBack && onBack && (
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={onBack}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              fontSize: 14,
+              cursor: 'pointer',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderRadius: 6,
+              color: '#6b7280',
+              transition: 'background-color 0.2s, color 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f3f4f6';
+              e.currentTarget.style.color = '#374151';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#6b7280';
+            }}
+          >
+            <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
+              <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+            </svg>
+            <span>修正する</span>
+          </button>
+        </div>
+      )}
+    </>
+  );
+}

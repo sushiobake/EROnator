@@ -1,0 +1,281 @@
+/**
+ * 人力タグ付け: 1件取得・保存
+ * GET: 作品詳細（既存S / 追加S / A/B/C / キャラ）
+ * PUT: タグ保存（tagSource=human）、切り替え時に呼ぶ
+ */
+
+import { NextResponse } from 'next/server';
+import { prisma } from '@/server/db/client';
+import { resolveTagKeyForDisplayName } from '@/server/admin/resolveTagByDisplayName';
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
+
+const TAG_RANKS_PATH = 'config/tagRanks.json';
+
+function generateTagKey(displayName: string, tagType: 'DERIVED' | 'STRUCTURAL' = 'DERIVED'): string {
+  const hash = crypto.createHash('sha1').update(displayName, 'utf8').digest('hex').substring(0, 10);
+  return tagType === 'STRUCTURAL' ? `char_${hash}` : `tag_${hash}`;
+}
+
+async function addTagToRanks(displayName: string, rank: 'A' | 'B' | 'C'): Promise<void> {
+  const fullPath = path.join(process.cwd(), TAG_RANKS_PATH);
+  let data: { ranks?: Record<string, string>; [key: string]: unknown } = {};
+  try {
+    const content = await fs.readFile(fullPath, 'utf-8');
+    data = JSON.parse(content);
+  } catch {
+    data = { ranks: {} };
+  }
+  const ranks = data.ranks || {};
+  if (!(displayName in ranks)) {
+    ranks[displayName] = rank;
+    data.ranks = ranks;
+    data.updatedAt = new Date().toISOString();
+    await fs.writeFile(fullPath, JSON.stringify(data, null, 2), 'utf-8');
+  }
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ workId: string }> }
+) {
+  try {
+    const { workId } = await params;
+    const work = await prisma.work.findUnique({
+      where: { workId },
+      include: {
+        workTags: {
+          include: { tag: true },
+        },
+      },
+    });
+    if (!work) {
+      return NextResponse.json({ error: 'Work not found' }, { status: 404 });
+    }
+
+    const officialTags = work.workTags
+      .filter((wt) => wt.tag.tagType === 'OFFICIAL' && wt.derivedSource !== 'additionalS')
+      .map((wt) => ({ displayName: wt.tag.displayName, category: wt.tag.category }));
+    const additionalSTags = work.workTags
+      .filter((wt) => wt.tag.tagType === 'OFFICIAL' && wt.derivedSource === 'additionalS')
+      .map((wt) => ({ displayName: wt.tag.displayName, category: wt.tag.category }));
+    const derivedTags = work.workTags
+      .filter((wt) => wt.tag.tagType === 'DERIVED')
+      .map((wt) => ({ displayName: wt.tag.displayName, category: wt.tag.category }));
+    const structuralTags = work.workTags
+      .filter((wt) => wt.tag.tagType === 'STRUCTURAL')
+      .map((wt) => ({ displayName: wt.tag.displayName, category: wt.tag.category }));
+
+    let tagRanks: Record<string, string> = {};
+    try {
+      const ranksPath = path.join(process.cwd(), TAG_RANKS_PATH);
+      const content = await fs.readFile(ranksPath, 'utf-8');
+      const parsed = JSON.parse(content);
+      tagRanks = parsed.ranks || {};
+    } catch {
+      // ignore
+    }
+    const aTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'A').map((t) => t.displayName);
+    const bTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'B').map((t) => t.displayName);
+    const cTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'C').map((t) => t.displayName);
+
+    const hasDerived = work.workTags.some((wt) => wt.tag.tagType === 'DERIVED');
+    const tagSource =
+      work.tagSource === 'human' ? 'human' : work.tagSource === 'ai' ? 'ai' : hasDerived ? 'ai' : 'untagged';
+    const aiAnalyzed = (work as { aiAnalyzed?: boolean }).aiAnalyzed ?? false;
+    const humanChecked = (work as { humanChecked?: boolean }).humanChecked ?? false;
+
+    return NextResponse.json({
+      success: true,
+      work: {
+        workId: work.workId,
+        title: work.title,
+        authorName: work.authorName,
+        commentText: work.commentText,
+        needsReview: work.needsReview,
+        tagSource,
+        aiAnalyzed,
+        humanChecked,
+        officialTags,
+        additionalSTags,
+        aTags,
+        bTags,
+        cTags,
+        characterTags: structuralTags.map((t) => t.displayName),
+      },
+    });
+  } catch (error) {
+    console.error('[manual-tagging/works/[workId]] GET', error);
+    return NextResponse.json({ error: 'Failed to fetch work' }, { status: 500 });
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ workId: string }> }
+) {
+  try {
+    const { workId } = await params;
+    const body = await request.json();
+    const {
+      needsReview,
+      aiAnalyzed: bodyAiAnalyzed,
+      humanChecked: bodyHumanChecked,
+      additionalSTags = [],
+      aTags = [],
+      bTags = [],
+      cTags = [],
+      characterTags = [],
+    } = body as {
+      needsReview?: boolean;
+      aiAnalyzed?: boolean;
+      humanChecked?: boolean;
+      additionalSTags?: string[];
+      aTags?: string[];
+      bTags?: string[];
+      cTags?: string[];
+      characterTags?: string[];
+    };
+
+    const work = await prisma.work.findUnique({
+      where: { workId },
+      include: { workTags: { include: { tag: true } } },
+    });
+    if (!work) {
+      return NextResponse.json({ error: 'Work not found' }, { status: 404 });
+    }
+
+    const toStrArr = (v: unknown): string[] =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean) : [];
+    const addS = toStrArr(additionalSTags);
+    const aList = toStrArr(aTags);
+    const bList = toStrArr(bTags);
+    const cList = toStrArr(cTags);
+    const charList = toStrArr(characterTags).slice(0, 1);
+
+    const officialNameToKey = new Map(
+      (await prisma.tag.findMany({ where: { tagType: 'OFFICIAL' }, select: { displayName: true, tagKey: true } })).map(
+        (t) => [t.displayName.toLowerCase(), t.tagKey]
+      )
+    );
+
+    await prisma.$transaction(async (tx) => {
+      const existingWorkTags = await tx.workTag.findMany({
+        where: { workId },
+        include: { tag: true },
+      });
+      const toDelete: string[] = [];
+      for (const wt of existingWorkTags) {
+        if (wt.tag.tagType === 'DERIVED') toDelete.push(wt.tagKey);
+        else if (wt.tag.tagType === 'OFFICIAL' && wt.derivedSource === 'additionalS') toDelete.push(wt.tagKey);
+        else if (wt.tag.tagType === 'STRUCTURAL') toDelete.push(wt.tagKey);
+      }
+      if (toDelete.length > 0) {
+        await tx.workTag.deleteMany({
+          where: { workId, tagKey: { in: toDelete } },
+        });
+      }
+
+      for (const displayName of addS) {
+        const tagKey = officialNameToKey.get(displayName.trim().toLowerCase());
+        if (!tagKey) continue;
+        await tx.workTag.upsert({
+          where: { workId_tagKey: { workId, tagKey } },
+          create: {
+            workId,
+            tagKey,
+            derivedSource: 'additionalS',
+            derivedConfidence: 0.9,
+          },
+          update: { derivedSource: 'additionalS', derivedConfidence: 0.9 },
+        });
+      }
+
+      const defaultQuestionTemplate = (name: string) => `「${name.trim()}」が登場しますか？`;
+
+      const upsertDerived = async (displayName: string, rank: 'A' | 'B' | 'C') => {
+        const trimmed = displayName.trim();
+        let tagKey = await resolveTagKeyForDisplayName(tx as Parameters<typeof resolveTagKeyForDisplayName>[0], displayName);
+        if (!tagKey) {
+          tagKey = generateTagKey(displayName, 'DERIVED');
+          await tx.tag.create({
+            data: {
+              tagKey,
+              displayName: trimmed,
+              tagType: 'DERIVED',
+              category: 'その他',
+              questionTemplate: defaultQuestionTemplate(displayName),
+            },
+          });
+          await addTagToRanks(trimmed, rank);
+        } else {
+          // 既存タグでも questionTemplate が未設定なら設定（タグリストに表示されるようにする）
+          await tx.tag.updateMany({
+            where: { tagKey, questionTemplate: null },
+            data: { questionTemplate: defaultQuestionTemplate(displayName) },
+          });
+        }
+        await tx.workTag.upsert({
+          where: { workId_tagKey: { workId, tagKey } },
+          create: {
+            workId,
+            tagKey,
+            derivedConfidence: 0.9,
+            derivedSource: 'manual',
+          },
+          update: { derivedConfidence: 0.9, derivedSource: 'manual' },
+        });
+      };
+      for (const name of aList) await upsertDerived(name, 'A');
+      for (const name of bList) await upsertDerived(name, 'B');
+      for (const name of cList) await upsertDerived(name, 'C');
+
+      if (charList.length > 0) {
+        const charName = charList[0];
+        let charTagKey = await tx.tag.findFirst({
+          where: { displayName: charName, tagType: 'STRUCTURAL' },
+          select: { tagKey: true },
+        });
+        if (!charTagKey) {
+          charTagKey = { tagKey: generateTagKey(charName, 'STRUCTURAL') };
+          await tx.tag.create({
+            data: {
+              tagKey: charTagKey.tagKey,
+              displayName: charName,
+              tagType: 'STRUCTURAL',
+              category: 'キャラクター',
+              questionTemplate: `「${charName}」が登場しますか？`,
+            },
+          });
+        } else {
+          await tx.tag.updateMany({
+            where: { tagKey: charTagKey.tagKey, questionTemplate: null },
+            data: { questionTemplate: `「${charName}」が登場しますか？` },
+          });
+        }
+        await tx.workTag.upsert({
+          where: { workId_tagKey: { workId, tagKey: charTagKey.tagKey } },
+          create: { workId, tagKey: charTagKey.tagKey, derivedSource: 'manual', derivedConfidence: 0.9 },
+          update: { derivedSource: 'manual', derivedConfidence: 0.9 },
+        });
+      }
+
+      const humanChecked = typeof bodyHumanChecked === 'boolean' ? bodyHumanChecked : true;
+      await tx.work.update({
+        where: { workId },
+        data: {
+          tagSource: humanChecked ? 'human' : 'ai',
+          humanChecked,
+          ...(typeof bodyAiAnalyzed === 'boolean' && { aiAnalyzed: bodyAiAnalyzed }),
+          ...(typeof needsReview === 'boolean' && { needsReview }),
+        } as { tagSource: string; humanChecked: boolean; aiAnalyzed?: boolean; needsReview?: boolean },
+      });
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[manual-tagging/works/[workId]] PUT', error);
+    return NextResponse.json({ error: 'Failed to save tags' }, { status: 500 });
+  }
+}

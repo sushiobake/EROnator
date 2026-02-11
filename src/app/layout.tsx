@@ -3,7 +3,7 @@ import { SITE_TITLE } from '@/config/app';
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
-  description: 'Akinator風の同人作品推測ゲーム',
+  description: '質問に答えて同人作品を推理する',
 };
 
 export default function RootLayout({

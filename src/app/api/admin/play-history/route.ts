@@ -17,6 +17,7 @@ export interface PlayHistoryListResponse {
     questionHistory: unknown;
     aiGateChoice: string | null;
     resultWorkId: string | null;
+    resultWorkTitle: string | null;
     submittedTitleText: string | null;
     createdAt: string;
   }>;
@@ -50,6 +51,16 @@ export async function GET(request: NextRequest) {
       prisma.playHistory.count({ where }),
     ]);
 
+    const workIds = [...new Set(items.map((r) => r.resultWorkId).filter(Boolean) as string[])];
+    const workTitles =
+      workIds.length > 0
+        ? await prisma.work.findMany({
+            where: { workId: { in: workIds } },
+            select: { workId: true, title: true },
+          })
+        : [];
+    const titleByWorkId = Object.fromEntries(workTitles.map((w) => [w.workId, w.title]));
+
     return NextResponse.json({
       success: true,
       items: items.map((row) => ({
@@ -66,6 +77,7 @@ export async function GET(request: NextRequest) {
         })(),
         aiGateChoice: row.aiGateChoice,
         resultWorkId: row.resultWorkId,
+        resultWorkTitle: row.resultWorkId ? (titleByWorkId[row.resultWorkId] ?? null) : null,
         submittedTitleText: row.submittedTitleText,
         createdAt: row.createdAt.toISOString(),
       })),
