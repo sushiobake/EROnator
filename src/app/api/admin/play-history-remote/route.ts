@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     const base = targetUrl.replace(/\/$/, '');
 
     if (action === 'delete') {
-      const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string') : [];
+      const ids = Array.isArray(body.ids) ? body.ids.filter((id: unknown): id is string => typeof id === 'string') : [];
       if (ids.length === 0) {
         return NextResponse.json(
           { success: false, error: 'ids は空でない配列を指定してください' },
