@@ -1,0 +1,44 @@
+/**
+ * 再利用可能な「もう１度妄想する」ボタンコンポーネント
+ * どの結果画面でも使える
+ */
+
+'use client';
+
+import { useMediaQuery } from './useMediaQuery';
+
+interface RestartButtonProps {
+  onRestart: () => void;
+  label?: string;
+}
+
+export function RestartButton({ onRestart, label = 'もう１度妄想する' }: RestartButtonProps) {
+  const isMobile = useMediaQuery(768);
+  return (
+    <div style={{ marginTop: isMobile ? 20 : 32, textAlign: 'center' }}>
+      <button
+        onClick={onRestart}
+        style={{
+          padding: isMobile ? '12px 24px' : '14px 32px',
+          minHeight: 48,
+          fontSize: isMobile ? 14 : 16,
+          cursor: 'pointer',
+          backgroundColor: '#0070f3',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          fontWeight: 'bold',
+          transition: 'background-color 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = '#0051cc';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = '#0070f3';
+        }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}

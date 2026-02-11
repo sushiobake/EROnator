@@ -1,0 +1,43 @@
+{
+  "version": "v1.5",
+  "confirm": {
+    "revealThreshold": 0.7,
+    "confidenceConfirmBand": [
+      0.25,
+      0.7
+    ],
+    "qForcedIndices": [
+      6,
+      10,
+      17
+    ],
+    "softConfidenceMin": 0.25,
+    "hardConfidenceMin": 0.6
+  },
+  "algo": {
+    "beta": 1.1,
+    "alpha": 0.02,
+    "derivedConfidenceThreshold": 0.7,
+    "revealPenalty": 0.6
+  },
+  "flow": {
+    "maxQuestions": 40,
+    "maxRevealMisses": 3,
+    "failListN": 5,
+    "effectiveConfirmThresholdFormula": "A",
+    "effectiveConfirmThresholdParams": {
+      "min": 5,
+      "max": 200,
+      "divisor": 100
+    }
+  },
+  "dataQuality": {
+    "minCoverageMode": "WORKS",
+    "minCoverageRatio": 0.05,
+    "minCoverageWorks": 1,
+    "maxCoverageRatio": 0.95
+  },
+  "popularity": {
+    "playBonusOnSuccess": 0
+  }
+}

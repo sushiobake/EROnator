@@ -117,11 +117,10 @@ export async function POST(request: NextRequest) {
     }
     const newQuestionCount = session.questionCount + 1;
     
-    // 直近の質問に回答を付与（連続NOで当たりを挟む判定に使用）
-    const answerValue: 'YES' | 'NO' | undefined = choice === 'YES' ? 'YES' : choice === 'NO' ? 'NO' : undefined;
-    const historyWithAnswer = session.questionHistory.length > 0 && answerValue != null
+    // 直近の質問に回答を付与（表示・リプレイ用に choice をそのまま保存。YES/NO/PROBABLY_YES 等）
+    const historyWithAnswer = session.questionHistory.length > 0 && choice != null
       ? session.questionHistory.map((entry, i) =>
-          i === session.questionHistory.length - 1 ? { ...entry, answer: answerValue } : entry
+          i === session.questionHistory.length - 1 ? { ...entry, answer: choice as string } : entry
         )
       : session.questionHistory;
     

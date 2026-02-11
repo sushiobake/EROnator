@@ -58,6 +58,19 @@ type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | '
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
+/** 履歴詳細の回答表示: はい→◎ たぶんそう→〇 たぶんちがう→△ いいえ→× わからない→— どちらでもいい→※ */
+function historyAnswerSymbol(a: string | undefined): string {
+  if (a === 'YES') return '◎';
+  if (a === 'PROBABLY_YES') return '〇';
+  if (a === 'PROBABLY_NO') return '△';
+  if (a === 'NO') return '×';
+  if (a === 'UNKNOWN') return '—';
+  if (a === 'DONT_CARE') return '※';
+  if (a === 'CORRECT') return '当たり';
+  if (a === 'WRONG') return '不正解';
+  return a ?? '—';
+}
+
 export default function AdminTagsPage() {
   const [activeTab, setActiveTab] = useState<TabType>('works');
   const [adminToken, setAdminToken] = useState<string>('');
@@ -231,6 +244,7 @@ export default function AdminTagsPage() {
     questionHistory: unknown;
     aiGateChoice: string | null;
     resultWorkId: string | null;
+    resultWorkTitle?: string | null;
     submittedTitleText: string | null;
     createdAt: string;
   }>>([]);
@@ -238,6 +252,16 @@ export default function AdminTagsPage() {
   const [historyPage, setHistoryPage] = useState(1);
   const [historyLimit] = useState(50);
   const [historyOutcome, setHistoryOutcome] = useState<string>('');
+  const [historyUseRemote, setHistoryUseRemote] = useState(true);
+  const [historyDetailRowId, setHistoryDetailRowId] = useState<string | null>(null);
+  const [historySelectedIds, setHistorySelectedIds] = useState<Set<string>>(new Set());
+  const [historyDeleteLoading, setHistoryDeleteLoading] = useState(false);
+  const [historyReplayCache, setHistoryReplayCache] = useState<Record<string, Array<{ qIndex: number; kind: string; displayText?: string; answer?: string; exploreTagKind?: string; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number; wasNoisy: boolean; missType?: 'clear' | 'weak'; revealWorkId?: string; revealWorkTitle?: string; revealResult?: 'SUCCESS' | 'MISS' }>>>({});
+  const [historyReplayLoading, setHistoryReplayLoading] = useState(false);
+  const [productionHistoryUrl, setProductionHistoryUrl] = useState(
+    () => (typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_PRODUCTION_APP_URL || '') : '')
+  );
+  const [productionHistoryToken, setProductionHistoryToken] = useState('');
 
   // 初回読み込み時にlocalStorageからトークンを取得し、自動でDBを読み込む
   useEffect(() => {
@@ -1258,41 +1282,158 @@ export default function AdminTagsPage() {
   };
 
   const fetchPlayHistory = async (page: number = 1) => {
-    if (!adminToken) return;
+    const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
+    if (!token) return;
+    if (historyUseRemote && !productionHistoryUrl.trim()) {
+      alert('本番の履歴を表示するには「本番URL」を入力するか、.env.local に NEXT_PUBLIC_PRODUCTION_APP_URL を設定してください。');
+      return;
+    }
     setHistoryLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set('page', String(page));
-      params.set('limit', String(historyLimit));
-      if (historyOutcome) params.set('outcome', historyOutcome);
-      const response = await fetch(`/api/admin/play-history?${params.toString()}`, {
-        headers: { 'x-eronator-admin-token': adminToken },
-      });
-      if (!response.ok) {
-        if (response.status === 403) throw new Error('アクセスが拒否されました');
-        throw new Error(`取得に失敗しました (${response.status})`);
-      }
-      const data = await response.json();
-      if (data.success && Array.isArray(data.items)) {
-        setHistoryItems(data.items);
-        setHistoryTotal(data.total ?? 0);
-        setHistoryPage(page);
+      if (historyUseRemote) {
+        const response = await fetch('/api/admin/play-history-remote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({
+            targetUrl: productionHistoryUrl.trim(),
+            token: productionHistoryToken || adminToken,
+            page,
+            limit: historyLimit,
+            outcome: historyOutcome || undefined,
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || `取得に失敗しました (${response.status})`);
+        }
+        const data = await response.json();
+        if (data.success && Array.isArray(data.items)) {
+          setHistoryItems(data.items);
+          setHistoryTotal(data.total ?? 0);
+          setHistoryPage(page);
+        }
+      } else {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('limit', String(historyLimit));
+        if (historyOutcome) params.set('outcome', historyOutcome);
+        const response = await fetch(`/api/admin/play-history?${params.toString()}`, {
+          headers: { 'x-eronator-admin-token': adminToken },
+        });
+        if (!response.ok) {
+          if (response.status === 403) throw new Error('アクセスが拒否されました');
+          throw new Error(`取得に失敗しました (${response.status})`);
+        }
+        const data = await response.json();
+        if (data.success && Array.isArray(data.items)) {
+          setHistoryItems(data.items);
+          setHistoryTotal(data.total ?? 0);
+          setHistoryPage(page);
+        }
       }
     } catch (e) {
       console.error('[play-history]', e);
       setHistoryItems([]);
       setHistoryTotal(0);
-      if (adminToken) alert(e instanceof Error ? e.message : '履歴の取得に失敗しました');
+      alert(e instanceof Error ? e.message : '履歴の取得に失敗しました');
     } finally {
       setHistoryLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'history' && adminToken) {
-      fetchPlayHistory(1);
+  const handleHistoryDeleteSelected = async () => {
+    const ids = Array.from(historySelectedIds);
+    if (ids.length === 0) {
+      alert('削除する履歴を選択してください。');
+      return;
     }
-  }, [activeTab, adminToken, historyOutcome]);
+    if (!confirm(`選択した ${ids.length} 件の履歴を削除します。よろしいですか？`)) return;
+    const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
+    if (!token) return;
+    if (historyUseRemote && !productionHistoryUrl.trim()) {
+      alert('本番の履歴を削除するには「本番URL」を入力してください。');
+      return;
+    }
+    setHistoryDeleteLoading(true);
+    try {
+      if (historyUseRemote) {
+        const res = await fetch('/api/admin/play-history-remote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({
+            action: 'delete',
+            targetUrl: productionHistoryUrl.trim(),
+            token: productionHistoryToken || adminToken,
+            ids,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '削除に失敗しました');
+        setHistorySelectedIds(new Set());
+        await fetchPlayHistory(historyPage);
+        alert(`${data.deleted ?? ids.length} 件を削除しました。`);
+      } else {
+        const res = await fetch('/api/admin/play-history/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({ ids }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '削除に失敗しました');
+        setHistorySelectedIds(new Set());
+        await fetchPlayHistory(historyPage);
+        alert(`${data.deleted ?? ids.length} 件を削除しました。`);
+      }
+    } catch (e) {
+      console.error('[play-history delete]', e);
+      alert(e instanceof Error ? e.message : '削除に失敗しました');
+    } finally {
+      setHistoryDeleteLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
+    if (historyUseRemote && !productionHistoryUrl.trim()) return;
+    if (token) fetchPlayHistory(1);
+  }, [activeTab, adminToken, historyOutcome, historyUseRemote, productionHistoryUrl]);
+
+  // 詳細モーダル用: 表示時にリプレイAPIで p値・確度 を再計算
+  useEffect(() => {
+    if (!historyDetailRowId || !adminToken) return;
+    const row = historyItems.find((r) => r.id === historyDetailRowId);
+    if (!row || historyReplayCache[row.id] !== undefined) return;
+
+    let cancelled = false;
+    setHistoryReplayLoading(true);
+    fetch('/api/admin/play-history-replay', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-eronator-admin-token': adminToken,
+      },
+      body: JSON.stringify({
+        questionHistory: Array.isArray(row.questionHistory) ? row.questionHistory : [],
+        aiGateChoice: row.aiGateChoice ?? null,
+        outcome: row.outcome ?? null,
+        resultWorkId: row.outcome === 'SUCCESS' && row.resultWorkId ? row.resultWorkId : null,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.success && Array.isArray(data.steps)) {
+          setHistoryReplayCache((prev) => ({ ...prev, [row.id]: data.steps }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setHistoryReplayLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyDetailRowId, adminToken, historyItems, historyReplayCache]);
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
@@ -4224,6 +4365,43 @@ export default function AdminTagsPage() {
           <p style={{ color: '#666', marginBottom: '1rem' }}>
             1プレイ＝1レコード。質問列・回答・結果・時刻は本番で保存されています。離脱・失敗分析やタグ修正の参照用です。
           </p>
+          <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0f4ff', borderRadius: '8px', border: '1px solid #c5d4f0' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <input
+                type="checkbox"
+                checked={historyUseRemote}
+                onChange={(e) => setHistoryUseRemote(e.target.checked)}
+              />
+              <strong>本番の履歴を表示する</strong>（ローカルから本番DBの履歴を取得）
+            </label>
+            {historyUseRemote && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <label>
+                  本番URL:
+                  <input
+                    type="url"
+                    value={productionHistoryUrl}
+                    onChange={(e) => setProductionHistoryUrl(e.target.value)}
+                    placeholder="https://eronator.vercel.app"
+                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 320px)' }}
+                  />
+                </label>
+                <label>
+                  本番用管理トークン:（未入力なら上の「管理トークン」を使用）
+                  <input
+                    type="password"
+                    value={productionHistoryToken}
+                    onChange={(e) => setProductionHistoryToken(e.target.value)}
+                    placeholder="本番の ERONATOR_ADMIN_TOKEN"
+                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 240px)' }}
+                  />
+                </label>
+                <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
+                  .env.local に PRODUCTION_APP_URL を設定すると、上記URLは許可リストでチェックされます。本番環境ではこの取得は無効です。
+                </p>
+              </div>
+            )}
+          </div>
           <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <label>
               結果で絞る:
@@ -4263,23 +4441,64 @@ export default function AdminTagsPage() {
           ) : historyItems.length === 0 ? (
             <p style={{ color: '#666' }}>履歴がありません。</p>
           ) : (
+            <>
+            <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={handleHistoryDeleteSelected}
+                disabled={historyDeleteLoading || historySelectedIds.size === 0}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  backgroundColor: historySelectedIds.size === 0 ? '#ccc' : '#c62828',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: historySelectedIds.size === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                }}
+              >
+                {historyDeleteLoading ? '削除中...' : `選択した履歴を削除（${historySelectedIds.size}件）`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistorySelectedIds(historyItems.length > 0 && historySelectedIds.size === historyItems.length ? new Set() : new Set(historyItems.map((r) => r.id)))}
+                style={{ padding: '0.35rem 0.6rem', fontSize: '0.85rem', background: '#eee', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                {historyItems.length > 0 && historySelectedIds.size === historyItems.length ? '選択解除' : '全選択'}
+              </button>
+              <span style={{ fontSize: '0.85rem', color: '#666' }}>
+                {historyUseRemote ? '表示中の本番履歴を削除します。' : 'ローカルの履歴を削除します。'}
+              </span>
+            </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
-                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>日時</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>結果</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right' }}>質問数</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>正解/作品ID</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>リスト外入力</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>sessionId</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>選択</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }}>結果</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right', width: '1%' }}>質問数</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left' }}>作品</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', whiteSpace: 'nowrap', width: '1%' }}>日時</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="おすすめから購入">★購入</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="リピート">★リピ</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="SNS投稿">★SNS</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>詳細</th>
                   </tr>
                 </thead>
                 <tbody>
                   {historyItems.map((row) => (
                     <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
-                        {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '-'}
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={historySelectedIds.has(row.id)}
+                          onChange={() => setHistorySelectedIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(row.id)) next.delete(row.id);
+                            else next.add(row.id);
+                            return next;
+                          })}
+                        />
                       </td>
                       <td style={{ padding: '0.5rem' }}>
                         <span style={{
@@ -4290,20 +4509,177 @@ export default function AdminTagsPage() {
                         </span>
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right' }}>{row.questionCount}</td>
-                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                        {row.resultWorkId ?? '-'}
+                      <td style={{ padding: '0.5rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.resultWorkTitle ?? row.submittedTitleText ?? undefined}>
+                        {row.resultWorkId != null ? (row.resultWorkTitle ?? '—') : (row.submittedTitleText ?? '—')}
                       </td>
-                      <td style={{ padding: '0.5rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {row.submittedTitleText ?? '-'}
+                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                        {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
                       </td>
-                      <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.8rem' }} title={row.sessionId}>
-                        {row.sessionId.slice(0, 12)}…
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryDetailRowId(row.id)}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            fontSize: '0.85rem',
+                            backgroundColor: '#6b21a8',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          詳細
+                        </button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            {historyDetailRowId != null && (() => {
+              const row = historyItems.find((r) => r.id === historyDetailRowId);
+              const replayed = row ? historyReplayCache[row.id] : undefined;
+              const steps = replayed ?? (Array.isArray(row?.questionHistory) ? row!.questionHistory as Array<{ qIndex?: number; kind?: string; displayText?: string; answer?: string; exploreTagKind?: string; wasNoisy?: boolean; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number }> : []);
+              const hasReplay = replayed != null;
+              return (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(0,0,0,0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10000,
+                  }}
+                  onClick={() => setHistoryDetailRowId(null)}
+                >
+                  <div
+                    style={{
+                      background: '#fff',
+                      borderRadius: '8px',
+                      width: '95vw',
+                      maxWidth: '1400px',
+                      height: '90vh',
+                      maxHeight: '900px',
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ fontSize: '1.1rem' }}>過程（質問・回答の流れ）</strong>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryDetailRowId(null)}
+                        style={{ padding: '0.4rem 1rem', background: '#666', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
+                      >
+                        閉じる
+                      </button>
+                    </div>
+                    <div style={{ overflow: 'auto', padding: '1.25rem', flex: 1, minHeight: 0 }}>
+                      {historyReplayLoading && !hasReplay ? (
+                        <p style={{ color: '#666', fontSize: '1rem' }}>p値・確度を計算中...</p>
+                      ) : steps.length === 0 ? (
+                        <p style={{ color: '#666', fontSize: '1rem' }}>記録がありません。</p>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1rem' }}>
+                          <thead>
+                            <tr style={{ background: '#f0f0f0' }}>
+                              <th style={{ padding: '0.6rem', textAlign: 'left' }}>Q#</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'left' }}>質問</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'center' }}>回答</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'center' }}>ミス</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'right' }}>p値</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'right' }}>確度</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {steps.map((step, i) => {
+                              const isReveal = step.kind === 'REVEAL';
+                              const revealSuccess = (step as { revealResult?: string }).revealResult === 'SUCCESS';
+                              const revealMiss = (step as { revealResult?: string }).revealResult === 'MISS';
+                              return (
+                              <tr
+                                key={i}
+                                style={{
+                                  borderBottom: '1px solid #eee',
+                                  background: isReveal ? (revealSuccess ? '#c8e6c9' : revealMiss ? '#ffcdd2' : '#fff9c4') : undefined,
+                                }}
+                              >
+                                <td style={{ padding: '0.6rem' }}>{step.qIndex ?? i + 1}</td>
+                                <td style={{ padding: '0.6rem' }}>
+                                  <span style={{
+                                    display: 'inline-block',
+                                    padding: '0.25rem 0.5rem',
+                                    background: step.kind === 'EXPLORE_TAG' ? RANK_BG.S : step.kind === 'SOFT_CONFIRM' ? RANK_BG.B : step.kind === 'HARD_CONFIRM' ? RANK_BG.X : step.kind === 'REVEAL' ? '#ffeb3b' : '#e0e0e0',
+                                    color: step.kind === 'EXPLORE_TAG' ? RANK_TEXT.S : step.kind === 'SOFT_CONFIRM' ? RANK_TEXT.B : step.kind === 'HARD_CONFIRM' ? RANK_TEXT.X : undefined,
+                                    borderRadius: '4px',
+                                    fontSize: '0.9rem',
+                                    marginRight: '0.5rem',
+                                    fontWeight: isReveal ? 'bold' : 'normal',
+                                  }}>
+                                    {step.kind ?? '—'}
+                                    {step.exploreTagKind && (
+                                      <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                        {EXPLORE_TAG_KIND_LABEL[step.exploreTagKind] ?? step.exploreTagKind}
+                                      </span>
+                                    )}
+                                  </span>
+                                  {step.displayText ?? '—'}
+                                  {isReveal && revealMiss && (
+                                    <span style={{ marginLeft: '0.5rem', color: '#c62828', fontWeight: 'bold' }}>← 不正解</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                                  <span style={{
+                                    color: step.answer === 'YES' || step.answer === 'CORRECT' ? '#2e7d32' : step.answer === 'NO' || step.answer === 'WRONG' ? '#c62828' : '#666',
+                                    fontWeight: 'bold',
+                                  }}>
+                                    {historyAnswerSymbol(step.answer)}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                                  {(step as { missType?: 'clear' | 'weak' }).missType === 'clear' ? (
+                                    <span style={{ color: '#c62828', fontWeight: 'bold' }}>!</span>
+                                  ) : (step as { missType?: 'clear' | 'weak' }).missType === 'weak' ? (
+                                    <span style={{ color: '#f57c00' }}>△</span>
+                                  ) : step.wasNoisy != null && step.wasNoisy ? (
+                                    <span style={{ color: '#ff6600' }}>!</span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td style={{ padding: '0.6rem', textAlign: 'right' }}>
+                                  {step.tagCoverage != null ? `${(step.tagCoverage * 100).toFixed(0)}%` : '—'}
+                                </td>
+                                <td style={{ padding: '0.6rem', textAlign: 'right' }}>
+                                  {step.confidenceBefore != null
+                                    ? step.confidenceAfter != null
+                                      ? `${(step.confidenceBefore * 100).toFixed(1)}% → ${(step.confidenceAfter * 100).toFixed(1)}%`
+                                      : `${(step.confidenceBefore * 100).toFixed(1)}%`
+                                    : step.confidenceAfter != null
+                                      ? `${(step.confidenceAfter * 100).toFixed(1)}%`
+                                      : '—'}
+                                </td>
+                              </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            </>
           )}
           {historyTotal > historyLimit && (
             <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
