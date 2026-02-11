@@ -140,9 +140,9 @@ async function main() {
   console.log('📥 mainブランチの最新を取得中...');
   execSync('git pull origin main', { stdio: 'inherit' });
 
-  // developブランチをマージ
+  // developブランチをマージ（--no-edit でエディタを開かずマージメッセージを使用）
   console.log('🔄 developブランチをマージ中...');
-  execSync('git merge develop', { stdio: 'inherit' });
+  execSync('git merge develop --no-edit', { stdio: 'inherit' });
 
   // mainブランチにプッシュ
   console.log('🚀 本番環境にデプロイ中...');
