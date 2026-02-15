@@ -62,7 +62,7 @@ export default function ContactPage() {
   return (
     <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
       <div style={{ marginBottom: '2rem' }}>
-        <Link href="/" style={{ color: '#0070f3', textDecoration: 'underline' }}>
+        <Link href="/" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
           ← トップページに戻る
         </Link>
       </div>
@@ -70,7 +70,7 @@ export default function ContactPage() {
       <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold' }}>
         お問い合わせ
       </h1>
-      <p style={{ marginBottom: '2rem', color: '#666' }}>
+      <p style={{ marginBottom: '2rem', color: 'var(--color-text-muted)' }}>
         ご質問やご意見がございましたら、以下のフォームよりお問い合わせください。
       </p>
 
@@ -214,7 +214,7 @@ export default function ContactPage() {
             padding: '0.75rem',
             fontSize: '1rem',
             fontWeight: 'bold',
-            backgroundColor: isSubmitting ? '#ccc' : '#0070f3',
+            backgroundColor: isSubmitting ? '#ccc' : 'var(--color-primary)',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
@@ -223,12 +223,12 @@ export default function ContactPage() {
           }}
           onMouseEnter={(e) => {
             if (!isSubmitting) {
-              e.currentTarget.style.backgroundColor = '#0051cc';
+              e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
             }
           }}
           onMouseLeave={(e) => {
             if (!isSubmitting) {
-              e.currentTarget.style.backgroundColor = '#0070f3';
+              e.currentTarget.style.backgroundColor = 'var(--color-primary)';
             }
           }}
         >
@@ -236,7 +236,7 @@ export default function ContactPage() {
         </button>
       </form>
 
-      <p style={{ marginTop: '2rem', fontSize: '0.875rem', color: '#9ca3af' }}>
+      <p style={{ marginTop: '2rem', fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
         {APP_VERSION}
       </p>
     </div>

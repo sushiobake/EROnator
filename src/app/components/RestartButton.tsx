@@ -25,18 +25,18 @@ export function RestartButton({ onRestart, label = 'もう１度妄想する', i
           minHeight: 48,
           fontSize: isMobile ? 14 : 16,
           cursor: 'pointer',
-          backgroundColor: '#0070f3',
+          backgroundColor: 'var(--color-primary)',
           color: 'white',
           border: 'none',
-          borderRadius: '6px',
+          borderRadius: 'var(--radius-sm)',
           fontWeight: 'bold',
           transition: 'background-color 0.2s',
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#0051cc';
+          e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = '#0070f3';
+          e.currentTarget.style.backgroundColor = 'var(--color-primary)';
         }}
       >
         {label}

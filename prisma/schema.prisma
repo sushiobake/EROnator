@@ -36,6 +36,12 @@ model Work {
   tagSource           String?  // "human" | "ai" | "untagged" 等
   aiAnalyzed          Boolean?
   humanChecked        Boolean?
+  aiChecked           Boolean?
+  needsHumanCheck     Boolean?
+  checkQueueAt        DateTime?
+  manualTaggingFolder String?
+  taggedAt            DateTime? // タグ済みフォルダに入れた日時（一覧の整列・整合用）
+  lastCheckTagChanges String?  // AIチェック時の追加推奨・削除推奨 JSON: { added: string[], removed: string[] }
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

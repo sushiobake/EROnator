@@ -1,59 +1,34 @@
 /**
- * 人力タグ付け: 各タブの作品数を取得
+ * 人力タグ付け: 各フォルダの作品数（1作品＝1フォルダ）
  * GET /api/admin/manual-tagging/works/counts
+ * SQLite のときは better-sqlite3 で dev.db を直接読んで確実に反映。それ以外は Prisma raw SQL。
  */
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
-import type { Prisma } from '@prisma/client';
+import { isSqlite, getCountsFromSqlite } from '@/server/db/sqlite-direct';
 
-function buildWhere(filter: string): Prisma.WorkWhereInput {
-  const baseWhere = { commentText: { not: null } };
-
-  if (filter === 'needs_review') {
-    return { ...baseWhere, needsReview: true };
-  }
-
-  const notFlagged = { ...baseWhere, needsReview: false };
-
-  if (filter === 'checked') {
-    return { ...notFlagged, OR: [{ humanChecked: true }, { tagSource: 'human' }] };
-  }
-  if (filter === 'pending') {
-    return {
-      ...notFlagged,
-      aiAnalyzed: true,
-      humanChecked: false,
-      NOT: { tagSource: 'human' },
-    };
-  }
-  if (filter === 'untagged') {
-    return {
-      ...notFlagged,
-      humanChecked: false,
-      NOT: { workTags: { some: { tag: { tagType: 'DERIVED' } } } },
-    };
-  }
-  if (filter === 'legacy_ai') {
-    return {
-      ...notFlagged,
-      workTags: { some: { tag: { tagType: 'DERIVED' } } },
-      aiAnalyzed: false,
-      humanChecked: false,
-    };
-  }
-  return notFlagged;
-}
+const FOLDERS = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const;
 
 export async function GET() {
   try {
-    const filters = ['checked', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const;
-    const counts = await Promise.all(
-      filters.map((f) => prisma.work.count({ where: buildWhere(f) }))
+    if (isSqlite()) {
+      const counts = getCountsFromSqlite();
+      return NextResponse.json({ success: true, counts });
+    }
+
+    const countValues = await Promise.all(
+      FOLDERS.map(async (folder) => {
+        const rows = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
+          'SELECT COUNT(*) as count FROM Work WHERE commentText IS NOT NULL AND manualTaggingFolder = $1',
+          folder
+        );
+        return rows[0]?.count ?? 0;
+      })
     );
     const result: Record<string, number> = {};
-    filters.forEach((f, i) => {
-      result[f] = counts[i];
+    FOLDERS.forEach((f, i) => {
+      result[f] = countValues[i];
     });
     return NextResponse.json({ success: true, counts: result });
   } catch (error) {

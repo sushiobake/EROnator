@@ -1,11 +1,25 @@
 /**
  * dev サーバーを単一プロセスに固定するガード付き起動スクリプト
  * ロックファイルで二重起動を検知し、即終了＆メッセージ表示
+ * 起動前に .env / .env.local を読んでスキーマを切り替え、Prisma を SQLite 用に生成する
  */
 
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+// DATABASE_URL を .env.local / .env から読む（build と同一 DB にするため）
+const root = process.cwd();
+try {
+  require('dotenv').config({ path: path.join(root, '.env') });
+  require('dotenv').config({ path: path.join(root, '.env.local'), override: true });
+} catch (_) {}
+// スキーマを DB に合わせて切り替え（file: → SQLite、postgres → Postgres）
+try {
+  require('./auto-switch-schema.js');
+} catch (e) {
+  console.warn('Warning: auto-switch-schema failed', e.message);
+}
 
 const lockFile = path.join(process.cwd(), '.dev-lock');
 const devCommand = 'next';

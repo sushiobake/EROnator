@@ -24,7 +24,7 @@ export function AiGate({ onSelect }: AiGateProps) {
 
   return (
     <>
-      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
       <div style={{ marginBottom: isMobile ? 20 : 32 }}>
@@ -40,7 +40,7 @@ export function AiGate({ onSelect }: AiGateProps) {
             boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
           }}
         >
-          <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 500, color: '#1f2937', margin: 0 }}>
+          <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 500, color: 'var(--color-text)', margin: 0 }}>
             AI生成作品ではない？
           </p>
         </div>
@@ -52,8 +52,8 @@ export function AiGate({ onSelect }: AiGateProps) {
             flexDirection: 'column',
             overflow: 'hidden',
             borderRadius: 10,
-            border: '1px solid #d1d5db',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+            border: '1px solid var(--color-border)',
+            boxShadow: 'var(--shadow-md)',
           }}
         >
           {AI_GATE_OPTIONS.map(({ value, label }, index) => (
@@ -71,8 +71,8 @@ export function AiGate({ onSelect }: AiGateProps) {
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
-                backgroundColor: hoveredChoice === value ? '#eff6ff' : '#fff',
-                color: hoveredChoice === value ? '#111827' : '#374151',
+                backgroundColor: hoveredChoice === value ? '#eff6ff' : 'var(--color-surface)',
+                color: hoveredChoice === value ? 'var(--color-text)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
                 transition: 'background-color 0.1s, color 0.1s',
@@ -80,7 +80,7 @@ export function AiGate({ onSelect }: AiGateProps) {
             >
               {label}
               {hoveredChoice === value && (
-                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#6b7280' }}>
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--color-text-muted)' }}>
                   &gt;&gt;
                 </span>
               )}

@@ -51,8 +51,31 @@
 
 ---
 
+## 人力タグ付け「フォルダ」を本番に入れたあと
+
+- 本番DBに `manualTaggingFolder` カラムを追加し、既存データをフォルダに振り分ける必要がある。
+- 手順は **`docs/manual-tagging-folder-deploy.md`** を参照。
+
+---
+
+## Work テーブル追加カラム（管理・チェック用）※未実施の場合のみ
+
+`schema.postgres.prisma` を SQLite と揃えたあと、本番 Supabase にまだカラムがない場合だけ、**Supabase ダッシュボード → SQL Editor** で次を実行する。
+
+```sql
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "aiChecked" BOOLEAN;
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "needsHumanCheck" BOOLEAN;
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "checkQueueAt" TIMESTAMP(3);
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "manualTaggingFolder" TEXT;
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "taggedAt" TIMESTAMP(3);
+ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "lastCheckTagChanges" TEXT;
+```
+
+---
+
 ## トラブル時
 
 - 「DATABASE_URL が Postgres を指していません」→ `.env.supabase` の中身（BOM・改行はスクリプト側で吸収済み）。`DATABASE_URL` の値が `postgresql://` または `postgres://` で始まっているか確認。
 - デプロイ先で「作品がありません」→ Supabase に作品が入っていない。初回なら `npm run sync:supabase` を実行。
 - 手元で `npm run dev` が動かない→ `npm run restore:sqlite` を実行して SQLite に戻す。
+- 本番で人力タグ付けのフォルダがすべて 0 件→ `manual-tagging-folder-deploy.md` のとおりカラム追加とスクリプト実行を行う。

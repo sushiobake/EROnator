@@ -34,7 +34,7 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
 
   return (
     <>
-      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
       <div
@@ -95,9 +95,9 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             style={{
               fontSize: isMobile ? 18 : 18,
               fontWeight: 500,
-              color: '#1f2937',
+              color: 'var(--color-text)',
               margin: 0,
-              lineHeight: 1.4,
+              lineHeight: 1.5,
               wordBreak: 'break-word',
               overflowWrap: 'break-word',
             }}
@@ -113,8 +113,8 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             flexDirection: 'column',
             overflow: 'hidden',
             borderRadius: 10,
-            border: '1px solid #d1d5db',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+                border: '1px solid var(--color-border)',
+            boxShadow: 'var(--shadow-md)',
           }}
         >
           {ANSWER_CHOICES.map((choice, index) => (
@@ -132,8 +132,8 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice.value ? '#eff6ff' : '#fff',
-                color: hoveredChoice === choice.value ? '#111827' : '#374151',
+                backgroundColor: hoveredChoice === choice.value ? '#eff6ff' : 'var(--color-surface)',
+                color: hoveredChoice === choice.value ? 'var(--color-text)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
                 transition: 'background-color 0.1s, color 0.1s',
@@ -163,7 +163,7 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
               backgroundColor: 'transparent',
               border: 'none',
               borderRadius: 6,
-              color: '#6b7280',
+              color: 'var(--color-text-muted)',
               transition: 'background-color 0.2s, color 0.2s',
             }}
             onMouseEnter={(e) => {

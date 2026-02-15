@@ -33,6 +33,27 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { action, workId, workIds } = body;
 
+    // 人間要チェックフラグの更新（AIチェックで問題あり→人間要チェックタブに表示）
+    if (action === 'setNeedsHumanCheck') {
+      const { needsHumanCheck } = body;
+      const value = Boolean(needsHumanCheck);
+      if (workIds && Array.isArray(workIds)) {
+        await prisma.work.updateMany({
+          where: { workId: { in: workIds } },
+          data: { needsHumanCheck: value },
+        });
+        return NextResponse.json({ success: true, updated: workIds.length });
+      }
+      if (workId) {
+        await prisma.work.update({
+          where: { workId },
+          data: { needsHumanCheck: value },
+        });
+        return NextResponse.json({ success: true });
+      }
+      return NextResponse.json({ error: 'workId or workIds required' }, { status: 400 });
+    }
+
     // 要注意フラグの更新
     if (action === 'setNeedsReview') {
       const { needsReview } = body;

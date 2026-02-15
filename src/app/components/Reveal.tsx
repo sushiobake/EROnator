@@ -25,10 +25,10 @@ export function Reveal({ work, onAnswer }: RevealProps) {
 
   return (
     <>
-      <p style={{ fontSize: isMobile ? 16 : 15, color: '#6b7280', margin: '0 0 6px 0' }}>
+      <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>
         あなたが妄想した作品は……
       </p>
-      <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 600, color: '#1f2937', margin: '0 0 12px 0' }}>
+      <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
         ズバリ！コレ…でしょ！
       </p>
       <div
@@ -55,10 +55,10 @@ export function Reveal({ work, onAnswer }: RevealProps) {
           }}
         />
         <div>
-          <h2 style={{ fontSize: isMobile ? 18 : 19, fontWeight: 'bold', color: '#1f2937', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
+          <h2 style={{ fontSize: isMobile ? 18 : 19, fontWeight: 'bold', color: 'var(--color-text)', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
             {work.title}
           </h2>
-          <p style={{ fontSize: isMobile ? 16 : 16, color: '#6b7280', margin: 0 }}>{work.authorName}</p>
+          <p style={{ fontSize: isMobile ? 16 : 16, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         </div>
       </div>
       <div
@@ -67,8 +67,8 @@ export function Reveal({ work, onAnswer }: RevealProps) {
           flexDirection: 'column',
           overflow: 'hidden',
           borderRadius: 10,
-          border: '1px solid #d1d5db',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-md)',
           width: '100%',
           maxWidth: 320,
         }}
@@ -90,8 +90,8 @@ export function Reveal({ work, onAnswer }: RevealProps) {
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice ? '#eff6ff' : '#fff',
-                color: hoveredChoice === choice ? '#111827' : '#374151',
+                backgroundColor: hoveredChoice === choice ? '#eff6ff' : 'var(--color-surface)',
+                color: hoveredChoice === choice ? 'var(--color-text)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
                 transition: 'background-color 0.1s, color 0.1s',
@@ -99,7 +99,7 @@ export function Reveal({ work, onAnswer }: RevealProps) {
             >
               {labels[choice]}
               {hoveredChoice === choice && (
-                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#6b7280' }}>
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--color-text-muted)' }}>
                   &gt;&gt;
                 </span>
               )}

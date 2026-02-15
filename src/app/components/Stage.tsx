@@ -23,7 +23,6 @@ import { useMediaQuery } from './useMediaQuery';
 const BACKGROUND_URL = '/ilust/back.png';
 const CHARACTER_URL = '/ilust/inari_1.png';
 const LOGO_URL = '/ilust/eronator_logo.jpg';
-const fontFamily = '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif';
 
 interface StageProps {
   children: React.ReactNode;
@@ -359,7 +358,6 @@ export function Stage({ children, showLogo }: StageProps) {
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
-          fontFamily,
           backgroundColor: '#e8eaed',
           zIndex: 9999,
         }
@@ -369,7 +367,6 @@ export function Stage({ children, showLogo }: StageProps) {
           display: 'flex',
           flexDirection: 'column' as const,
           overflow: 'hidden',
-          fontFamily,
           backgroundColor: '#e8eaed',
         };
 
@@ -445,7 +442,6 @@ export function Stage({ children, showLogo }: StageProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontFamily,
       }}
     >
       <div

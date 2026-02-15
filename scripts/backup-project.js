@@ -29,6 +29,11 @@ const backupTargets = [
     type: 'directory'
   },
   {
+    source: 'src/app/admin',
+    dest: 'src/app/admin',
+    type: 'directory'
+  },
+  {
     source: 'src/server',
     dest: 'src/server',
     type: 'directory'
@@ -36,6 +41,16 @@ const backupTargets = [
   {
     source: 'config',
     dest: 'config',
+    type: 'directory'
+  },
+  {
+    source: 'docs',
+    dest: 'docs',
+    type: 'directory'
+  },
+  {
+    source: 'scripts',
+    dest: 'scripts',
     type: 'directory'
   },
   {
@@ -155,6 +170,22 @@ function main() {
       successCount++;
     } else {
       console.log(`   ❌ Failed: ${target.source}`);
+      failCount++;
+    }
+  }
+
+  // prisma/dev.db があればコピー（総合バックアップ用）
+  const devDbPath = path.resolve('prisma/dev.db');
+  if (fs.existsSync(devDbPath)) {
+    const destDbDir = path.join(backupDir, 'prisma');
+    if (!fs.existsSync(destDbDir)) fs.mkdirSync(destDbDir, { recursive: true });
+    const destDb = path.join(destDbDir, 'dev.db');
+    try {
+      fs.copyFileSync(devDbPath, destDb);
+      console.log('   ✅ Success: prisma/dev.db');
+      successCount++;
+    } catch (err) {
+      console.error('   ❌ Failed: prisma/dev.db', err.message);
       failCount++;
     }
   }

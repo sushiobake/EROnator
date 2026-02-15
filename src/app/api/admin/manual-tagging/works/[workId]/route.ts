@@ -32,7 +32,12 @@ async function addTagToRanks(displayName: string, rank: 'A' | 'B' | 'C'): Promis
     ranks[displayName] = rank;
     data.ranks = ranks;
     data.updatedAt = new Date().toISOString();
-    await fs.writeFile(fullPath, JSON.stringify(data, null, 2), 'utf-8');
+    try {
+      await fs.writeFile(fullPath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[manual-tagging] addTagToRanks write failed:', fullPath, displayName, rank, err);
+      // 書き込み失敗しても PUT は成功させる（DB にはタグが付く。GET でランク未登録は C として表示する）
+    }
   }
 }
 
@@ -76,15 +81,51 @@ export async function GET(
     } catch {
       // ignore
     }
+    // ランク未登録の DERIVED も C として返す（tagRanks.json の反映遅れや別プロセスで消えて見えるバグを防ぐ）
     const aTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'A').map((t) => t.displayName);
     const bTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'B').map((t) => t.displayName);
-    const cTags = derivedTags.filter((t) => tagRanks[t.displayName] === 'C').map((t) => t.displayName);
+    const cTagsFromRanks = derivedTags.filter((t) => tagRanks[t.displayName] === 'C').map((t) => t.displayName);
+    const unrankedDerived = derivedTags
+      .filter((t) => !(tagRanks[t.displayName] === 'A' || tagRanks[t.displayName] === 'B' || tagRanks[t.displayName] === 'C'))
+      .map((t) => t.displayName);
+    const cTags = [...cTagsFromRanks, ...unrankedDerived];
 
-    const hasDerived = work.workTags.some((wt) => wt.tag.tagType === 'DERIVED');
-    const tagSource =
-      work.tagSource === 'human' ? 'human' : work.tagSource === 'ai' ? 'ai' : hasDerived ? 'ai' : 'untagged';
-    const aiAnalyzed = (work as { aiAnalyzed?: boolean }).aiAnalyzed ?? false;
-    const humanChecked = (work as { humanChecked?: boolean }).humanChecked ?? false;
+    const folder = (work as { manualTaggingFolder?: string | null }).manualTaggingFolder ?? 'pending';
+
+    let rawTagChanges: string | null =
+      (work as { lastCheckTagChanges?: string | null }).lastCheckTagChanges ?? null;
+    if (rawTagChanges == null) {
+      try {
+        const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+        if (isPostgres) {
+          const rows = await prisma.$queryRawUnsafe<Array<{ lastCheckTagChanges: string | null }>>(
+            'SELECT "lastCheckTagChanges" FROM "Work" WHERE "workId" = $1',
+            workId
+          );
+          rawTagChanges = rows[0]?.lastCheckTagChanges ?? null;
+        } else {
+          const rows = await prisma.$queryRawUnsafe<Array<{ lastCheckTagChanges: string | null }>>(
+            'SELECT lastCheckTagChanges FROM Work WHERE workId = ?',
+            workId
+          );
+          rawTagChanges = rows[0]?.lastCheckTagChanges ?? null;
+        }
+      } catch {
+        rawTagChanges = null;
+      }
+    }
+    let lastCheckTagChanges: { added: string[]; removed: string[] } | null = null;
+    if (rawTagChanges) {
+      try {
+        const parsed = JSON.parse(rawTagChanges) as { added?: string[]; removed?: string[] };
+        lastCheckTagChanges = {
+          added: Array.isArray(parsed.added) ? parsed.added : [],
+          removed: Array.isArray(parsed.removed) ? parsed.removed : [],
+        };
+      } catch {
+        // ignore
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -93,16 +134,14 @@ export async function GET(
         title: work.title,
         authorName: work.authorName,
         commentText: work.commentText,
-        needsReview: work.needsReview,
-        tagSource,
-        aiAnalyzed,
-        humanChecked,
+        manualTaggingFolder: folder,
         officialTags,
         additionalSTags,
         aTags,
         bTags,
         cTags,
         characterTags: structuralTags.map((t) => t.displayName),
+        lastCheckTagChanges,
       },
     });
   } catch (error) {
@@ -119,18 +158,14 @@ export async function PUT(
     const { workId } = await params;
     const body = await request.json();
     const {
-      needsReview,
-      aiAnalyzed: bodyAiAnalyzed,
-      humanChecked: bodyHumanChecked,
+      manualTaggingFolder: bodyFolder,
       additionalSTags = [],
       aTags = [],
       bTags = [],
       cTags = [],
       characterTags = [],
     } = body as {
-      needsReview?: boolean;
-      aiAnalyzed?: boolean;
-      humanChecked?: boolean;
+      manualTaggingFolder?: string;
       additionalSTags?: string[];
       aTags?: string[];
       bTags?: string[];
@@ -261,21 +296,55 @@ export async function PUT(
         });
       }
 
-      const humanChecked = typeof bodyHumanChecked === 'boolean' ? bodyHumanChecked : true;
-      await tx.work.update({
-        where: { workId },
-        data: {
-          tagSource: humanChecked ? 'human' : 'ai',
-          humanChecked,
-          ...(typeof bodyAiAnalyzed === 'boolean' && { aiAnalyzed: bodyAiAnalyzed }),
-          ...(typeof needsReview === 'boolean' && { needsReview }),
-        } as { tagSource: string; humanChecked: boolean; aiAnalyzed?: boolean; needsReview?: boolean },
-      });
+      const validFolders = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+      const folder =
+        typeof bodyFolder === 'string' && validFolders.includes(bodyFolder) ? bodyFolder : null;
+      if (folder) {
+        await tx.$executeRawUnsafe(
+          'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          folder,
+          workId
+        );
+      } else {
+        await tx.$executeRawUnsafe(
+          'UPDATE Work SET lastCheckTagChanges = NULL WHERE workId = ?',
+          workId
+        );
+      }
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[manual-tagging/works/[workId]] PUT', error);
     return NextResponse.json({ error: 'Failed to save tags' }, { status: 500 });
+  }
+}
+
+/** フォルダのみ更新（一覧から直接移動する用） */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ workId: string }> }
+) {
+  try {
+    const { workId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const manualTaggingFolder = typeof body.manualTaggingFolder === 'string' ? body.manualTaggingFolder : null;
+    const validFolders = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+    if (!manualTaggingFolder || !validFolders.includes(manualTaggingFolder)) {
+      return NextResponse.json({ error: 'Invalid manualTaggingFolder' }, { status: 400 });
+    }
+    const work = await prisma.work.findUnique({ where: { workId }, select: { workId: true } });
+    if (!work) {
+      return NextResponse.json({ error: 'Work not found' }, { status: 404 });
+    }
+    await prisma.$executeRawUnsafe(
+      'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+      manualTaggingFolder,
+      workId
+    );
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[manual-tagging/works/[workId]] PATCH', error);
+    return NextResponse.json({ error: 'Failed to update folder' }, { status: 500 });
   }
 }

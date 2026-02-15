@@ -37,7 +37,7 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: F
   return (
     <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
       <h1 style={{ fontSize: isMobile ? '1.2rem' : '1.25rem', marginBottom: isMobile ? '0.35rem' : '0.5rem' }}>うーん…ちょっとわからなかったわ。</h1>
-      <p style={{ marginBottom: isMobile ? '0.75rem' : '1rem', fontSize: isMobile ? 17 : undefined, color: '#374151' }}>ちなみにこの中にはある？</p>
+      <p style={{ marginBottom: isMobile ? '0.75rem' : '1rem', fontSize: isMobile ? 17 : undefined, color: 'var(--color-text-muted)' }}>ちなみにこの中にはある？</p>
       <div
         style={{ overflowX: 'auto', overflowY: 'hidden', marginBottom: 8, maxWidth: '100%' }}
       >
@@ -68,10 +68,10 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: F
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               </div>
-              <p style={{ fontSize: isMobile ? 14 : 12, fontWeight: 600, color: '#1f2937', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <p style={{ fontSize: isMobile ? 14 : 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {work.title}
               </p>
-              <p style={{ fontSize: isMobile ? 13 : 11, color: '#6b7280', margin: 0 }}>{work.authorName}</p>
+              <p style={{ fontSize: isMobile ? 13 : 11, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
             </div>
           ))}
         </div>

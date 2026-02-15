@@ -1,5 +1,13 @@
 import type { Metadata } from 'next';
+import { Noto_Sans_JP } from 'next/font/google';
 import { SITE_TITLE } from '@/config/app';
+import './globals.css';
+
+const notoSansJP = Noto_Sans_JP({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: SITE_TITLE,
@@ -14,11 +22,7 @@ export default function RootLayout({
   const vercelEnv = process.env.VERCEL_ENV ?? '';
   return (
     <html lang="ja">
-      <body
-        style={{
-          fontFamily: '"Hiragino Maru Gothic ProN", "ヒラギノ丸ゴ ProN", "メイリオ", Meiryo, sans-serif',
-        }}
-      >
+      <body className={notoSansJP.className}>
         <script
           dangerouslySetInnerHTML={{
             __html: `window.__ERONATOR_VERCEL_ENV=${JSON.stringify(vercelEnv)};`,

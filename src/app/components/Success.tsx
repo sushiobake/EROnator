@@ -49,7 +49,7 @@ export function Success({
   return (
     <>
       {/* 上半分: 正解／選んだ作品（大きめ・はみ出しなし） */}
-      <p style={{ fontSize: isMobile ? 19 : 20, fontWeight: 600, color: '#1f2937', margin: isMobile ? '0 0 8px 0' : '0 0 12px 0' }}>
+      <p style={{ fontSize: isMobile ? 19 : 20, fontWeight: 600, color: 'var(--color-text)', margin: isMobile ? '0 0 8px 0' : '0 0 12px 0' }}>
         {successTitle}
       </p>
       <div
@@ -78,11 +78,11 @@ export function Success({
           }}
         />
         <div style={{ flex: isMobile ? 'none' : '1 1 180px', minWidth: 0 }}>
-          <h2 style={{ fontSize: isMobile ? 18 : 18, fontWeight: 'bold', color: '#1f2937', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
+          <h2 style={{ fontSize: isMobile ? 18 : 18, fontWeight: 'bold', color: 'var(--color-text)', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
             {work.title}
           </h2>
-          <p style={{ fontSize: isMobile ? 15 : 14, color: '#6b7280', margin: '0 0 6px 0' }}>{work.authorName}</p>
-          <div style={{ fontSize: isMobile ? 14 : 12, color: '#6b7280', fontWeight: 500 }}>
+          <p style={{ fontSize: isMobile ? 15 : 14, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>{work.authorName}</p>
+          <div style={{ fontSize: isMobile ? 14 : 12, color: 'var(--color-text-muted)', fontWeight: 500 }}>
             <ExternalLink href={work.productUrl} linkText={linkText}>
               {linkText}
             </ExternalLink>
@@ -93,7 +93,7 @@ export function Success({
       {/* 下半分: おすすめ5件を横一列（横スクロール） */}
       {recommendedWorks.length > 0 && (
         <>
-          <p style={{ fontSize: isMobile ? 16 : 15, color: '#374151', margin: isMobile ? '14px 0 8px 0' : '20px 0 10px 0', fontWeight: 500 }}>
+          <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: isMobile ? '14px 0 8px 0' : '20px 0 10px 0', fontWeight: 500 }}>
             {recommendTitle}
           </p>
           <div
@@ -125,7 +125,7 @@ export function Success({
                 >
                   {typeof rec.matchRate === 'number' && (
                     <div style={{ marginBottom: isMobile ? 4 : 6 }}>
-                      <p style={{ fontSize: isMobile ? 10 : 11, color: '#374151', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>
+                      <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>
                         似てる度
                       </p>
                       <p style={{ fontSize: isMobile ? 15 : 18, color: '#059669', fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: '0.02em' }}>
@@ -140,11 +140,11 @@ export function Success({
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   </div>
-                  <p style={{ fontSize: isMobile ? 11 : 12, fontWeight: 600, color: '#1f2937', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {rec.title}
                   </p>
-                  <p style={{ fontSize: isMobile ? 10 : 11, color: '#6b7280', margin: '0 0 4px 0' }}>{rec.authorName}</p>
-                  <div style={{ fontSize: isMobile ? 9 : 10, color: '#6b7280' }}>
+                  <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
+                  <div style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)' }}>
                     <ExternalLink href={rec.productUrl} linkText={linkText}>
                       {linkText}
                     </ExternalLink>
