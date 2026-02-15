@@ -6,13 +6,14 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
-import { isSqlite, getCountsFromSqlite } from '@/server/db/sqlite-direct';
+import { isSqlite } from '@/server/db/is-sqlite';
 
 const FOLDERS = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const;
 
 export async function GET() {
   try {
     if (isSqlite()) {
+      const { getCountsFromSqlite } = await import('@/server/db/sqlite-direct');
       const counts = getCountsFromSqlite();
       return NextResponse.json({ success: true, counts });
     }

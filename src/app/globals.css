@@ -1,0 +1,39 @@
+/**
+ * ERONATOR グローバルスタイル・デザイントークン
+ * 読みやすさと一貫性を重視した日本語向けタイポグラフィ
+ */
+
+:root {
+  /* カラー */
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #94a3b8;
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* ベースタイポグラフィ：日本語の可読性を考慮 */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  color: var(--color-text);
+  line-height: 1.65;
+  letter-spacing: 0.02em;
+}
+
+/* 見出し・強調の字間 */
+h1, h2, h3 {
+  letter-spacing: 0.03em;
+}

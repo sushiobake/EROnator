@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
-import { isSqlite, getWorksFromSqlite } from '@/server/db/sqlite-direct';
+import { isSqlite } from '@/server/db/is-sqlite';
 
 const FOLDERS = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const;
 
@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     }
 
     if (isSqlite()) {
+      const { getWorksFromSqlite } = await import('@/server/db/sqlite-direct');
       const { total, works } = getWorksFromSqlite(filter as (typeof FOLDERS)[number], limit, offset);
       return NextResponse.json({ success: true, works, total });
     }
