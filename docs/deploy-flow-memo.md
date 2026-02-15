@@ -10,8 +10,9 @@
 
 **あなたがやることは次のだけです。**
 
-1. **（まだなら）本番 Supabase にカラム追加**  
-   下の「Work テーブル追加カラム」の SQL を、Supabase の SQL エディタで未実行なら 1 回だけ実行する。
+1. **本番 Supabase にカラム追加（同期の前に必ず 1 回）**  
+   **同期で「Work.aiChecked does not exist」と出たら、Supabase にまだカラムが無い状態です。**  
+   下の「Work テーブル追加カラム」の SQL を、Supabase の SQL エディタで **1 回だけ** 実行してから、もう一度 `npm run sync:supabase` する。
 
 2. **（DB の中身を最新にしたいときだけ）**  
    `npm run dev:clean` を止めてから `npm run sync:supabase` を実行。終わったらまた `npm run dev:clean` でよい。
@@ -52,6 +53,8 @@
    - `npm run sync:supabase`
    - 終わったら手元は SQLite のまま（スキーマも自動で戻る）
 
+**同期の仕方**: 現状は **一括のみ**（ゲーム登録済みの全 Work を upsert）。Work は 1 件ずつ、WorkTag は 500 件ずつバッチで送っている。件数制限や「差分だけ」のオプションはない。必要ならスクリプトに `--limit` などを追加する対応は可能。
+
 ---
 
 ## 毎回デプロイするときの流れ
@@ -82,9 +85,51 @@
 
 ---
 
-## Work テーブル追加カラム（管理・チェック用）※未実施の場合のみ
+## Work テーブル追加カラム（管理・チェック用）
 
-`schema.postgres.prisma` を SQLite と揃えたあと、本番 Supabase にまだカラムがない場合だけ、**Supabase ダッシュボード → SQL Editor** で次を実行する。
+### 1. Work がどこにあるか（場所の確認だけ。ここでは編集しない）
+
+- ブラウザで **Supabase** のプロジェクトを開く（本番で使っているプロジェクト）。
+- 左メニューで **「Table Editor」** をクリックする。
+- 左側にテーブル一覧が出る。その中の **「Work」** が作品データのテーブル（Tag, WorkTag, Session, Log, PlayHistory などと並んでいる）。
+- 今は「Work がどこか」の確認だけ。**Table Editor の Work では編集しない。**
+
+---
+
+### 2. 何をするか
+
+- **Work テーブルに、列（カラム）を 6 本だけ追加する。**
+- 既存の行のデータは一切変えない。新しい列が 6 本増えるだけ。追加した列ははじめは全部 NULL。
+- 追加する列の名前と型は下の表のとおり。
+
+| カラム名 | 型 | 用途 |
+|----------|-----|------|
+| aiChecked | BOOLEAN | AIチェック済みフラグ |
+| needsHumanCheck | BOOLEAN | 要・人間チェック |
+| checkQueueAt | TIMESTAMP(3) | チェック待ち並び用 |
+| manualTaggingFolder | TEXT | 人力タグ付けのフォルダ名 |
+| taggedAt | TIMESTAMP(3) | タグ済み日時（一覧並び） |
+| lastCheckTagChanges | TEXT | チェック時の追加・削除推奨 JSON |
+
+---
+
+### 3. どうやって・どのように編集するか（手順）
+
+**編集は Table Editor ではなく、SQL Editor で行う。** 6 本の列を一気に追加する SQL を 1 回実行するだけ。
+
+1. Supabase の左メニューで **「SQL Editor」** をクリックする。
+2. **「New query」**（または「新しいクエリ」）をクリックして、空のクエリを開く。
+3. 下の **「コピペ用」** の枠の中の SQL を **6 行とも全部** 選択してコピーする。
+4. SQL Editor の入力欄に貼り付ける（中身が空でも、既存の文字があっても上書きしてよい）。
+5. 右下（または上部）の **「Run」** ボタンを押す。
+6. 成功すると「Success」などと出る。これで Work テーブルに 6 列が追加された。
+7. **確認したい場合**: 左メニューで **Table Editor** を開き、左の一覧で **Work** をクリックする。表の右端に、今追加した 6 列（aiChecked, needsHumanCheck など）が並んでいれば OK。既存の行はそのままで、新しい列は NULL になっている。
+
+**このあと**: ローカルで `npm run sync:supabase` を再度実行すると、同期が通るようになる。
+
+---
+
+### コピペ用（上から 6 行をそのまま SQL Editor に貼る）
 
 ```sql
 ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "aiChecked" BOOLEAN;

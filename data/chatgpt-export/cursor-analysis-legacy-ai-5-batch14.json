@@ -1,0 +1,136 @@
+[
+  {
+    "workId": "cid:d_154734",
+    "title": "みだれうち",
+    "matchedTags": [
+      {
+        "displayName": "テニス部",
+        "category": "その他"
+      },
+      {
+        "displayName": "部長",
+        "category": "その他"
+      },
+      {
+        "displayName": "後輩",
+        "category": "その他"
+      },
+      {
+        "displayName": "幼馴染",
+        "category": "その他"
+      },
+      {
+        "displayName": "転落",
+        "category": "その他"
+      }
+    ],
+    "suggestedTags": [],
+    "additionalSTags": [],
+    "characterName": "北村香織",
+    "tagReasoning": {
+      "タイトル/ストーリーから": "『テニス部』『部長』『後輩』『幼馴染』（明記）、『転落』（本編テーマ）"
+    }
+  },
+  {
+    "workId": "cid:d_150146",
+    "title": "サキュバステードライフ総集編II",
+    "matchedTags": [
+      {
+        "displayName": "サキュバス",
+        "category": "その他"
+      },
+      {
+        "displayName": "搾精",
+        "category": "その他"
+      },
+      {
+        "displayName": "幼馴染",
+        "category": "その他"
+      },
+      {
+        "displayName": "総集編",
+        "category": "その他"
+      }
+    ],
+    "suggestedTags": [],
+    "additionalSTags": [],
+    "characterName": "櫻待",
+    "tagReasoning": {
+      "タイトル/本文から": "『サキュバス』『搾精』『総集編』（タイトル）、『幼馴染』（本文明記）"
+    }
+  },
+  {
+    "workId": "cid:d_151935",
+    "title": "今泉ん家はどうやらギャルの溜まり場になってるらしい",
+    "matchedTags": [
+      {
+        "displayName": "ハーレム",
+        "category": "その他"
+      },
+      {
+        "displayName": "一人暮らし",
+        "category": "その他"
+      }
+    ],
+    "suggestedTags": [],
+    "additionalSTags": [
+      "ギャル"
+    ],
+    "characterName": null,
+    "tagReasoning": {
+      "タイトル/本文から": "『ギャル』（S タグ、タイトル・本文明記）、『ハーレム』『一人暮らし』（本文明記）"
+    }
+  },
+  {
+    "workId": "cid:d_153870",
+    "title": "異世界ハーレム物語総集編",
+    "matchedTags": [
+      {
+        "displayName": "異世界",
+        "category": "その他"
+      },
+      {
+        "displayName": "童貞喪失",
+        "category": "その他"
+      },
+      {
+        "displayName": "総集編",
+        "category": "その他"
+      }
+    ],
+    "suggestedTags": [],
+    "additionalSTags": [
+      "ハーレム"
+    ],
+    "characterName": null,
+    "tagReasoning": {
+      "タイトル/本文から": "『異世界』『童貞喪失』『総集編』（タイトル・本文明記）、『ハーレム』（S タグ、本文明記）"
+    }
+  },
+  {
+    "workId": "cid:d_164386",
+    "title": "今泉ん家はどうやらギャルの溜まり場になってるらしい2",
+    "matchedTags": [
+      {
+        "displayName": "ハーレム",
+        "category": "その他"
+      },
+      {
+        "displayName": "温泉旅行",
+        "category": "その他"
+      },
+      {
+        "displayName": "続編",
+        "category": "その他"
+      }
+    ],
+    "suggestedTags": [],
+    "additionalSTags": [
+      "ギャル"
+    ],
+    "characterName": null,
+    "tagReasoning": {
+      "タイトル/本文から": "『ギャル』（S タグ、タイトル明記）、『ハーレム』『温泉旅行』『続編』（本文・タイトル明記）"
+    }
+  }
+]
