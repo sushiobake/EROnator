@@ -4,6 +4,30 @@
 
 ---
 
+## ★ 今回（DBも含めてプレビュー→本番）でやること
+
+**こちらで済ませたこと**: Postgres の Work スキーマを SQLite と揃えた・変更をコミット・prepare:push 済み・手元は `restore:sqlite` 済み。
+
+**あなたがやることは次のだけです。**
+
+1. **（まだなら）本番 Supabase にカラム追加**  
+   下の「Work テーブル追加カラム」の SQL を、Supabase の SQL エディタで未実行なら 1 回だけ実行する。
+
+2. **（DB の中身を最新にしたいときだけ）**  
+   `npm run dev:clean` を止めてから `npm run sync:supabase` を実行。終わったらまた `npm run dev:clean` でよい。
+
+3. **プレビューへ push**  
+   ターミナルで: `git push origin develop`
+
+4. **プレビュー URL で確認**  
+   Vercel の develop 用 URL を開き、「セッション開始」や管理画面が問題ないか確認する。
+
+5. **問題なければ本番へ**  
+   ターミナルで: `npm run deploy:prod`  
+   表示されたら `yes` と入力する。
+
+---
+
 ## 前提
 
 - **ローカル**: SQLite（`prisma/dev.db`）で開発。`npm run dev` で動かす。
