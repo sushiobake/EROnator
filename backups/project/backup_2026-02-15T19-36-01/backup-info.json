@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-02-15T19:36:01.849Z",
+  "backupDir": "backups\\project\\backup_2026-02-15T19-36-01",
+  "targets": [
+    "src/app/components",
+    "src/app/api",
+    "src/app/admin",
+    "src/server",
+    "config",
+    "docs",
+    "scripts",
+    "prisma/schema.prisma",
+    "package.json",
+    "tsconfig.json",
+    "next.config.js"
+  ],
+  "successCount": 12,
+  "failCount": 0
+}
