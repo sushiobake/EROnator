@@ -1,7 +1,7 @@
 /**
  * SUCCESS（正解）画面
  * 上: 正解作品を大きめ（はみ出しなし）。下: おすすめ5件を横一列（横スクロール可）。
- * 似てる度 → サムネ → タイトル → 作者・FANZA の優先順。
+ * スマホ・mobileListBelow時：おすすめはキャンバス下に縦リスト表示。
  */
 
 'use client';
@@ -9,6 +9,7 @@
 import { ExternalLink } from './ExternalLink';
 import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
+import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 
 interface WorkItem {
   workId: string;
@@ -30,6 +31,8 @@ interface SuccessProps {
   successTitle?: string;
   /** おすすめ見出し（省略時は「そんなあなたには…おすすめもあるわ！」） */
   recommendTitle?: string;
+  /** スマホ：おすすめはキャンバス下に表示、白板には正解作品のみ */
+  mobileListBelow?: boolean;
 }
 
 /** 正解作品より小さく。PC・スマホとも横スクロール */
@@ -42,16 +45,14 @@ export function Success({
   onRestart,
   successTitle = '正解！？やっぱりね！',
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
+  mobileListBelow,
 }: SuccessProps) {
   const linkText = 'FANZAで見る';
   const isMobile = useMediaQuery(768);
+  const hideRecommendations = isMobile && mobileListBelow;
 
   return (
     <>
-      {/* 上半分: 正解／選んだ作品（大きめ・はみ出しなし） */}
-      <p style={{ fontSize: isMobile ? 19 : 20, fontWeight: 600, color: 'var(--color-text)', margin: isMobile ? '0 0 8px 0' : '0 0 12px 0' }}>
-        {successTitle}
-      </p>
       <div
         style={{
           display: 'flex',
@@ -90,8 +91,8 @@ export function Success({
         </div>
       </div>
 
-      {/* 下半分: おすすめ5件を横一列（横スクロール） */}
-      {recommendedWorks.length > 0 && (
+      {/* 下半分: おすすめ5件。スマホ・mobileListBelow時はキャンバス下に表示 */}
+      {recommendedWorks.length > 0 && !hideRecommendations && (
         <>
           <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: isMobile ? '14px 0 8px 0' : '20px 0 10px 0', fontWeight: 500 }}>
             {recommendTitle}
@@ -144,7 +145,7 @@ export function Success({
                     {rec.title}
                   </p>
                   <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
-                  <div style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)' }}>
+                  <div style={{ fontSize: isMobile ? 9 : 12, color: 'var(--color-text-muted)' }}>
                     <ExternalLink href={rec.productUrl} linkText={linkText}>
                       {linkText}
                     </ExternalLink>
@@ -160,15 +161,16 @@ export function Success({
         <div
           style={{
             display: 'flex',
-            justifyContent: 'space-between',
+            flexDirection: isMobile ? 'row' : undefined,
+            justifyContent: isMobile ? 'center' : 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: 12,
+            gap: isMobile ? 8 : 12,
             width: '100%',
-            marginTop: isMobile ? 16 : 24,
+            marginTop: isMobile ? 12 : 24,
           }}
         >
-          <RestartButton onRestart={onRestart} inline />
+          <RestartButton onRestart={onRestart} inline compact={isMobile} />
           <a
             href="#"
             onClick={(e) => {
@@ -179,9 +181,9 @@ export function Success({
               window.open(intent, '_blank', 'noopener,noreferrer');
             }}
             style={{
-              padding: isMobile ? '12px 20px' : '14px 24px',
-              minHeight: 48,
-              fontSize: isMobile ? 14 : 15,
+              padding: isMobile ? '8px 14px' : '14px 24px',
+              minHeight: isMobile ? 36 : 48,
+              fontSize: isMobile ? 12 : 15,
               fontWeight: 600,
               color: '#0f1419',
               backgroundColor: '#fff',
@@ -198,6 +200,46 @@ export function Success({
           </a>
         </div>
       )}
+    </>
+  );
+}
+
+/** スマホ・キャンバス下用：おすすめ縦リスト。FANZAで見るを表示 */
+export function SuccessRecommendationsVertical({
+  recommendedWorks,
+  recommendTitle = 'そんなあなたには…おすすめもあるわ！',
+}: {
+  recommendedWorks: RecommendedWorkItem[];
+  recommendTitle?: string;
+}) {
+  if (recommendedWorks.length === 0) return null;
+  return (
+    <>
+      <div
+        style={{
+          fontSize: 14,
+          color: 'var(--color-text)',
+          margin: '0 0 10px 0',
+          fontWeight: 500,
+          padding: '8px 12px',
+          backgroundColor: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 8,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}
+      >
+        {recommendTitle}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {recommendedWorks.slice(0, 5).map((rec) => (
+          <MobileWorkCardHorizontal
+            key={rec.workId}
+            work={rec}
+            showFanzaLink={true}
+            matchRate={rec.matchRate}
+          />
+        ))}
+      </div>
     </>
   );
 }

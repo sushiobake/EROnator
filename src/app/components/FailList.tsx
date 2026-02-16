@@ -1,6 +1,7 @@
 /**
  * FAIL_LISTコンポーネント
  * 上位5件（既出除外・同一作者1本まで）を横一列・横スクロール。似てる度・FANZAは表示せず選ぶだけ。カードクリックで onSelectWork。
+ * スマホ・mobileListBelow時：リストはキャンバス下に表示、白板には「リストにない」のみ。
  */
 
 'use client';
@@ -8,8 +9,9 @@
 import { useState } from 'react';
 import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
+import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 
-interface FailListCandidateItem {
+export interface FailListCandidateItem {
   workId: string;
   title: string;
   authorName: string;
@@ -22,22 +24,24 @@ interface FailListProps {
   onSelectWork: (workId: string) => void;
   onNotInList: (submittedTitleText: string) => void;
   onRestart?: () => void;
+  /** スマホ：リストはキャンバス下に表示、白板には「リストにない」のみ */
+  mobileListBelow?: boolean;
 }
 
 /** PC・スマホとも横スクロール */
 const CARD_MIN_WIDTH = 130;
 const CARD_GAP = 10;
 
-export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: FailListProps) {
+export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mobileListBelow }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
   const isMobile = useMediaQuery(768);
+  const hideList = isMobile && mobileListBelow;
 
   return (
     <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-      <h1 style={{ fontSize: isMobile ? '1.2rem' : '1.25rem', marginBottom: isMobile ? '0.35rem' : '0.5rem' }}>うーん…ちょっとわからなかったわ。</h1>
-      <p style={{ marginBottom: isMobile ? '0.75rem' : '1rem', fontSize: isMobile ? 17 : undefined, color: 'var(--color-text-muted)' }}>ちなみにこの中にはある？</p>
+      {!hideList && (
       <div
         style={{ overflowX: 'auto', overflowY: 'hidden', marginBottom: 8, maxWidth: '100%' }}
       >
@@ -76,6 +80,7 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: F
           ))}
         </div>
       </div>
+      )}
       {!showInput ? (
         <button
           onClick={() => setShowInput(true)}
@@ -126,5 +131,44 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: F
       )}
       {onRestart && submittedNotInList && <RestartButton onRestart={onRestart} />}
     </div>
+  );
+}
+
+/** スマホ・キャンバス下用：縦リスト。下のリストにある？ */
+export function FailListVerticalList({
+  candidates,
+  onSelectWork,
+}: {
+  candidates: FailListCandidateItem[];
+  onSelectWork: (workId: string) => void;
+}) {
+  return (
+    <>
+      <div
+        style={{
+          fontSize: 14,
+          color: 'var(--color-text)',
+          margin: '0 0 10px 0',
+          fontWeight: 500,
+          padding: '8px 12px',
+          backgroundColor: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: 8,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+        }}
+      >
+        下のリストにある？
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {candidates.map((work) => (
+          <MobileWorkCardHorizontal
+            key={work.workId}
+            work={work}
+            onClick={() => onSelectWork(work.workId)}
+            showFanzaLink={false}
+          />
+        ))}
+      </div>
+    </>
   );
 }

@@ -9,10 +9,11 @@ import { TopScreen } from './components/TopScreen';
 import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
 import { Reveal } from './components/Reveal';
-import { Success } from './components/Success';
-import { FailList } from './components/FailList';
+import { Success, SuccessRecommendationsVertical } from './components/Success';
+import { FailList, FailListVerticalList } from './components/FailList';
 import { DebugPanel } from './components/DebugPanel';
 import { Stage } from './components/Stage';
+import { useMediaQuery } from './components/useMediaQuery';
 
 type GameState =
   | 'TOP'
@@ -113,6 +114,7 @@ interface DebugPayload {
 }
 
 export default function Home() {
+  const isMobile = useMediaQuery(768);
   const [isClient, setIsClient] = useState(false);
   const [state, setState] = useState<GameState>('TOP');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -445,9 +447,7 @@ export default function Home() {
 
   if (state === 'AI_GATE') {
     return (
-      <Stage>
       <>
-        <AiGate onSelect={handleAiGateSelect} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -456,22 +456,23 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>AI生成作品ではない？</p>
+            </div>
+          }
+        >
+          <AiGate onSelect={handleAiGateSelect} />
+        </Stage>
       </>
-      </Stage>
     );
   }
 
   if (state === 'QUIZ' && question) {
     return (
-      <Stage>
       <>
-        <Quiz
-          question={question}
-          questionCount={questionCount + 1}
-          onAnswer={handleQuizAnswer}
-          onBack={handleQuizBack}
-          canGoBack={true}
-        />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -480,16 +481,34 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
+                  {questionCount + 1}
+                </span>
+                {question.displayText}
+              </p>
+            </div>
+          }
+        >
+          <Quiz
+            question={question}
+            questionCount={questionCount + 1}
+            onAnswer={handleQuizAnswer}
+            onBack={handleQuizBack}
+            canGoBack={true}
+          />
+        </Stage>
       </>
-      </Stage>
     );
   }
 
   if (state === 'REVEAL' && revealWork) {
     return (
-      <Stage>
       <>
-        <Reveal work={revealWork} onAnswer={handleRevealAnswer} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -498,16 +517,24 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>ズバリ！コレ…でしょ！</p>
+            </div>
+          }
+          mobileExtendWhiteboard={isMobile}
+        >
+          <Reveal work={revealWork} onAnswer={handleRevealAnswer} />
+        </Stage>
       </>
-      </Stage>
     );
   }
 
   if (state === 'SUCCESS' && successWork) {
     return (
-      <Stage>
       <>
-        <Success work={successWork} recommendedWorks={successRecommendedWorks} onRestart={handleRestart} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -516,22 +543,30 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+              正解！？やっぱりね！
+            </p>
+          }
+          mobileBelowCanvas={isMobile && successRecommendedWorks.length > 0 ? (
+            <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} />
+          ) : undefined}
+        >
+          <Success
+            work={successWork}
+            recommendedWorks={successRecommendedWorks}
+            onRestart={handleRestart}
+            mobileListBelow={isMobile}
+          />
+        </Stage>
       </>
-      </Stage>
     );
   }
 
   if (state === 'ALMOST_SUCCESS' && almostSuccessWork) {
     return (
-      <Stage>
       <>
-        <Success
-          work={almostSuccessWork}
-          recommendedWorks={almostSuccessRecommendedWorks}
-          onRestart={handleRestart}
-          successTitle="それか～～～！次回は当てるからね！"
-          recommendTitle="そんなあなたには…おすすめもあるわ！"
-        />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -540,21 +575,35 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+              それか～～～！次回は当てるからね！
+            </p>
+          }
+          mobileBelowCanvas={isMobile && almostSuccessRecommendedWorks.length > 0 ? (
+            <SuccessRecommendationsVertical
+              recommendedWorks={almostSuccessRecommendedWorks}
+              recommendTitle="そんなあなたには…おすすめもあるわ！"
+            />
+          ) : undefined}
+        >
+          <Success
+            work={almostSuccessWork}
+            recommendedWorks={almostSuccessRecommendedWorks}
+            onRestart={handleRestart}
+            successTitle="それか～～～！次回は当てるからね！"
+            recommendTitle="そんなあなたには…おすすめもあるわ！"
+            mobileListBelow={isMobile}
+          />
+        </Stage>
       </>
-      </Stage>
     );
   }
 
   if (state === 'FAIL_LIST') {
     return (
-      <Stage>
       <>
-        <FailList
-          candidates={failListCandidates}
-          onSelectWork={handleFailListSelectWork}
-          onNotInList={handleFailListNotInList}
-          onRestart={handleRestart}
-        />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -563,8 +612,31 @@ export default function Home() {
             onToggle={() => setDebugPanelOpen(v => !v)}
           />
         )}
+        <Stage
+          characterSpeech={
+            <div style={isMobile ? { textAlign: 'center' } : {}}>
+              <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>うーん…ちょっとわからなかったわ。</p>
+              <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: isMobile ? 20 : 15 }}>
+                {isMobile ? '下のリストにある？' : 'ちなみにこの中にはある？'}
+              </p>
+            </div>
+          }
+          mobileBelowCanvas={isMobile ? (
+            <FailListVerticalList
+              candidates={failListCandidates}
+              onSelectWork={handleFailListSelectWork}
+            />
+          ) : undefined}
+        >
+          <FailList
+            candidates={failListCandidates}
+            onSelectWork={handleFailListSelectWork}
+            onNotInList={handleFailListNotInList}
+            onRestart={handleRestart}
+            mobileListBelow={isMobile}
+          />
+        </Stage>
       </>
-      </Stage>
     );
   }
 

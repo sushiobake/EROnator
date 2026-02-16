@@ -9,9 +9,11 @@ interface ExternalLinkProps {
   href: string;
   children: React.ReactNode;
   linkText?: string; // 固定テンプレート（自動生成しない）
+  /** 余白を詰める（カード内など） */
+  compact?: boolean;
 }
 
-export function ExternalLink({ href, children, linkText }: ExternalLinkProps) {
+export function ExternalLink({ href, children, linkText, compact }: ExternalLinkProps) {
   // AFFILIATE_IDは環境変数で分離（本番のみ本番ID）
   const affiliateId = process.env.NEXT_PUBLIC_AFFILIATE_ID || '';
   
@@ -19,7 +21,7 @@ export function ExternalLink({ href, children, linkText }: ExternalLinkProps) {
   const url = affiliateId ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}` : href;
 
   return (
-    <div style={{ margin: '8px 0' }}>
+    <div style={{ margin: compact ? '2px 0' : '8px 0' }}>
       <a
         href={url}
         target="_blank"
