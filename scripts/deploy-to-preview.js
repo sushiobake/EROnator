@@ -56,11 +56,13 @@ function main() {
       .trim()
       .split('\n')
       .filter(Boolean)
-      .filter((n) => !/^prisma\/.*\.db-(shm|wal)$/.test(n));
+      .filter((n) => !/^prisma\/.*\.db-(shm|wal)$/.test(n))
+      .filter((n) => n !== 'prisma/schema.prisma'); // スクリプトで上書きするため除外
     const diffCached = execSync('git diff --cached --name-only', { encoding: 'utf-8', cwd })
       .trim()
       .split('\n')
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((n) => n !== 'prisma/schema.prisma');
 
     if (diffWork.length > 0 || diffCached.length > 0) {
       console.error('❌ 未コミットの変更があります。デプロイ前にコミットしてください。');
