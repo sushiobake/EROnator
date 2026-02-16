@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
+import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 
 interface FailListCandidateItem {
   workId: string;
@@ -22,13 +23,36 @@ interface FailListProps {
   onSelectWork: (workId: string) => void;
   onNotInList: (submittedTitleText: string) => void;
   onRestart?: () => void;
+  /** @deprecated レイアウト用。mobileBelowCanvas で FailListVerticalList を使用 */
+  mobileListBelow?: boolean;
+}
+
+/** スマホ用：縦リスト（Stage mobileBelowCanvas 用） */
+interface FailListVerticalListProps {
+  candidates: FailListCandidateItem[];
+  onSelectWork: (workId: string) => void;
+}
+
+export function FailListVerticalList({ candidates, onSelectWork }: FailListVerticalListProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 0.5rem' }}>
+      {candidates.map((work) => (
+        <MobileWorkCardHorizontal
+          key={work.workId}
+          work={work}
+          onClick={() => onSelectWork(work.workId)}
+          showFanzaLink
+        />
+      ))}
+    </div>
+  );
 }
 
 /** PC・スマホとも横スクロール */
 const CARD_MIN_WIDTH = 130;
 const CARD_GAP = 10;
 
-export function FailList({ candidates, onSelectWork, onNotInList, onRestart }: FailListProps) {
+export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mobileListBelow: _ }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
