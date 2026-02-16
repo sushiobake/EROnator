@@ -23,5 +23,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "backups", "scripts", "tag-works-batch13.ts"]
+  "exclude": ["node_modules", "backups", "scripts", "tag-works-*.ts"]
 }
