@@ -1,6 +1,8 @@
 import fs from 'fs';
+import path from 'path';
 
-const rawData = JSON.parse(fs.readFileSync('data/chatgpt-export/temp-legacy-ai-5-batch11-raw.json', 'utf-8'));
+const rootDir = path.join(__dirname, '..');
+const rawData = JSON.parse(fs.readFileSync(path.join(rootDir, 'data/chatgpt-export/temp-legacy-ai-5-batch11-raw.json'), 'utf-8'));
 const allTags = rawData.allTags;
 const worksRaw = rawData.works;
 
@@ -20,11 +22,11 @@ interface TaggingResult {
 }
 
 // Build tag sets from all-tags API
-const sTagsSet = new Set(allTags.s || []);
-const aTagsSet = new Set(allTags.a || []);
-const bTagsSet = new Set(allTags.b || []);
-const cTagsSet = new Set(allTags.c || []);
-const allDerivedSet = new Set([...(allTags.a || []), ...(allTags.b || []), ...(allTags.c || [])]);
+const sTagsSet = new Set<string>(allTags.s || []);
+const aTagsSet = new Set<string>(allTags.a || []);
+const bTagsSet = new Set<string>(allTags.b || []);
+const cTagsSet = new Set<string>(allTags.c || []);
+const allDerivedSet = new Set<string>([...(allTags.a || []), ...(allTags.b || []), ...(allTags.c || [])]);
 
 // Create sorted lists for longest match first
 const sortedDerived = Array.from(allDerivedSet).sort((a, b) => b.length - a.length);
@@ -191,5 +193,5 @@ works.forEach((work, idx) => {
 });
 
 // Save batch JSON
-fs.writeFileSync('data/chatgpt-export/cursor-analysis-legacy-ai-5-batch13.json', JSON.stringify(results, null, 2));
+fs.writeFileSync(path.join(rootDir, 'data/chatgpt-export/cursor-analysis-legacy-ai-5-batch13.json'), JSON.stringify(results, null, 2));
 console.log(`\n✨ 保存: data/chatgpt-export/cursor-analysis-legacy-ai-5-batch13.json`);
