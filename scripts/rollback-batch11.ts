@@ -18,8 +18,8 @@ async function rollback() {
     try {
       // Find the work
       const work = await prisma.work.findUnique({
-        where: { id: workId },
-        include: { workTags: true }
+        where: { workId },
+        include: { workTags: { include: { tag: true } } }
       });
 
       if (!work) {
@@ -27,18 +27,18 @@ async function rollback() {
         continue;
       }
 
-      // Get tag IDs to delete (DERIVED only)
-      const derivedTagIds = work.workTags
-        .filter((wt: any) => wt.tag?.tagType === 'DERIVED')
-        .map((wt: any) => wt.tagId);
+      // Get tagKeys to delete (DERIVED only)
+      const derivedTagKeys = work.workTags
+        .filter((wt) => wt.tag?.tagType === 'DERIVED')
+        .map((wt) => wt.tagKey);
 
       // Disconnect tags
-      if (derivedTagIds.length > 0) {
+      if (derivedTagKeys.length > 0) {
         await prisma.work.update({
-          where: { id: workId },
+          where: { workId },
           data: {
             workTags: {
-              disconnect: derivedTagIds.map(tagId => ({ workId_tagId: { workId, tagId } }))
+              disconnect: derivedTagKeys.map((tagKey) => ({ workId_tagKey: { workId, tagKey } }))
             }
           }
         });
@@ -46,7 +46,7 @@ async function rollback() {
 
       // Reset aiAnalyzed and checkQueueAt
       await prisma.work.update({
-        where: { id: workId },
+        where: { workId },
         data: {
           aiAnalyzed: false,
           checkQueueAt: null,
@@ -54,7 +54,7 @@ async function rollback() {
         }
       });
 
-      console.log(`✅ ${workId}: ロールバック完了（DERIVED タグ数: ${derivedTagIds.length}）`);
+      console.log(`✅ ${workId}: ロールバック完了（DERIVED タグ数: ${derivedTagKeys.length}）`);
     } catch (e: any) {
       console.log(`❌ ${workId}: エラー - ${e.message}`);
     }
