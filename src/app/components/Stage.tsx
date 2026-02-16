@@ -435,7 +435,15 @@ function StageInner({ children, showLogo, characterSpeech, scale }: { children: 
 export function Stage({ children, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas }: StageProps) {
   const [scale, setScale] = useState(1);
   const [mobileScale, setMobileScale] = useState(0.5);
+  const [isLandscape, setIsLandscape] = useState(false);
   const isMobile = useMediaQuery(768);
+
+  useEffect(() => {
+    const check = () => setIsLandscape(typeof window !== 'undefined' && window.innerWidth > window.innerHeight);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     if (!isMobile) {
@@ -453,20 +461,21 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
 
   if (isMobile) {
     const hasBelowCanvas = !!mobileBelowCanvas;
+    const allowScroll = hasBelowCanvas || isLandscape;
     return (
       <div
         style={{
-          position: hasBelowCanvas ? 'relative' : 'fixed',
-          inset: hasBelowCanvas ? undefined : 0,
-          minHeight: hasBelowCanvas ? '100vh' : undefined,
+          position: allowScroll ? 'relative' : 'fixed',
+          inset: allowScroll ? undefined : 0,
+          minHeight: allowScroll ? '100dvh' : undefined,
           width: '100%',
-          overflowY: 'auto',
+          overflowY: allowScroll ? 'auto' : 'hidden',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'flex-start',
           paddingTop: 4,
-          paddingBottom: hasBelowCanvas ? 0 : '4%',
+          paddingBottom: allowScroll ? (hasBelowCanvas ? 0 : '4%') : '4%',
         }}
       >
         <div

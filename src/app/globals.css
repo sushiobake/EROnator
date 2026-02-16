@@ -27,6 +27,12 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
 body {
   color: var(--color-text);
   line-height: 1.65;
@@ -37,3 +43,4 @@ body {
 h1, h2, h3 {
   letter-spacing: 0.03em;
 }
+

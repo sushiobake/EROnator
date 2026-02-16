@@ -15,15 +15,18 @@ interface TopScreenProps {
 
 export function TopScreen({ onPlay }: TopScreenProps) {
   const isMobile = useMediaQuery(768);
-  const textSize = isMobile ? 17 : 16;
   const subSize = isMobile ? 15 : 13;
   const btnSize = isMobile ? 18 : 18;
   return (
-    <Stage showLogo>
-      <p style={{ margin: 0, fontSize: textSize, lineHeight: 1.7, color: 'var(--color-text)' }}>
-        あなたが好きな同人誌を妄想してみて。私が当ててあげるわ。何でもお見通しだから。
-      </p>
-      <p style={{ marginTop: isMobile ? 12 : 20, fontSize: subSize, color: 'var(--color-text-muted)' }}>
+    <Stage
+      showLogo
+      characterSpeech={
+        <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17, lineHeight: 1.6 }}>
+          あなたが好きな同人誌を妄想してみて。私が当ててあげるわ。何でもお見通しだから。
+        </p>
+      }
+    >
+      <p style={{ margin: 0, fontSize: subSize, color: 'var(--color-text-muted)' }}>
         このコンテンツは18歳以上の方を対象としています。
       </p>
       <div style={{ marginTop: isMobile ? 12 : 16 }}>
@@ -67,6 +70,7 @@ export function TopScreen({ onPlay }: TopScreenProps) {
         <a href="/contact" style={{ fontSize: subSize, color: 'var(--color-text-muted)', textDecoration: 'underline' }}>
           お問い合わせ
         </a>
+        <span style={{ marginLeft: 8, fontSize: subSize, color: 'var(--color-text-subtle)' }}>SNS</span>
         <span style={{ marginLeft: 8, fontSize: subSize, color: 'var(--color-text-subtle)' }}>{APP_VERSION}</span>
       </div>
     </Stage>

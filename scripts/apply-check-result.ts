@@ -141,10 +141,10 @@ async function main() {
   // 同じ秒でまとめて更新されて順序が不定になることを防ぐ。JSON の先頭＝一覧の先頭になる。
   const listToProcess = [...list].reverse();
   const baseTime = new Date();
-  /** ISO 形式の日時（秒まで）。Postgres/SQLite でそのまま使える。 */
+  /** ISO 8601 形式。Prisma の DateTime が期待する形式。 */
   function formatTaggedAt(offsetSeconds: number): string {
     const d = new Date(baseTime.getTime() + offsetSeconds * 1000);
-    return d.toISOString().slice(0, 19).replace('T', ' ');
+    return d.toISOString().slice(0, 19) + 'Z';
   }
   let updated = 0;
   let skipped = 0;

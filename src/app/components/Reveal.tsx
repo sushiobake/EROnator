@@ -25,12 +25,6 @@ export function Reveal({ work, onAnswer }: RevealProps) {
 
   return (
     <>
-      <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>
-        あなたが妄想した作品は……
-      </p>
-      <p style={{ fontSize: isMobile ? 18 : 18, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
-        ズバリ！コレ…でしょ！
-      </p>
       <div
         style={{
           display: 'flex',
@@ -84,22 +78,23 @@ export function Reveal({ work, onAnswer }: RevealProps) {
               style={{
                 position: 'relative',
                 width: '100%',
-                padding: isMobile ? '14px 20px' : '16px 24px',
-                minHeight: 48,
+                padding: isMobile ? '8px 16px' : '8px 20px',
+                minHeight: 40,
                 textAlign: 'center',
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice ? '#eff6ff' : 'var(--color-surface)',
-                color: hoveredChoice === choice ? 'var(--color-text)' : 'var(--color-text-muted)',
+                backgroundColor: hoveredChoice === choice ? '#dbeafe' : 'var(--color-surface)',
+                color: hoveredChoice === choice ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
-                transition: 'background-color 0.1s, color 0.1s',
+                boxShadow: hoveredChoice === choice ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
+                transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
               }}
             >
               {labels[choice]}
               {hoveredChoice === choice && (
-                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--color-text-muted)' }}>
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--color-primary)' }}>
                   &gt;&gt;
                 </span>
               )}

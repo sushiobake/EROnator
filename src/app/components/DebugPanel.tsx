@@ -97,21 +97,20 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanelProps) {
-  // debugがnullでも、デバッグパネルのヘッダーは表示する（デバッグ情報がないことを示すため）
+  // 左上に固定。ヘッダー風ではなく常に角に配置。
+  const topStyle = { top: '20px', left: '20px', width: '510px', maxWidth: 'calc(100vw - 48px)' };
+
   if (!debug) {
     return (
       <div
         style={{
           position: 'fixed',
-          top: '20px',
-          left: '20px',
-          zIndex: 1000,
+          ...topStyle,
+          zIndex: 10001,
           backgroundColor: '#fff',
           border: '2px solid #ffc107',
           borderRadius: '8px',
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          width: '510px',
-          maxWidth: 'calc(100vw - 48px)',
         }}
       >
         <div
@@ -152,15 +151,12 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
     <div
       style={{
         position: 'fixed',
-        top: '20px',
-        left: '20px',
-        zIndex: 1000,
+        ...topStyle,
+        zIndex: 10001,
         backgroundColor: '#fff',
         border: '2px solid #0070f3',
         borderRadius: '8px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        width: '510px',
-        maxWidth: 'calc(100vw - 48px)',
         maxHeight: '65vh',
         display: 'flex',
         flexDirection: 'column',

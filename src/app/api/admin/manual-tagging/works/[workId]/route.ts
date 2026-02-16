@@ -300,16 +300,46 @@ export async function PUT(
       const folder =
         typeof bodyFolder === 'string' && validFolders.includes(bodyFolder) ? bodyFolder : null;
       if (folder) {
-        await tx.$executeRawUnsafe(
-          'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
-          folder,
-          workId
-        );
+        const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+        if (folder === 'tagged') {
+          const taggedAtIso = new Date().toISOString();
+          if (isPostgres) {
+            await tx.$executeRawUnsafe(
+              'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
+              folder,
+              taggedAtIso,
+              workId
+            );
+          } else {
+            await tx.$executeRawUnsafe(
+              'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+              folder,
+              taggedAtIso,
+              workId
+            );
+          }
+        } else {
+          if (isPostgres) {
+            await tx.$executeRawUnsafe(
+              'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
+              folder,
+              workId
+            );
+          } else {
+            await tx.$executeRawUnsafe(
+              'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+              folder,
+              workId
+            );
+          }
+        }
       } else {
-        await tx.$executeRawUnsafe(
-          'UPDATE Work SET lastCheckTagChanges = NULL WHERE workId = ?',
-          workId
-        );
+        const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+        if (isPostgres) {
+          await tx.$executeRawUnsafe('UPDATE "Work" SET lastCheckTagChanges = NULL WHERE "workId" = $1', workId);
+        } else {
+          await tx.$executeRawUnsafe('UPDATE Work SET lastCheckTagChanges = NULL WHERE workId = ?', workId);
+        }
       }
     });
 
@@ -337,11 +367,39 @@ export async function PATCH(
     if (!work) {
       return NextResponse.json({ error: 'Work not found' }, { status: 404 });
     }
-    await prisma.$executeRawUnsafe(
-      'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
-      manualTaggingFolder,
-      workId
-    );
+    const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+    if (manualTaggingFolder === 'tagged') {
+      const taggedAtIso = new Date().toISOString();
+      if (isPostgres) {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
+          manualTaggingFolder,
+          taggedAtIso,
+          workId
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          manualTaggingFolder,
+          taggedAtIso,
+          workId
+        );
+      }
+    } else {
+      if (isPostgres) {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
+          manualTaggingFolder,
+          workId
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          manualTaggingFolder,
+          workId
+        );
+      }
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[manual-tagging/works/[workId]] PATCH', error);

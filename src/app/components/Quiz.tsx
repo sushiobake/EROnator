@@ -34,79 +34,7 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
 
   return (
     <>
-      <p style={{ fontSize: isMobile ? 16 : 15, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>
-        あなたが妄想した作品は……
-      </p>
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: isMobile ? 'column' : 'row',
-          alignItems: isMobile ? 'stretch' : 'stretch',
-          gap: isMobile ? 10 : 0,
-          marginBottom: isMobile ? 24 : 32,
-        }}
-      >
-        <div
-          style={{
-            position: 'relative',
-            display: 'flex',
-            height: 56,
-            width: 56,
-            flexShrink: 0,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#334155',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-            alignSelf: isMobile ? 'flex-start' : undefined,
-          }}
-        >
-          <span style={{ fontSize: 24, fontWeight: 'bold', color: '#fff' }}>{questionCount}</span>
-          {!isMobile && (
-            <div
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: '50%',
-                transform: 'translate(-100%, -50%)',
-                width: 0,
-                height: 0,
-                borderTop: '10px solid transparent',
-                borderBottom: '10px solid transparent',
-                borderRight: '14px solid #334155',
-              }}
-            />
-          )}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flex: 1,
-            minWidth: 0,
-            alignItems: 'flex-start',
-            minHeight: isMobile ? 56 : 72,
-            border: '1px solid #e5e7eb',
-            backgroundColor: '#fff',
-            padding: isMobile ? '12px 16px' : '16px 24px',
-            borderRadius: 10,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.08)',
-          }}
-        >
-          <p
-            style={{
-              fontSize: isMobile ? 18 : 18,
-              fontWeight: 500,
-              color: 'var(--color-text)',
-              margin: 0,
-              lineHeight: 1.5,
-              wordBreak: 'break-word',
-              overflowWrap: 'break-word',
-            }}
-          >
-            {question.displayText}
-          </p>
-        </div>
-      </div>
-      <div style={{ width: '100%', maxWidth: 320, marginTop: isMobile ? 6 : 8 }}>
+      <div style={{ width: '100%', maxWidth: 320 }}>
         <div
           style={{
             display: 'flex',
@@ -126,22 +54,23 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
               style={{
                 position: 'relative',
                 width: '100%',
-                padding: isMobile ? '14px 20px' : '16px 24px',
-                minHeight: 48,
+                padding: isMobile ? '8px 16px' : '8px 20px',
+                minHeight: 40,
                 textAlign: 'center',
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
                 cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice.value ? '#eff6ff' : 'var(--color-surface)',
-                color: hoveredChoice === choice.value ? 'var(--color-text)' : 'var(--color-text-muted)',
+                backgroundColor: hoveredChoice === choice.value ? '#dbeafe' : 'var(--color-surface)',
+                color: hoveredChoice === choice.value ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
-                transition: 'background-color 0.1s, color 0.1s',
+                boxShadow: hoveredChoice === choice.value ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
+                transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
               }}
             >
               {choice.label}
               {hoveredChoice === choice.value && (
-                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#6b7280' }}>
+                <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--color-primary)' }}>
                   &gt;&gt;
                 </span>
               )}

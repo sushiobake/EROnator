@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "deploy:prod": "node scripts/deploy-to-production.js",
+    "deploy:preview": "node scripts/deploy-to-preview.js",
     "dev": "node scripts/dev-with-lock.js",
     "dev:clean": "node -e \"process.env.CLEAN_NEXT='true'; require('./scripts/dev-with-lock.js')\"",
     "build": "node scripts/auto-switch-schema.js && prisma generate && next build",
@@ -26,6 +27,7 @@
     "backup:project": "node scripts/backup-project.js",
     "setup:git-hooks": "node scripts/setup-git-hooks.js",
     "fix:prisma": "node tools/fix-prisma-db.js",
+    "fix:tagged-at": "tsx scripts/fix-tagged-at-format.ts",
     "test:dmm-floor": "tsx scripts/test-dmm-floor-api.ts",
     "test:dmm-itemlist": "tsx scripts/test-dmm-itemlist-api.ts",
     "import:dmm-batch": "tsx scripts/import-dmm-batch.ts",
