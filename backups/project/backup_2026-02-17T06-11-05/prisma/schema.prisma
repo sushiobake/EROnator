@@ -1,0 +1,117 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Works: 作品データ
+model Work {
+  id                  String   @id @default(cuid())
+  workId              String   @unique // 内部ID（stable）
+  title               String
+  authorName          String
+  isAi                String   // "AI" | "HAND" | "UNKNOWN"
+  popularityBase      Float    @default(0) // 0..55 target
+  popularityPlayBonus Float    @default(0)
+  reviewCount         Int?
+  reviewAverage       Float?
+  productUrl          String   // 必須（外部リンク）
+  affiliateUrl        String?
+  thumbnailUrl        String?  // オプション（公式サムネURL）
+  sourcePayload       String?  @default("{}") // JSON string (optional)
+  contentId           String?
+  releaseDate         String?
+  pageCount           String?
+  seriesInfo          String?  // JSON string
+  commentText         String?  // 作品コメント（取得済み時）
+  gameRegistered      Boolean? // ゲームに登録済み
+  needsReview         Boolean? // 要注意
+  tagSource           String?  // "human" | "ai" | "untagged" 等
+  aiAnalyzed          Boolean?
+  humanChecked        Boolean?
+  aiChecked           Boolean?
+  needsHumanCheck     Boolean?
+  checkQueueAt        DateTime?
+  manualTaggingFolder String?
+  taggedAt            DateTime? // タグ済みフォルダに入れた日時（一覧の整列・整合用）
+  lastCheckTagChanges String?  // AIチェック時の追加推奨・削除推奨 JSON: { added: string[], removed: string[] }
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  workTags WorkTag[]
+
+  @@index([workId])
+  @@index([isAi])
+}
+
+// Tags: タグデータ
+model Tag {
+  id                String   @id @default(cuid())
+  tagKey            String   @unique // stable key
+  displayName       String
+  tagType           String   // "OFFICIAL" | "DERIVED" | "STRUCTURAL"
+  category          String?  // nullable
+  questionText      String?  // タグごとの質問文（nullable）
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  workTags WorkTag[]
+
+  @@index([tagKey])
+  @@index([tagType])
+}
+
+// WorkTags: 作品-タグの多対多関係
+model WorkTag {
+  id                String   @id @default(cuid())
+  workId            String
+  tagKey            String
+  derivedSource     String?  // "additionalS" | "manual" | "chatgpt-matched" 等
+  derivedConfidence Float?   // nullable (DERIVEDタグのみ)
+  createdAt         DateTime @default(now())
+
+  // Relations
+  work Work @relation(fields: [workId], references: [workId], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagKey], references: [tagKey], onDelete: Cascade)
+
+  @@unique([workId, tagKey])
+  @@index([workId])
+  @@index([tagKey])
+}
+
+// Sessions: ゲームセッション状態
+model Session {
+  id                      String   @id @default(cuid())
+  sessionId               String   @unique
+  aiGateChoice            String?  // "YES" | "NO" | "DONT_CARE" | null
+  questionCount           Int      @default(0)
+  revealMissCount         Int      @default(0)
+  revealRejectedWorkIds    String   @default("[]") // JSON array string
+  weights                 String   @default("{}") // JSON object: { workId: weight }
+  weightsHistory          String   @default("[]") // JSON array: [{ qIndex, weights }] (修正機能用)
+  questionHistory         String   @default("[]") // JSON array
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([sessionId])
+}
+
+// Logs: FAIL_LISTの自由入力保存
+model Log {
+  id                String   @id @default(cuid())
+  submittedTitleText String
+  aiGateChoice      String?  // "YES" | "NO" | "DONT_CARE"
+  topCandidates     String?  @default("[]") // JSON array (optional snapshot)
+  timestamp         DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@index([timestamp])
+}

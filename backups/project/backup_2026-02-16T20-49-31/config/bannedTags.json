@@ -1,0 +1,216 @@
+{
+  "version": "1.0",
+  "description": "取得禁止タグリスト。これらのタグはインポート時にスキップされ、DBに残っている場合は削除対象。",
+  "bannedTags": [
+    {
+      "pattern": "新作",
+      "type": "exact",
+      "reason": "販売時期タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "準新作",
+      "type": "exact",
+      "reason": "販売時期タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "旧作",
+      "type": "exact",
+      "reason": "販売時期タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "イチオシ",
+      "type": "exact",
+      "reason": "販売促進タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "オトナコミック",
+      "type": "exact",
+      "reason": "カテゴリタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "コミック",
+      "type": "exact",
+      "reason": "カテゴリタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "マンガ",
+      "type": "exact",
+      "reason": "カテゴリタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "男性向け",
+      "type": "exact",
+      "reason": "対象読者タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "女性向け",
+      "type": "exact",
+      "reason": "対象読者タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "成人向け",
+      "type": "exact",
+      "reason": "対象読者タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "デモ・体験版あり",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "専売",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "独占",
+      "type": "exact",
+      "reason": "販売形態タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "全年齢向け",
+      "type": "exact",
+      "reason": "エロネーター対象外",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "セール",
+      "type": "exact",
+      "reason": "販売促進タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "キャンペーン",
+      "type": "exact",
+      "reason": "販売促進タグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "コミケ",
+      "type": "startsWith",
+      "reason": "イベントタグ（コミケ107等）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "ネクスト同人大賞",
+      "type": "startsWith",
+      "reason": "受賞・ノミネートタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "^コミックマーケット",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "^J\\.?GARDEN\\d*",
+      "type": "regex",
+      "reason": "イベントタグ（J.GARDEN58等）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "^YOU\\d+",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "赤ブー",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "博麗神社例大祭",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "^コミティア",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "^エアコミケ",
+      "type": "regex",
+      "reason": "イベントタグ",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "\\d+%OFF",
+      "type": "regex",
+      "reason": "販売促進タグ（50%OFF等）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "COMITIA154",
+      "type": "exact",
+      "reason": "イベントタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "COMITIA155",
+      "type": "exact",
+      "reason": "イベントタグ（作品特徴でない）",
+      "addedAt": "2026-02-19"
+    },
+    {
+      "pattern": "FANZA限定",
+      "type": "exact",
+      "reason": "販売形態タグ（作品特徴でない）",
+      "addedAt": "2026-02-19"
+    },
+    {
+      "pattern": "NEW(AI)サークル",
+      "type": "exact",
+      "reason": "フラグタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "NEWサークル",
+      "type": "exact",
+      "reason": "フラグタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "がんばろう同人！",
+      "type": "exact",
+      "reason": "キャンペーンタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "マスト作品",
+      "type": "exact",
+      "reason": "フラグタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "広告掲載作品",
+      "type": "exact",
+      "reason": "フラグタグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    },
+    {
+      "pattern": "初回購入作品",
+      "type": "exact",
+      "reason": "販売形態タグ（作品特徴でない）",
+      "addedAt": "2026-01-28"
+    }
+  ]
+}

@@ -11,8 +11,9 @@
 **あなたがやることは次のだけです。**
 
 1. **本番 Supabase にカラム追加（同期の前に必ず 1 回）**  
-   **同期で「Work.aiChecked does not exist」と出たら、Supabase にまだカラムが無い状態です。**  
-   下の「Work テーブル追加カラム」の SQL を、Supabase の SQL エディタで **1 回だけ** 実行してから、もう一度 `npm run sync:supabase` する。
+   - **Work**: 同期で「Work.aiChecked does not exist」と出たら → 下の「Work テーブル追加カラム」の SQL を実行
+   - **Tag**: 同期で「column questionText does not exist」と出たら → 下の「Tag テーブル（questionText）」の SQL を実行  
+   タグを DB 一本化した際に `questionTemplate` → `questionText` にリネームしたが、Supabase 側は未対応のため。
 
 2. **（DB の中身を最新にしたいときだけ）**  
    `npm run dev:clean` を止めてから `npm run sync:supabase` を実行。終わったらまた `npm run dev:clean` でよい。
@@ -26,6 +27,8 @@
 5. **問題なければ本番へ**  
    ターミナルで: `npm run deploy:prod`  
    表示されたら `yes` と入力する。
+
+**次回デプロイ予定**: sync 高速化（1: Tag/Work バッチ化、2: WorkTag バッチサイズ増加）を試す。→ 下記「sync:supabase の高速化」参照。
 
 ---
 
@@ -98,6 +101,37 @@
 
 ---
 
+## sync:supabase の高速化（将来用）
+
+現状: WorkTag 16,226 件で約10分かかる。データが50倍になるとそのまま50倍時間がかかる見込み。
+
+### 次回デプロイで試す（当面）
+
+| # | 対策 | やること |
+|---|------|----------|
+| 1 | Tag / Work のバッチ化 | 1件ずつ upsert → WorkTag と同様に複数件ずつ `$transaction` でまとめる |
+| 2 | WorkTag のバッチサイズ増加 | 500 → 1000 や 2000 に変更（定数変更のみ） |
+
+**実装箇所**: `scripts/sync-sqlite-to-supabase.ts`
+
+### 対策一覧（現実性・将来用）
+
+| # | 対策 | 現実性 | 一言 |
+|---|------|--------|------|
+| 1 | Tag/Work バッチ化 | ◎ | 変更少なめで効果あり。次回実施 |
+| 2 | バッチサイズ増加 | ◎ | 定数変えるだけ。次回実施 |
+| 3 | 生 SQL で一括 INSERT | △ | 本当にボトルネックになってから。バグリスク増 |
+| 4 | 差分同期 | ○ | `updatedAt` で「前回 sync 以降に変わったものだけ」を sync。設計・実装はそれなり |
+| 5 | 開発も Supabase に直接つなぐ | ○ | sync 自体が不要になる。本番データ誤操作のリスクは要検討 |
+
+### 将来データが50倍になったとき
+
+- 1・2 を入れておけば、同規模では 2〜5 倍程度の短縮は見込める
+- さらに遅くなったら 4（差分同期）を検討
+- 3（生 SQL）は最終手段
+
+---
+
 ## Work テーブル追加カラム（管理・チェック用）
 
 ### 1. Work がどこにあるか（場所の確認だけ。ここでは編集しない）
@@ -155,8 +189,27 @@ ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "lastCheckTagChanges" TEXT;
 
 ---
 
+## Tag テーブル（questionText：タグ DB 一本化対応）
+
+タグの質問文を `questionTemplate` → `questionText` にリネームした。ローカル SQLite は `rename-question-template-to-question-text.ts` で済んでいるが、**Supabase の Tag テーブルは未対応**。同期で「The column questionText does not exist」が出たら以下を実行する。
+
+### コピペ用（Supabase SQL Editor で 1 回実行）
+
+**Tag に questionTemplate がある場合（通常はこれ）:**
+```sql
+ALTER TABLE "Tag" RENAME COLUMN "questionTemplate" TO "questionText";
+```
+
+**questionTemplate がない場合（新規作成時など）:**
+```sql
+ALTER TABLE "Tag" ADD COLUMN IF NOT EXISTS "questionText" TEXT;
+```
+
+---
+
 ## トラブル時
 
+- 「The column questionText does not exist」→ 上記「Tag テーブル（questionText）」の SQL を Supabase で実行。
 - 「DATABASE_URL が Postgres を指していません」→ `.env.supabase` の中身（BOM・改行はスクリプト側で吸収済み）。`DATABASE_URL` の値が `postgresql://` または `postgres://` で始まっているか確認。
 - デプロイ先で「作品がありません」→ Supabase に作品が入っていない。初回なら `npm run sync:supabase` を実行。
 - 手元で `npm run dev` が動かない→ `npm run restore:sqlite` を実行して SQLite に戻す。

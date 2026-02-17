@@ -1,0 +1,37 @@
+{
+  "version": "1.0",
+  "description": "準有名タグのホワイトリスト。AIはこのリストから選択するか、新規候補を提案する。",
+  "lastUpdated": "2026-01-28",
+  "categories": [
+    "シチュエーション",
+    "関係性",
+    "属性",
+    "場所",
+    "その他"
+  ],
+  "whitelist": [
+    { "displayName": "年上", "category": "関係性", "status": "approved" },
+    { "displayName": "年下", "category": "関係性", "status": "approved" },
+    { "displayName": "幼馴染", "category": "関係性", "status": "approved" },
+    { "displayName": "先輩後輩", "category": "関係性", "status": "approved" },
+    { "displayName": "学園", "category": "シチュエーション", "status": "approved" },
+    { "displayName": "異世界", "category": "シチュエーション", "status": "approved" },
+    { "displayName": "温泉", "category": "場所", "status": "approved" },
+    { "displayName": "清楚", "category": "属性", "status": "approved" },
+    { "displayName": "3P", "category": "シチュエーション", "status": "approved" },
+    { "displayName": "おねショタ", "category": "関係性", "status": "approved" },
+    { "displayName": "近親", "category": "関係性", "status": "approved" },
+    { "displayName": "乱交", "category": "シチュエーション", "status": "approved" }
+  ],
+  "pending": [],
+  "rejected": [
+    { "displayName": "実写版", "reason": "形式タグ" },
+    { "displayName": "サークル", "reason": "メタ情報" },
+    { "displayName": "バージョン", "reason": "メタ情報" },
+    { "displayName": "フルカラーコミック", "reason": "形式タグ" },
+    { "displayName": "同梱", "reason": "販売形態" },
+    { "displayName": "セックス", "reason": "一般的すぎる" },
+    { "displayName": "エロ", "reason": "一般的すぎる" },
+    { "displayName": "オリジナル", "reason": "一般的すぎる" }
+  ]
+}

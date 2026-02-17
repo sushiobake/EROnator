@@ -1,0 +1,683 @@
+/**
+ * ステージ：PCは 1200×800 を cover で表示。
+ * スマホ：正方形キャンバス、左半分キャラ・右半分白板。フッターはキャンバス内。アキネイター風。
+ */
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import {
+  STAGE_WIDTH_PX,
+  STAGE_HEIGHT_PX,
+  CHARACTER_LEFT_PX,
+  CHARACTER_WIDTH_PX,
+  CHARACTER_HEIGHT_PX,
+  CONTENT_OFFSET_LEFT_PX,
+  WHITEBOARD_MAX_WIDTH_PX,
+  WHITEBOARD_PADDING_PX,
+  WHITEBOARD_BORDER_RADIUS_PX,
+} from './gameLayoutConstants';
+import { useMediaQuery } from './useMediaQuery';
+
+const BACKGROUND_URL = '/ilust/back.png';
+const CHARACTER_URL = '/ilust/inari_1.png';
+const LOGO_URL = '/ilust/eronator_logo.jpg';
+
+interface StageProps {
+  children: React.ReactNode;
+  /** PCのみ：トップ画面でロゴを表示 */
+  showLogo?: boolean;
+  /** キャラの発言（全画面共通。スマホ=横長板、PC=質問文と同じスタイル） */
+  characterSpeech?: React.ReactNode;
+  /** スマホのみ：断定画面で白板を上に伸ばしてスクロールをなくす */
+  mobileExtendWhiteboard?: boolean;
+  /** スマホのみ：キャンバス下にリストを配置。③ゲーム上寄せ・下にスクロール。 */
+  mobileBelowCanvas?: React.ReactNode;
+}
+
+function getScale(): number {
+  if (typeof window === 'undefined') return 1;
+  const w = window.outerWidth;
+  // 隙間分を差し引き、キャンバス分の高さだけ上に収める
+  const h = Math.max(1, window.outerHeight - PC_FOOTER_HEIGHT - PC_CANVAS_FOOTER_GAP - 8);
+  const scale = Math.max(w / STAGE_WIDTH_PX, h / STAGE_HEIGHT_PX);
+  return Math.max(0.2, Math.min(1.5, scale));
+}
+
+const PC_FOOTER_HEIGHT = 67;
+/** PC版：キャンバスとフッターの隙間（px）。キャラの足はここにはみ出してフッターとつながる */
+const PC_CANVAS_FOOTER_GAP = 40;
+const PC_CANVAS_CORNER_RADIUS = 16;
+/** PC版：SVGフレームの幅・マーカートレイ高さ（白背景の inset 計算に使用） */
+const PC_FRAME_WIDTH = 10;
+/** 下側フレームのみ細く（上・左右は PC_FRAME_WIDTH） */
+const PC_FRAME_BOTTOM_WIDTH = 5;
+const PC_FRAME_TRAY_HEIGHT = 14;
+const MOBILE_CANVAS_PX = 800;
+const MOBILE_FOOTER_HEIGHT = 40;
+const MOBILE_TOP_BOARD_HEIGHT = 100;
+
+function getMobileScale(): number {
+  if (typeof window === 'undefined') return 0.5;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const s = Math.min(w / MOBILE_CANVAS_PX, h / MOBILE_CANVAS_PX);
+  return Math.max(0.3, Math.min(1.2, s));
+}
+
+/** PC版：ホワイトボード風フレーム（SVG）キャラの後ろに描画・質感強化 */
+function WhiteboardFrameSvg() {
+  const R = PC_CANVAS_CORNER_RADIUS;
+  const W = STAGE_WIDTH_PX;
+  const H = STAGE_HEIGHT_PX;
+  const FRAME_W = PC_FRAME_WIDTH;
+  const FRAME_BOTTOM = PC_FRAME_BOTTOM_WIDTH;
+  const TRAY_H = PC_FRAME_TRAY_HEIGHT;
+  const PAD = 2;
+  // 上・左右は太め、下だけ細く：U字＋下を別パスで
+  const pathU = `M ${R + FRAME_W / 2} ${FRAME_W / 2} L ${W - R - FRAME_W / 2} ${FRAME_W / 2} Q ${W - FRAME_W / 2} ${FRAME_W / 2} ${W - FRAME_W / 2} ${R + FRAME_W / 2} L ${W - FRAME_W / 2} ${H - FRAME_BOTTOM / 2} M ${FRAME_W / 2} ${H - FRAME_BOTTOM / 2} L ${FRAME_W / 2} ${R + FRAME_W / 2} Q ${FRAME_W / 2} ${FRAME_W / 2} ${R + FRAME_W / 2} ${FRAME_W / 2} Z`;
+  const pathBottom = `M ${W - FRAME_W / 2} ${H - FRAME_BOTTOM / 2} L ${FRAME_W / 2} ${H - FRAME_BOTTOM / 2}`;
+  const capSize = R + 4;
+  return (
+    <svg
+      viewBox={`${-PAD} ${-PAD} ${W + PAD * 2} ${H + PAD * 2}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+        zIndex: 0,
+      }}
+      aria-hidden
+    >
+      <defs>
+        {/* 金属フレーム：銀寄り・多段階で光沢 */}
+        <linearGradient id="frame-metal" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#d4d6da" />
+          <stop offset="15%" stopColor="#b8bcc4" />
+          <stop offset="35%" stopColor="#9ca0a8" />
+          <stop offset="65%" stopColor="#7a7e86" />
+          <stop offset="85%" stopColor="#5e6268" />
+          <stop offset="100%" stopColor="#4a4e54" />
+        </linearGradient>
+        {/* 角キャップ：中心明るめ・縁暗めで立体感 */}
+        <radialGradient id="corner-cap" cx="30%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#3a3a3a" />
+          <stop offset="70%" stopColor="#252525" />
+          <stop offset="100%" stopColor="#1a1a1a" />
+        </radialGradient>
+        {/* 角キャップ上端ハイライト */}
+        <linearGradient id="corner-highlight" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
+          <stop offset="50%" stopColor="rgba(255,255,255,0.05)" />
+          <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+        </linearGradient>
+        {/* マーカートレイ：溝っぽい奥行き */}
+        <linearGradient id="tray-metal" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#8a8e94" />
+          <stop offset="30%" stopColor="#6a6e74" />
+          <stop offset="100%" stopColor="#4a4e54" />
+        </linearGradient>
+        {/* トレイ内側の影 */}
+        <linearGradient id="tray-inset" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(0,0,0,0.15)" />
+          <stop offset="100%" stopColor="rgba(0,0,0,0.04)" />
+        </linearGradient>
+      </defs>
+      {/* 金属フレーム（上・左右：太め、下：細め） */}
+      <path d={pathU} fill="none" stroke="url(#frame-metal)" strokeWidth={FRAME_W} strokeLinejoin="round" strokeLinecap="round" />
+      <path d={pathBottom} fill="none" stroke="url(#frame-metal)" strokeWidth={FRAME_BOTTOM} strokeLinecap="round" />
+      {/* フレーム上端エッジハイライト */}
+      <path
+        d={`M ${R + FRAME_W} ${FRAME_W + 1} L ${W - R - FRAME_W} ${FRAME_W + 1}`}
+        fill="none"
+        stroke="rgba(255,255,255,0.35)"
+        strokeWidth={1}
+      />
+      {/* 角キャップ（4隅） */}
+      <rect x={0} y={0} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-cap)" />
+      <rect x={0} y={0} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-highlight)" />
+      <rect x={W - capSize} y={0} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-cap)" />
+      <rect x={W - capSize} y={0} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-highlight)" />
+      <rect x={0} y={H - capSize} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-cap)" />
+      <rect x={0} y={H - capSize} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-highlight)" />
+      <rect x={W - capSize} y={H - capSize} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-cap)" />
+      <rect x={W - capSize} y={H - capSize} width={capSize} height={capSize} rx={4} ry={4} fill="url(#corner-highlight)" />
+      {/* マーカートレイ */}
+      <rect
+        x={FRAME_W}
+        y={H - TRAY_H - FRAME_BOTTOM / 2}
+        width={W - FRAME_W * 2}
+        height={TRAY_H}
+        rx={2}
+        fill="url(#tray-metal)"
+      />
+      {/* トレイ内側の影（上部） */}
+      <rect
+        x={FRAME_W + 2}
+        y={H - TRAY_H - FRAME_BOTTOM / 2}
+        width={W - FRAME_W * 2 - 4}
+        height={Math.min(4, TRAY_H / 2)}
+        rx={1}
+        fill="url(#tray-inset)"
+      />
+    </svg>
+  );
+}
+
+/** スマホ：横長板=キャラ発言、左キャラ・右白板。フッターはキャンバス内。 */
+function MobileStageInner({
+  children,
+  characterSpeech,
+  extendWhiteboard,
+}: {
+  children: React.ReactNode;
+  characterSpeech?: React.ReactNode;
+  /** 断定画面など：白板を上に伸ばしてスクロールをなくす */
+  extendWhiteboard?: boolean;
+}) {
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundColor: '#fff',
+          zIndex: 0,
+        }}
+      />
+      {/* 中央上：横長の板（キャラ発言） */}
+      {characterSpeech && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            top: 12,
+            height: MOBILE_TOP_BOARD_HEIGHT,
+            backgroundColor: '#f0ede8',
+            borderRadius: 10,
+            padding: '10px 16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            border: '1px solid rgba(0,0,0,0.06)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 2,
+            overflow: 'hidden',
+          }}
+        >
+          {characterSpeech}
+        </div>
+      )}
+      {/* メイン：左キャラ、右白板 */}
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: characterSpeech ? 12 + MOBILE_TOP_BOARD_HEIGHT + 8 : 0,
+          right: 0,
+          bottom: MOBILE_FOOTER_HEIGHT,
+          display: 'flex',
+          flexDirection: 'row',
+          padding: characterSpeech ? '0 12px 0 8px' : '8px',
+          gap: 8,
+          zIndex: 1,
+        }}
+      >
+        {/* 左半分：キャラ（1.2倍、はみ出しOK・左寄せ） */}
+        <div
+          style={{
+            width: '50%',
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'flex-start',
+            padding: 0,
+            marginLeft: -8,
+            pointerEvents: 'none',
+            overflow: 'visible',
+          }}
+        >
+          <img
+            src={CHARACTER_URL}
+            alt=""
+            style={{
+              width: '120%',
+              maxWidth: 547,
+              height: 'auto',
+              maxHeight: '100%',
+              objectFit: 'contain',
+              objectPosition: 'left bottom',
+              filter: 'drop-shadow(2px 4px 6px rgba(0,0,0,0.3))',
+            }}
+          />
+        </div>
+        {/* 右半分：白板（正方形、下固定・キャラの右に並ぶ、1.4倍） */}
+        <div
+          style={{
+            width: '50%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            minWidth: 0,
+            zIndex: 2,
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              ...(extendWhiteboard
+                ? { height: '100%', minHeight: 0 }
+                : { aspectRatio: '3/4', maxHeight: '100%' }),
+              backgroundColor: '#faf8f5',
+              borderRadius: 10,
+              padding: '12px 14px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+              boxSizing: 'border-box',
+              overflowY: extendWhiteboard ? 'hidden' : 'auto',
+              fontSize: 14,
+              lineHeight: 1.45,
+              zoom: 1.62,
+            } as React.CSSProperties}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+      {/* フッター：キャンバス内 */}
+      <footer
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: MOBILE_FOOTER_HEIGHT,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          background: 'linear-gradient(180deg, rgba(26,26,36,0.95) 0%, rgba(15,15,20,0.98) 100%)',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          zIndex: 1,
+        }}
+      >
+        <a
+          href="/contact"
+          style={{
+            fontSize: 14,
+            color: 'rgba(255,255,255,0.9)',
+            textDecoration: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          お問い合わせ
+        </a>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
+        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
+          SNS
+        </span>
+      </footer>
+    </>
+  );
+}
+
+function StageInner({ children, showLogo, characterSpeech, scale }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; scale?: number }) {
+  // 白背景はフレーム内側に収める（フレームの外に白が出ない）
+  const insetTop = PC_FRAME_WIDTH;
+  const insetBottom = PC_FRAME_TRAY_HEIGHT + PC_FRAME_WIDTH;
+  const insetSide = PC_FRAME_WIDTH;
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          left: insetSide,
+          top: insetTop,
+          right: insetSide,
+          bottom: insetBottom,
+          backgroundColor: '#faf9f7',
+          zIndex: 0,
+          borderRadius: `${Math.max(0, PC_CANVAS_CORNER_RADIUS - insetSide)}px ${Math.max(0, PC_CANVAS_CORNER_RADIUS - insetSide)}px 0 0`,
+          boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.6)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          right: 0,
+          height: 120,
+          zIndex: 1,
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingTop: 32,
+        }}
+      >
+        <img
+          src={LOGO_URL}
+          alt="ERONATOR"
+          style={{
+            height: 72,
+            width: 'auto',
+            maxWidth: '60%',
+            objectFit: 'contain',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: CHARACTER_LEFT_PX,
+          bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.6)) : 0,
+          width: CHARACTER_WIDTH_PX,
+          height: CHARACTER_HEIGHT_PX,
+          zIndex: 1,
+          pointerEvents: 'none',
+        }}
+      >
+        <img
+          src={CHARACTER_URL}
+          alt=""
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'left bottom',
+            filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.35))',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: CONTENT_OFFSET_LEFT_PX,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          padding: '32px 32px 32px 0',
+          zIndex: 2,
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            maxWidth: WHITEBOARD_MAX_WIDTH_PX,
+            backgroundColor: '#faf8f5',
+            borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
+            padding: WHITEBOARD_PADDING_PX,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)',
+            boxSizing: 'border-box',
+          }}
+        >
+          {characterSpeech && (
+            <div style={{ marginBottom: 16 }}>
+              {characterSpeech}
+            </div>
+          )}
+          {children}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function Stage({ children, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas }: StageProps) {
+  const [scale, setScale] = useState(1);
+  const [mobileScale, setMobileScale] = useState(0.5);
+  const [isLandscape, setIsLandscape] = useState(false);
+  const isMobile = useMediaQuery(768);
+
+  useEffect(() => {
+    const check = () => setIsLandscape(typeof window !== 'undefined' && window.innerWidth > window.innerHeight);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setScale(getScale());
+      const onResize = () => setScale(getScale());
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    } else {
+      setMobileScale(getMobileScale());
+      const onResize = () => setMobileScale(getMobileScale());
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
+    }
+  }, [isMobile]);
+
+  if (isMobile) {
+    const hasBelowCanvas = !!mobileBelowCanvas;
+    const allowScroll = hasBelowCanvas || isLandscape;
+    return (
+      <div
+        style={{
+          position: allowScroll ? 'relative' : 'fixed',
+          inset: allowScroll ? undefined : 0,
+          minHeight: allowScroll ? '100dvh' : undefined,
+          width: '100%',
+          overflowY: allowScroll ? 'auto' : 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          paddingTop: 4,
+          paddingBottom: allowScroll ? (hasBelowCanvas ? 0 : '4%') : '4%',
+        }}
+      >
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundImage: `url(${BACKGROUND_URL})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(10px)',
+            zIndex: -2,
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.7) 100%)',
+            zIndex: -1,
+            pointerEvents: 'none',
+          }}
+        />
+        {/* ③ゲーム上寄せ＋キャンバス直下にリスト。scaleの余白を消してプレイ画面→おすすめを隣接 */}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            flexShrink: 0,
+            position: 'relative',
+            zIndex: 10,
+            width: '100%',
+            backgroundColor: 'transparent',
+            maxWidth: hasBelowCanvas ? 600 : undefined,
+          }}
+        >
+          {/* scaleでレイアウトが伸びるのを防ぎ、見た目高さだけ確保。リストをキャンバス直下に */}
+          <div
+            style={{
+              width: MOBILE_CANVAS_PX * mobileScale,
+              height: (72 + 2 + MOBILE_CANVAS_PX) * mobileScale,
+              flexShrink: 0,
+              overflow: 'hidden',
+              ...(hasBelowCanvas ? {} : { alignSelf: 'center' }),
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                width: MOBILE_CANVAS_PX,
+                height: 72 + 2 + MOBILE_CANVAS_PX,
+                transform: `scale(${mobileScale})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              <img
+                src={LOGO_URL}
+                alt="ERONATOR"
+                style={{
+                  height: 72,
+                  width: 'auto',
+                  maxWidth: '90%',
+                  objectFit: 'contain',
+                  marginBottom: 2,
+                }}
+              />
+              <div
+                style={{
+                  width: MOBILE_CANVAS_PX,
+                  height: MOBILE_CANVAS_PX,
+                  position: 'relative',
+                  flexShrink: 0,
+                  borderRadius: 14,
+                  overflow: 'hidden',
+                  boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.5), 0 0 0 2px rgba(0,0,0,0.15)',
+                }}
+              >
+                <MobileStageInner characterSpeech={characterSpeech} extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}>{children}</MobileStageInner>
+              </div>
+            </div>
+          </div>
+          {/* ②キャンバスのすぐ下：縦リスト（隙間なく） */}
+          {hasBelowCanvas && (
+            <div
+              style={{
+                width: '100%',
+                padding: '12px 12px 32px',
+                boxSizing: 'border-box',
+              }}
+            >
+              {mobileBelowCanvas}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* 背景：blur + gradient はルートに1セットのみ。flex は transparent で同じレイヤーを透過。背景とキャンバス端が同一処理になる。 */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '-20%',
+          left: '-20%',
+          right: '-20%',
+          bottom: '-20%',
+          zIndex: 0,
+          backgroundImage: `url(${BACKGROUND_URL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(10px)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: '-20%',
+          left: '-20%',
+          right: '-20%',
+          bottom: '-20%',
+          zIndex: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.7) 100%)',
+        }}
+      />
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-end',
+          position: 'relative',
+          zIndex: 1,
+          minHeight: 0,
+          background: 'transparent',
+        }}
+      >
+        <div
+          style={{
+            width: STAGE_WIDTH_PX,
+            height: STAGE_HEIGHT_PX,
+            position: 'relative',
+            zIndex: 1,
+            transform: `scale(${scale * 0.6})`,
+            transformOrigin: 'center bottom',
+            flexShrink: 0,
+            marginBottom: PC_CANVAS_FOOTER_GAP,
+            borderRadius: `${PC_CANVAS_CORNER_RADIUS}px ${PC_CANVAS_CORNER_RADIUS}px 0 0`,
+            overflow: 'visible',
+            background: 'transparent',
+            boxShadow: 'none',
+          }}
+        >
+          <WhiteboardFrameSvg />
+          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} scale={scale}>{children}</StageInner>
+        </div>
+      </div>
+      <footer
+        style={{
+          width: '100%',
+          height: PC_FOOTER_HEIGHT,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 24,
+          background: 'linear-gradient(180deg, rgba(26,26,36,0.95) 0%, rgba(15,15,20,0.98) 100%)',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          position: 'relative',
+          zIndex: 1,
+        }}
+      >
+        <a
+          href="/contact"
+          style={{
+            fontSize: 13,
+            color: 'rgba(255,255,255,0.9)',
+            textDecoration: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          お問い合わせ
+        </a>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
+        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
+          SNS
+        </span>
+      </footer>
+    </div>
+  );
+}

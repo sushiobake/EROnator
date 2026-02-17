@@ -99,13 +99,13 @@ async function main() {
           displayName: row.displayName as string,
           tagType: row.tagType as string,
           category: rowToStr(row.category),
-          questionTemplate: rowToStr(row.questionTemplate),
+          questionText: rowToStr(row.questionText ?? row.questionTemplate),
         },
         update: {
           displayName: row.displayName as string,
           tagType: row.tagType as string,
           category: rowToStr(row.category),
-          questionTemplate: rowToStr(row.questionTemplate),
+          questionText: rowToStr(row.questionText ?? row.questionTemplate),
         },
       });
     }

@@ -1,0 +1,246 @@
+/**
+ * /api/admin/tags/list: タグ一覧と作品数を取得するAPI
+ * displayCategory: 表示用に統合したカテゴリ（シチュエーション/系統、その他、キャラタグなど）
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import fs from 'fs';
+import path from 'path';
+
+export interface TagListResponse {
+  success: boolean;
+  tags?: Array<{
+    tagKey: string;
+    displayName: string;
+    tagType: string;
+    category: string | null;
+    questionText?: string | null;
+    displayCategory: string;
+    workCount: number;
+    /** DERIVED のみ。tagRanks.json の A/B/C。未設定は '' */
+    rank?: string;
+  }>;
+  categoryOrder?: string[];
+  stats?: {
+    total: number;
+    byType: {
+      OFFICIAL: number;
+      DERIVED: number;
+      STRUCTURAL: number;
+    };
+  };
+  error?: string;
+}
+
+function loadCategoryConfig(): { categoryOrder: string[]; categoryMerge: Record<string, string> } {
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'tagCategories.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content);
+    return {
+      categoryOrder: data.categoryOrder ?? [],
+      categoryMerge: data.categoryMerge ?? {},
+    };
+  } catch {
+    return { categoryOrder: [], categoryMerge: {} };
+  }
+}
+
+function loadTagRanks(): Record<string, string> {
+  try {
+    const filePath = path.join(process.cwd(), 'config', 'tagRanks.json');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const data = JSON.parse(content) as { ranks?: Record<string, string> };
+    return data.ranks ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function getDisplayCategory(
+  tagType: string,
+  displayName: string,
+  category: string | null,
+  categoryMerge: Record<string, string>
+): string {
+  if (tagType === 'OFFICIAL' && displayName === 'キャラクター') return 'キャラクター';
+  if (tagType === 'STRUCTURAL') return 'キャラタグ';
+  if (category === 'CHARACTER' || category === 'キャラクター') return 'キャラクター';
+  const merged = categoryMerge[category ?? ''] ?? category ?? 'その他';
+  return merged || 'その他';
+}
+
+export async function GET(request: NextRequest) {
+  // アクセス制御
+  if (!isAdminAllowed(request)) {
+    return NextResponse.json(
+      { error: 'Forbidden' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    await ensurePrismaConnected();
+
+    // 全タグを取得
+    const tags = await prisma.tag.findMany({
+      orderBy: [
+        { tagType: 'asc' },
+        { displayName: 'asc' },
+      ],
+      select: {
+        tagKey: true,
+        displayName: true,
+        tagType: true,
+        category: true,
+        questionText: true,
+        _count: {
+          select: {
+            workTags: true,
+          },
+        },
+      },
+    });
+
+    console.log(`[tags/list] Found ${tags.length} tags from Prisma`);
+
+    // Prismaで0件の場合、直接SQLiteで取得（load-from-dbと同じフォールバック）
+    if (tags.length === 0) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const sqlite3 = require('better-sqlite3');
+        const path = require('path');
+        const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+        console.log(`[tags/list] Prisma returned 0 tags, but DB file exists. Using direct SQLite query as fallback...`);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+        const db = sqlite3(dbPath, { readonly: true });
+        
+        // 直接SQLiteでタグを取得
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+        const directTags = db.prepare(`
+          SELECT 
+            t.tagKey,
+            t.displayName,
+            t.tagType,
+            t.category,
+            t.questionText,
+            COUNT(wt.tagKey) as workCount
+          FROM Tag t
+          LEFT JOIN WorkTag wt ON t.tagKey = wt.tagKey
+          GROUP BY t.tagKey, t.displayName, t.tagType, t.category, t.questionText
+          ORDER BY t.tagType ASC, t.displayName ASC
+        `).all() as Array<{
+          tagKey: string;
+          displayName: string;
+          tagType: string;
+          category: string | null;
+          questionText: string | null;
+          workCount: number;
+        }>;
+        
+        console.log(`[tags/list] Direct SQLite query found ${directTags.length} tags`);
+        
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        db.close();
+        
+        // 直接SQLiteで取得したデータを使用
+        const byType = {
+          OFFICIAL: 0,
+          DERIVED: 0,
+          STRUCTURAL: 0,
+        };
+
+        const { categoryOrder, categoryMerge } = loadCategoryConfig();
+        const tagRanks = loadTagRanks();
+        const defaultQuestion = (dn: string) => `${dn}が関係している？`;
+        const getCharacterQuestion = (dn: string) => `${dn}というキャラクターが登場する？`;
+        const tagsData = directTags.map(tag => {
+          const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
+          byType[tagType]++;
+          const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
+          const effectiveQuestion =
+            tag.questionText?.trim() ??
+            (tag.tagType === 'STRUCTURAL' ? getCharacterQuestion(tag.displayName) : defaultQuestion(tag.displayName));
+          return {
+            tagKey: tag.tagKey,
+            displayName: tag.displayName,
+            tagType: tag.tagType,
+            category: tag.category,
+            questionText: effectiveQuestion,
+            displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
+            workCount: tag.workCount,
+            ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
+          };
+        });
+
+        console.log(`[tags/list] Returning ${tagsData.length} tags from direct SQLite, stats:`, byType);
+
+        return NextResponse.json({
+          success: true,
+          tags: tagsData,
+          categoryOrder,
+          stats: {
+            total: tagsData.length,
+            byType,
+          },
+        });
+      } catch (e) {
+        console.error('[tags/list] Error using direct SQLite fallback:', e);
+        // フォールバック失敗時はPrismaの結果（0件）を返す
+      }
+    }
+
+    // タグタイプ別の集計
+    const byType = {
+      OFFICIAL: 0,
+      DERIVED: 0,
+      STRUCTURAL: 0,
+    };
+
+    const { categoryOrder, categoryMerge } = loadCategoryConfig();
+    const tagRanks = loadTagRanks();
+    const defaultQuestion = (dn: string) => `${dn}が関係している？`;
+    const getCharacterQuestion = (dn: string) => `${dn}というキャラクターが登場する？`;
+    const tagsData = tags.map(tag => {
+      const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
+      byType[tagType]++;
+      const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
+      const effectiveQuestion =
+        tag.questionText?.trim() ??
+        (tag.tagType === 'STRUCTURAL' ? getCharacterQuestion(tag.displayName) : defaultQuestion(tag.displayName));
+      return {
+        tagKey: tag.tagKey,
+        displayName: tag.displayName,
+        tagType: tag.tagType,
+        category: tag.category,
+        questionText: effectiveQuestion,
+        displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
+        workCount: tag._count.workTags,
+        ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
+      };
+    });
+
+    console.log(`[tags/list] Returning ${tagsData.length} tags, stats:`, byType);
+
+    return NextResponse.json({
+      success: true,
+      tags: tagsData,
+      categoryOrder,
+      stats: {
+        total: tagsData.length,
+        byType,
+      },
+    });
+  } catch (error) {
+    console.error('Error loading tags:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
+  }
+}
