@@ -1,10 +1,11 @@
 /**
  * GET: 包括・統合一覧（表示用）
- * tagIncludeUnify.json + questionTemplates + ランク情報 をまとめて返す
+ * Phase 3: tagIncludeUnify.json + DB問い合わせテンプレート + ランク情報
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import fs from 'fs';
 import path from 'path';
 
@@ -23,9 +24,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    await ensurePrismaConnected();
+
     const root = process.cwd();
     const includeUnifyPath = path.join(root, 'config', 'tagIncludeUnify.json');
-    const templatesPath = path.join(root, 'config', 'questionTemplates.json');
     const ranksPath = path.join(root, 'config', 'tagRanks.json');
     const officialPath = path.join(root, 'config', 'officialTagsCache.json');
     const tagCategoriesPath = path.join(root, 'config', 'tagCategories.json');
@@ -34,11 +36,27 @@ export async function GET(request: NextRequest) {
       include?: Record<string, string[]>;
       unify?: string[][];
     };
-    let templates: Record<string, string> = {};
-    try {
-      templates = JSON.parse(fs.readFileSync(templatesPath, 'utf-8')).templates ?? {};
-    } catch {
-      // ignore
+
+    // DBのみ（Tag.questionText が唯一の参照先）
+    const displayNamesForTemplates = new Set<string>();
+    for (const rep of Object.keys(includeUnify.include ?? {})) displayNamesForTemplates.add(rep);
+    for (const included of Object.values(includeUnify.include ?? {})) {
+      for (const d of included) displayNamesForTemplates.add(d);
+    }
+    for (const group of includeUnify.unify ?? []) {
+      for (const d of group) displayNamesForTemplates.add(d);
+    }
+    const dbTemplatesMap = new Map<string, string>();
+    if (displayNamesForTemplates.size > 0) {
+      const tagsFromDb = await prisma.tag.findMany({
+        where: { displayName: { in: Array.from(displayNamesForTemplates) } },
+        select: { displayName: true, questionText: true },
+      });
+      for (const t of tagsFromDb) {
+        if (t.questionText?.trim() && !dbTemplatesMap.has(t.displayName)) {
+          dbTemplatesMap.set(t.displayName, t.questionText.trim());
+        }
+      }
     }
     let ranks: Record<string, string> = {};
     try {
@@ -56,9 +74,9 @@ export async function GET(request: NextRequest) {
       // ignore
     }
 
-    const defaultPattern = (displayName: string) => `${displayName}が特徴的だったりするのかしら？`;
+    const defaultPattern = (displayName: string) => `${displayName}が関係している？`;
     const questionText = (displayName: string) =>
-      templates[displayName] ?? defaultPattern(displayName);
+      dbTemplatesMap.get(displayName) ?? defaultPattern(displayName);
 
     const includeList: Array<{
       representative: string;

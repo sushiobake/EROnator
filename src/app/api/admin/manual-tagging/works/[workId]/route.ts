@@ -227,7 +227,7 @@ export async function PUT(
         });
       }
 
-      const defaultQuestionTemplate = (name: string) => `${name.trim()}が特徴的だったりするのかしら？`;
+      const defaultQuestionTemplate = (name: string) => `${name.trim()}が関係している？`;
 
       const upsertDerived = async (displayName: string, rank: 'A' | 'B' | 'C') => {
         const trimmed = displayName.trim();
@@ -240,15 +240,15 @@ export async function PUT(
               displayName: trimmed,
               tagType: 'DERIVED',
               category: 'その他',
-              questionTemplate: defaultQuestionTemplate(displayName),
+              questionText: defaultQuestionTemplate(displayName),
             },
           });
           await addTagToRanks(trimmed, rank);
         } else {
-          // 既存タグでも questionTemplate が未設定なら設定（タグリストに表示されるようにする）
+          // 既存タグでも questionText が未設定なら設定（タグリストに表示されるようにする）
           await tx.tag.updateMany({
-            where: { tagKey, questionTemplate: null },
-            data: { questionTemplate: defaultQuestionTemplate(displayName) },
+            where: { tagKey, questionText: null },
+            data: { questionText: defaultQuestionTemplate(displayName) },
           });
         }
         await tx.workTag.upsert({
@@ -280,13 +280,13 @@ export async function PUT(
               displayName: charName,
               tagType: 'STRUCTURAL',
               category: 'キャラクター',
-              questionTemplate: `${charName}というキャラクターが登場する？`,
+              questionText: `${charName}というキャラクターが登場する？`,
             },
           });
         } else {
           await tx.tag.updateMany({
-            where: { tagKey: charTagKey.tagKey, questionTemplate: null },
-            data: { questionTemplate: `${charName}というキャラクターが登場する？` },
+            where: { tagKey: charTagKey.tagKey, questionText: null },
+            data: { questionText: `${charName}というキャラクターが登場する？` },
           });
         }
         await tx.workTag.upsert({
@@ -299,20 +299,26 @@ export async function PUT(
       const validFolders = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
       const folder =
         typeof bodyFolder === 'string' && validFolders.includes(bodyFolder) ? bodyFolder : null;
+      const gameEnabledFolders = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
+      const setGameEnabled = folder ? gameEnabledFolders.includes(folder) : false;
       if (folder) {
         const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
         if (folder === 'tagged') {
           const taggedAtIso = new Date().toISOString();
           if (isPostgres) {
             await tx.$executeRawUnsafe(
-              'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
+              setGameEnabled
+                ? 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $3'
+                : 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
               folder,
               taggedAtIso,
               workId
             );
           } else {
             await tx.$executeRawUnsafe(
-              'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+              setGameEnabled
+                ? 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
+                : 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
               folder,
               taggedAtIso,
               workId
@@ -321,13 +327,17 @@ export async function PUT(
         } else {
           if (isPostgres) {
             await tx.$executeRawUnsafe(
-              'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
+              setGameEnabled
+                ? 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2'
+                : 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
               folder,
               workId
             );
           } else {
             await tx.$executeRawUnsafe(
-              'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+              setGameEnabled
+                ? 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
+                : 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
               folder,
               workId
             );
@@ -368,18 +378,24 @@ export async function PATCH(
       return NextResponse.json({ error: 'Work not found' }, { status: 404 });
     }
     const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+    const gameEnabledFolders = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
+    const setGameEnabled = gameEnabledFolders.includes(manualTaggingFolder);
     if (manualTaggingFolder === 'tagged') {
       const taggedAtIso = new Date().toISOString();
       if (isPostgres) {
         await prisma.$executeRawUnsafe(
-          'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
+          setGameEnabled
+            ? 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $3'
+            : 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
           manualTaggingFolder,
           taggedAtIso,
           workId
         );
       } else {
         await prisma.$executeRawUnsafe(
-          'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          setGameEnabled
+            ? 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
+            : 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
           manualTaggingFolder,
           taggedAtIso,
           workId
@@ -388,13 +404,17 @@ export async function PATCH(
     } else {
       if (isPostgres) {
         await prisma.$executeRawUnsafe(
-          'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
+          setGameEnabled
+            ? 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2'
+            : 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
           manualTaggingFolder,
           workId
         );
       } else {
         await prisma.$executeRawUnsafe(
-          'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          setGameEnabled
+            ? 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
+            : 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
           manualTaggingFolder,
           workId
         );

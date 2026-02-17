@@ -1,14 +1,16 @@
 /**
  * /api/admin/tags/update: タグの質問テンプレートを更新するAPI
+ * Phase 3: 統合・包括グループ内の全タグに同期する
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 
 export interface UpdateRequest {
   tagKey: string;
-  questionTemplate: string | null;
+  questionText: string | null;
 }
 
 export interface UpdateResponse {
@@ -16,7 +18,7 @@ export interface UpdateResponse {
   tag?: {
     tagKey: string;
     displayName: string;
-    questionTemplate: string | null;
+    questionText: string | null;
   };
   error?: string;
 }
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
     await ensurePrismaConnected();
 
     const body: UpdateRequest = await request.json();
-    const { tagKey, questionTemplate } = body;
+    const { tagKey, questionText } = body;
 
     if (!tagKey) {
       return NextResponse.json(
@@ -63,14 +65,14 @@ export async function POST(request: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
         const db = sqlite3(dbPath);
         
-        // questionTemplateカラムが存在するか確認
+        // questionTextカラムが存在するか確認（無ければ追加）
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
         const tableInfo = db.prepare("PRAGMA table_info(Tag)").all() as Array<{ name: string }>;
-        const hasQuestionTemplate = tableInfo.some(col => col.name === 'questionTemplate');
+        const hasQuestionText = tableInfo.some(col => col.name === 'questionText');
         
-        if (!hasQuestionTemplate) {
+        if (!hasQuestionText) {
           // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-          db.prepare('ALTER TABLE Tag ADD COLUMN questionTemplate TEXT').run();
+          db.prepare('ALTER TABLE Tag ADD COLUMN questionText TEXT').run();
         }
         
         // タグが存在するか確認
@@ -91,17 +93,17 @@ export async function POST(request: NextRequest) {
         
         // 質問テンプレートを更新
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        db.prepare('UPDATE Tag SET questionTemplate = ? WHERE tagKey = ?').run(
-          questionTemplate || null,
+        db.prepare('UPDATE Tag SET questionText = ? WHERE tagKey = ?').run(
+          questionText || null,
           tagKey
         );
         
         // 更新後のタグを取得
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        const updatedDirectTag = db.prepare('SELECT tagKey, displayName, questionTemplate FROM Tag WHERE tagKey = ?').get(tagKey) as {
+        const updatedDirectTag = db.prepare('SELECT tagKey, displayName, questionText FROM Tag WHERE tagKey = ?').get(tagKey) as {
           tagKey: string;
           displayName: string;
-          questionTemplate: string | null;
+          questionText: string | null;
         };
         
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
@@ -123,22 +125,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 質問テンプレートを更新
-    const updatedTag = await prisma.tag.update({
-      where: { tagKey },
+    // Phase 3: 統合・包括グループ内の全タグに同期
+    const displayName = existingTag.displayName;
+    const groupDisplayNames = getGroupDisplayNames(displayName);
+    const tagKeysInGroup = groupDisplayNames.length > 0
+      ? (await prisma.tag.findMany({
+          where: { displayName: { in: groupDisplayNames } },
+          select: { tagKey: true },
+        })).map(t => t.tagKey)
+      : [tagKey];
+
+    await prisma.tag.updateMany({
+      where: { tagKey: { in: tagKeysInGroup } },
       data: {
-        questionTemplate: questionTemplate || null,
+        questionText: questionText || null,
       },
+    });
+
+    const updatedTag = await prisma.tag.findUnique({
+      where: { tagKey },
       select: {
         tagKey: true,
         displayName: true,
-        questionTemplate: true,
+        questionText: true,
       },
     });
 
     return NextResponse.json({
       success: true,
-      tag: updatedTag,
+      tag: updatedTag ?? { tagKey, displayName: displayName ?? '', questionText: questionText || null },
+      syncedCount: tagKeysInGroup.length,
     });
   } catch (error) {
     console.error('Error updating tag:', error);

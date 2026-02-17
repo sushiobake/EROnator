@@ -16,6 +16,7 @@ export interface TagListResponse {
     displayName: string;
     tagType: string;
     category: string | null;
+    questionText?: string | null;
     displayCategory: string;
     workCount: number;
     /** DERIVED のみ。tagRanks.json の A/B/C。未設定は '' */
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
         displayName: true,
         tagType: true,
         category: true,
+        questionText: true,
         _count: {
           select: {
             workTags: true,
@@ -123,16 +125,18 @@ export async function GET(request: NextRequest) {
             t.displayName,
             t.tagType,
             t.category,
+            t.questionText,
             COUNT(wt.tagKey) as workCount
           FROM Tag t
           LEFT JOIN WorkTag wt ON t.tagKey = wt.tagKey
-          GROUP BY t.tagKey, t.displayName, t.tagType, t.category
+          GROUP BY t.tagKey, t.displayName, t.tagType, t.category, t.questionText
           ORDER BY t.tagType ASC, t.displayName ASC
         `).all() as Array<{
           tagKey: string;
           displayName: string;
           tagType: string;
           category: string | null;
+          questionText: string | null;
           workCount: number;
         }>;
         
@@ -150,15 +154,21 @@ export async function GET(request: NextRequest) {
 
         const { categoryOrder, categoryMerge } = loadCategoryConfig();
         const tagRanks = loadTagRanks();
+        const defaultQuestion = (dn: string) => `${dn}が関係している？`;
+        const getCharacterQuestion = (dn: string) => `${dn}というキャラクターが登場する？`;
         const tagsData = directTags.map(tag => {
           const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
           byType[tagType]++;
           const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
+          const effectiveQuestion =
+            tag.questionText?.trim() ??
+            (tag.tagType === 'STRUCTURAL' ? getCharacterQuestion(tag.displayName) : defaultQuestion(tag.displayName));
           return {
             tagKey: tag.tagKey,
             displayName: tag.displayName,
             tagType: tag.tagType,
             category: tag.category,
+            questionText: effectiveQuestion,
             displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
             workCount: tag.workCount,
             ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
@@ -191,15 +201,21 @@ export async function GET(request: NextRequest) {
 
     const { categoryOrder, categoryMerge } = loadCategoryConfig();
     const tagRanks = loadTagRanks();
+    const defaultQuestion = (dn: string) => `${dn}が関係している？`;
+    const getCharacterQuestion = (dn: string) => `${dn}というキャラクターが登場する？`;
     const tagsData = tags.map(tag => {
       const tagType = tag.tagType as 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL';
       byType[tagType]++;
       const rank = tag.tagType === 'DERIVED' ? (tagRanks[tag.displayName] ?? '') : undefined;
+      const effectiveQuestion =
+        tag.questionText?.trim() ??
+        (tag.tagType === 'STRUCTURAL' ? getCharacterQuestion(tag.displayName) : defaultQuestion(tag.displayName));
       return {
         tagKey: tag.tagKey,
         displayName: tag.displayName,
         tagType: tag.tagType,
         category: tag.category,
+        questionText: effectiveQuestion,
         displayCategory: getDisplayCategory(tag.tagType, tag.displayName, tag.category, categoryMerge),
         workCount: tag._count.workTags,
         ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),

@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
                 displayName: trimmedName,
                 tagType: 'DERIVED',
                 category: tagItem.category || 'その他',
-                questionTemplate: `${trimmedName}が特徴的だったりするのかしら？`,
+                questionText: `${trimmedName}が関係している？`,
               }
             });
             newTagCount++;
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
                 displayName: charName,
                 tagType: 'STRUCTURAL',
                 category: 'キャラクター',
-                questionTemplate: `${charName}というキャラクターが登場する？`,
+                questionText: `${charName}というキャラクターが登場する？`,
               }
             });
           }

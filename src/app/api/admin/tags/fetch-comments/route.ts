@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
         workId: true,
         productUrl: true,
         commentText: true, // 既に取得済みかチェック
+        manualTaggingFolder: true, // 未タグ振り分け判定用
       },
     });
 
@@ -113,9 +114,14 @@ export async function POST(request: NextRequest) {
             popularityBase?: number;
           } = {};
 
-          // コメントがあれば更新
+          // コメントがあれば更新（新規取得時は manualTaggingFolder を untagged に）
           if (data.commentText) {
             updateData.commentText = data.commentText;
+            // フォルダ未設定の場合、未タグに自動振り分け
+            const currentFolder = work.manualTaggingFolder;
+            if (currentFolder == null || currentFolder === '') {
+              (updateData as Record<string, unknown>).manualTaggingFolder = 'untagged';
+            }
           }
 
           // レビュー情報があれば更新

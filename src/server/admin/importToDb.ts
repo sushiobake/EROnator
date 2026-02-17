@@ -272,7 +272,7 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
                   displayName: derivedTagData.displayName,
                   tagType: 'DERIVED',
                   category: derivedTagData.category ?? null,
-                  questionTemplate: `${derivedTagData.displayName}が特徴的だったりするのかしら？`,
+                  questionText: `${derivedTagData.displayName}が関係している？`,
                 },
               });
               result.stats.tagsCreated++;
@@ -317,7 +317,7 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
                   displayName,
                   tagType: 'STRUCTURAL',
                   category: 'CHARACTER',
-                  questionTemplate: `${displayName}というキャラクターが登場する？`,
+                  questionText: `${displayName}というキャラクターが登場する？`,
                 },
               });
               result.stats.tagsCreated++;

@@ -59,7 +59,7 @@ model Tag {
   displayName       String
   tagType           String   // "OFFICIAL" | "DERIVED" | "STRUCTURAL"
   category          String?  // nullable
-  questionTemplate  String?  // 質問テンプレート（nullable）
+  questionText      String?  // タグごとの質問文（nullable）
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

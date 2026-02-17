@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Works: 作品データ
@@ -59,7 +58,7 @@ model Tag {
   displayName       String
   tagType           String   // "OFFICIAL" | "DERIVED" | "STRUCTURAL"
   category          String?  // nullable
-  questionTemplate  String?  // 質問テンプレート（nullable）
+  questionText      String?  // タグごとの質問文（nullable）
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

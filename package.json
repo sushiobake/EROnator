@@ -44,7 +44,10 @@
     "check:db-status": "tsx scripts/check-db-status.ts",
     "delete:api-works": "tsx scripts/delete-api-works.ts",
     "cache:official-tags": "node scripts/generate-official-cache.js",
-    "export:worker-tag-lists": "node scripts/export-worker-tag-lists.js"
+    "export:worker-tag-lists": "node scripts/export-worker-tag-lists.js",
+    "migrate:question-templates": "tsx scripts/migrate-question-templates-to-db.ts",
+    "migrate:question-templates:dry-run": "tsx scripts/migrate-question-templates-to-db.ts --dry-run",
+    "rename:question-text": "tsx scripts/rename-question-template-to-question-text.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

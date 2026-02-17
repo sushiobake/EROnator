@@ -58,7 +58,7 @@ model Tag {
   displayName       String
   tagType           String   // "OFFICIAL" | "DERIVED" | "STRUCTURAL"
   category          String?  // nullable
-  questionTemplate  String?  // 質問テンプレート（nullable）
+  questionText      String?  // タグごとの質問文（nullable）
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -114,4 +114,21 @@ model Log {
   createdAt         DateTime @default(now())
 
   @@index([timestamp])
+}
+
+// PlayHistory: 1プレイ＝1レコード（質問列・回答列・結果・時刻）
+model PlayHistory {
+  id                  String   @id @default(cuid())
+  sessionId           String   @unique // 1セッション＝1レコード
+  outcome             String   // "SUCCESS" | "FAIL_LIST" | "ALMOST_SUCCESS" | "NOT_IN_LIST"
+  questionCount       Int      @default(0)
+  questionHistory     String   @default("[]") // JSON: 質問列（displayText, kind, answer 等）
+  aiGateChoice        String?  // "YES" | "NO" | "DONT_CARE"
+  resultWorkId        String?  // 正解 or 候補から選択した workId
+  submittedTitleText  String?  // リスト外入力（NOT_IN_LIST 時）
+  createdAt           DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([outcome])
+  @@index([createdAt])
 }

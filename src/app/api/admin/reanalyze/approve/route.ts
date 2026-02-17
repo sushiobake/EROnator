@@ -96,7 +96,7 @@ export async function POST(request: Request) {
               displayName,
               tagType: 'DERIVED',
               category,
-              questionTemplate: `${displayName}が特徴的だったりするのかしら？`,
+              questionText: `${displayName}が関係している？`,
             },
           });
         }
@@ -144,7 +144,7 @@ export async function POST(request: Request) {
                 displayName: charName,
                 tagType: 'STRUCTURAL',
                 category: 'キャラクター',
-                questionTemplate: `${charName}というキャラクターが登場する？`,
+                questionText: `${charName}というキャラクターが登場する？`,
               },
             });
           }

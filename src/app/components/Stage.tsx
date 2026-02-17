@@ -318,9 +318,19 @@ function MobileStageInner({
           お問い合わせ
         </a>
         <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
-        <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
-          SNS
-        </span>
+        <a
+          href="https://x.com/eronator_jp"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: 14,
+            color: 'rgba(255,255,255,0.9)',
+            textDecoration: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          公式X
+        </a>
       </footer>
     </>
   );
@@ -565,8 +575,10 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
             <div
               style={{
                 width: '100%',
-                padding: '12px 12px 32px',
+                maxWidth: '100%',
+                padding: '12px 14px 32px',
                 boxSizing: 'border-box',
+                overflow: 'hidden',
               }}
             >
               {mobileBelowCanvas}
@@ -674,9 +686,19 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
           お問い合わせ
         </a>
         <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
-        <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.02em' }}>
-          SNS
-        </span>
+        <a
+          href="https://x.com/eronator_jp"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: 13,
+            color: 'rgba(255,255,255,0.9)',
+            textDecoration: 'none',
+            letterSpacing: '0.02em',
+          }}
+        >
+          公式X
+        </a>
       </footer>
     </div>
   );

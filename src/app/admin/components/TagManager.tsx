@@ -16,6 +16,7 @@ interface TagItem {
   tagType: string;
   category: string | null;
   displayCategory?: string;
+  questionText?: string | null;
   workCount: number;
 }
 
@@ -83,6 +84,8 @@ export default function TagManager({ adminToken }: Props) {
   const [vagueDisplayNames, setVagueDisplayNames] = useState<Set<string>>(new Set());
   // エロ質問タグ（7問目以降にのみ出題）
   const [eroticDisplayNames, setEroticDisplayNames] = useState<Set<string>>(new Set());
+  // まとめ質問セクションの開閉（デフォルトは閉じる）
+  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
 
   // タグ読み込み
   const fetchTags = async () => {
@@ -95,6 +98,7 @@ export default function TagManager({ adminToken }: Props) {
       const data = await res.json();
       if (data.tags) {
         setTags(data.tags);
+        setTemplates(buildTemplatesFromTags(data.tags));
       }
       if (Array.isArray(data.categoryOrder)) {
         setCategoryOrder(data.categoryOrder);
@@ -119,17 +123,15 @@ export default function TagManager({ adminToken }: Props) {
     }
   };
 
-  // 質問テンプレート読み込み
-  const fetchTemplates = async () => {
-    try {
-      const res = await fetch('/api/admin/tags/question-template');
-      const data = await res.json();
-      if (data.templates) {
-        setTemplates(data.templates);
+  // Phase 3: テンプレートは tags（list API の questionText）から構築。fetchTemplates は廃止。
+  const buildTemplatesFromTags = (tagList: TagItem[]) => {
+    const map: Record<string, string> = {};
+    for (const t of tagList) {
+      if (t.questionText?.trim() && !map[t.displayName]) {
+        map[t.displayName] = t.questionText.trim();
       }
-    } catch (error) {
-      console.error('Failed to fetch templates:', error);
     }
+    return map;
   };
 
   // 包括・統合一覧読み込み
@@ -229,7 +231,6 @@ export default function TagManager({ adminToken }: Props) {
   useEffect(() => {
     fetchTags();
     fetchRanks();
-    fetchTemplates();
     fetchBannedTags();
     fetchIncludeUnifyView();
     fetchSummaryQuestions();
@@ -386,17 +387,17 @@ export default function TagManager({ adminToken }: Props) {
     }
   };
 
-  // 質問テンプレート保存
-  const handleSaveTemplate = async (displayName: string, template: string) => {
+  // Phase 3: 質問テンプレート保存（DB 更新 + 統合・包括グループ内に同期）
+  const handleSaveTemplate = async (tagKey: string, displayName: string, template: string) => {
     try {
-      const res = await fetch('/api/admin/tags/question-template', {
+      const res = await fetch('/api/admin/tags/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName, template: template.trim() || null })
+        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'x-eronator-admin-token': adminToken } : {}) },
+        body: JSON.stringify({ tagKey, questionText: template.trim() || null })
       });
       const data = await res.json();
       if (data.success) {
-        setTemplates(data.templates);
+        await fetchTags();
         setEditingTemplate(null);
         setEditingTemplateValue('');
       } else {
@@ -481,9 +482,10 @@ export default function TagManager({ adminToken }: Props) {
     return { movedSet: moved, repIncludes: inc, repUnify: uny, repRank: rankMap };
   }, [includeUnifyView]);
 
-  // テーブル行: カテゴリ見出し / まとめ質問 / メイン行 / サブ行
+  // テーブル行: カテゴリ見出し / まとめ質問ヘッダ（畳み） / まとめ質問 / メイン行 / サブ行
   type TableRow =
     | { type: 'category'; category: string }
+    | { type: 'summary-header'; count: number }
     | { type: 'summary'; id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }
     | { type: 'main'; tag: TagItem }
     | { type: 'main-orphan'; displayName: string; rank: string }
@@ -492,9 +494,13 @@ export default function TagManager({ adminToken }: Props) {
   const tableRows = useMemo((): TableRow[] => {
     const rows: TableRow[] = [];
     if (categoryFilter === 'ALL' && summaryQuestions.length > 0) {
-      rows.push({ type: 'category', category: 'まとめ質問タグ' });
-      for (const q of summaryQuestions) {
-        rows.push({ type: 'summary', id: q.id, label: q.label, questionText: q.questionText, displayNames: q.displayNames, erotic: q.erotic });
+      if (summaryCollapsed) {
+        rows.push({ type: 'summary-header', count: summaryQuestions.length });
+      } else {
+        rows.push({ type: 'category', category: 'まとめ質問タグ' });
+        for (const q of summaryQuestions) {
+          rows.push({ type: 'summary', id: q.id, label: q.label, questionText: q.questionText, displayNames: q.displayNames, erotic: q.erotic });
+        }
       }
     }
     const addedReps = new Set<string>();
@@ -537,7 +543,7 @@ export default function TagManager({ adminToken }: Props) {
       }
     }
     return rows;
-  }, [categoryFilter, categoryOrder, tagsByDisplayCategory, movedSet, repIncludes, repUnify, repRank, repCategory, tags, summaryQuestions]);
+  }, [categoryFilter, categoryOrder, tagsByDisplayCategory, movedSet, repIncludes, repUnify, repRank, repCategory, tags, summaryQuestions, summaryCollapsed]);
 
   // ページネーションは「行」単位（カテゴリ見出し・メイン・サブを含む）
   const paginatedTableRows = useMemo(() => {
@@ -586,9 +592,9 @@ export default function TagManager({ adminToken }: Props) {
   const RankBadge = ({ rank }: { rank: UnifiedRank }) => (
     <span style={{
       display: 'inline-block',
-      padding: '2px 8px',
-      borderRadius: '4px',
-      fontSize: '12px',
+      padding: '1px 6px',
+      borderRadius: '3px',
+      fontSize: '11px',
       fontWeight: 'bold',
       backgroundColor: getRankBgColor(rank),
       color: rank === 'S' ? RANK_TEXT.S : rank === 'A' ? RANK_TEXT.A : rank === 'B' ? RANK_TEXT.B : rank === 'C' ? RANK_TEXT.C : rank === 'X' ? RANK_TEXT.X : rank === 'N' ? '#495057' : '#666'
@@ -613,7 +619,7 @@ export default function TagManager({ adminToken }: Props) {
 
   // 汎用パターン（BCタグ・未設定時）。キャラタグは別で「○○というキャラクターが登場する？」を使用
   const getDefaultQuestion = (displayName: string): string => {
-    return `${displayName}が特徴的だったりするのかしら？`;
+    return `${displayName}が関係している？`;
   };
   const getCharacterQuestion = (displayName: string): string => {
     return `${displayName}というキャラクターが登場する？`;
@@ -885,23 +891,43 @@ export default function TagManager({ adminToken }: Props) {
       <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white' }}>
         <thead>
           <tr style={{ backgroundColor: '#e9ecef' }}>
-            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '40px' }}>選択</th>
-            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '50px' }}>ランク</th>
-            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd', width: '180px' }}>タグ名</th>
-            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd' }}>質問文</th>
-            <th style={{ padding: '8px', textAlign: 'left', border: '1px solid #ddd', width: '140px' }}>作品/カテゴリ</th>
-            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '70px' }}>抽象質問</th>
-            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '60px' }}>エロ</th>
-            <th style={{ padding: '8px', textAlign: 'center', border: '1px solid #ddd', width: '60px' }}>操作</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '36px' }}>選択</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '44px' }}>ランク</th>
+            <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd', width: '160px' }}>タグ名</th>
+            <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd' }}>質問文</th>
+            <th style={{ padding: '6px', textAlign: 'left', border: '1px solid #ddd', width: '220px', minWidth: '220px' }}>作品/カテゴリ</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '64px' }}>抽象質問</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>エロ</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>操作</th>
           </tr>
         </thead>
         <tbody>
           {paginatedTableRows.map((row, idx) => {
+            if (row.type === 'summary-header') {
+              return (
+                <tr
+                  key="summary-header"
+                  onClick={() => setSummaryCollapsed(false)}
+                  style={{
+                    backgroundColor: '#e2e8f0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <td colSpan={8} style={{ padding: '4px 8px', border: '1px solid #ddd', fontWeight: 'bold' }}>
+                    ▶ 〇 まとめ質問タグ ({row.count}件) — クリックで展開
+                  </td>
+                </tr>
+              );
+            }
             if (row.type === 'category') {
               return (
                 <tr key={`cat-${row.category}`} style={{ backgroundColor: '#e2e8f0' }}>
-                  <td colSpan={8} style={{ padding: '8px 10px', border: '1px solid #ddd', fontWeight: 'bold' }}>
-                    〇 {row.category}
+                  <td colSpan={8} style={{ padding: '4px 8px', border: '1px solid #ddd', fontWeight: 'bold' }}>
+                    {row.category === 'まとめ質問タグ' ? (
+                      <span onClick={() => setSummaryCollapsed(true)} style={{ cursor: 'pointer' }} title="クリックで畳む">▼ 〇 {row.category}</span>
+                    ) : (
+                      `〇 ${row.category}`
+                    )}
                   </td>
                 </tr>
               );
@@ -910,10 +936,10 @@ export default function TagManager({ adminToken }: Props) {
               const isEditing = editingSummaryId === row.id;
               return (
                 <tr key={`summary-${row.id}`} style={{ backgroundColor: '#f0f4ff' }}>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center', color: '#999' }}>—</td>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '13px' }}>{row.label}</td>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '13px' }}>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center', color: '#999' }}>—</td>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>{row.label}</td>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                     {isEditing ? (
                       <div style={{ display: 'flex', gap: '4px' }}>
                         <input
@@ -933,9 +959,9 @@ export default function TagManager({ adminToken }: Props) {
                       </span>
                     )}
                   </td>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>{row.displayNames.join(', ')}</td>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '11px', color: '#666', lineHeight: 1.3 }}>{row.displayNames.join(', ')}</td>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                     <input
                       type="checkbox"
                       checked={!!row.erotic}
@@ -943,7 +969,7 @@ export default function TagManager({ adminToken }: Props) {
                       title="まとめエロ質問（6問目以降にのみ出題）"
                     />
                   </td>
-                  <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
                 </tr>
               );
             }
@@ -952,20 +978,20 @@ export default function TagManager({ adminToken }: Props) {
               const subTag = row.subTag;
               return (
                 <tr key={`sub-${row.subDisplayName}-${idx}`} style={{ backgroundColor: (getRankBgColor(subRank) + '25') }}>
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                     <RankBadge rank={subRank} />
                   </td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px' }}>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                     └ {row.subDisplayName}
                   </td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px', color: '#666' }}>同上</td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '12px' }}>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>同上</td>
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                     {subTag != null ? `${subTag.workCount}件 ${subTag.category ? `/ ${subTag.category}` : ''}` : '—'}
                   </td>
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
                 </tr>
               );
             }
@@ -975,38 +1001,38 @@ export default function TagManager({ adminToken }: Props) {
               return (
                 <React.Fragment key={`orphan-${row.displayName}-${idx}`}>
                   <tr style={{ backgroundColor: (getRankBgColor(rank) + '40') }}>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                    <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                       <RankBadge rank={rank} />
                     </td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '13px' }}>{row.displayName}</td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '13px', color: '#666' }}>—</td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '12px', color: '#999' }}>DBに未登録</td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>{row.displayName}</td>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>—</td>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#999' }}>DBに未登録</td>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                       <input type="checkbox" checked={vagueDisplayNames.has(row.displayName)} onChange={() => handleToggleVague(row.displayName)} title="抽象質問（11問目以降）" />
                     </td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                       <input type="checkbox" checked={eroticDisplayNames.has(row.displayName)} onChange={() => handleToggleErotic(row.displayName)} title="エロ質問（7問目以降）" />
                     </td>
-                    <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }} />
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
                   </tr>
                   {subs.map((s, j) => {
                     const subRank = (s.rank || 'A') as UnifiedRank;
                     const subTag = tags.find(t => t.displayName === s.displayName);
                     return (
                       <tr key={`orphan-sub-${row.displayName}-${s.displayName}-${j}`} style={{ backgroundColor: (getRankBgColor(subRank) + '25') }}>
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                           <RankBadge rank={subRank} />
                         </td>
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px' }}>└ {s.displayName}</td>
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '13px', color: '#666' }}>同上</td>
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', fontSize: '12px' }}>
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>└ {s.displayName}</td>
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>同上</td>
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                           {subTag != null ? `${subTag.workCount}件 ${subTag.category ? `/ ${subTag.category}` : ''}` : '—'}
                         </td>
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '4px 6px', border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
                       </tr>
                     );
                   })}
@@ -1028,7 +1054,7 @@ export default function TagManager({ adminToken }: Props) {
                   backgroundColor: selectedTags.has(tag.tagKey) ? '#e8f5e9' : getRankBgColor(unifiedRank) + rowAlpha
                 }}
               >
-                <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   <input
                     type="checkbox"
                     checked={selectedTags.has(tag.tagKey)}
@@ -1042,7 +1068,7 @@ export default function TagManager({ adminToken }: Props) {
                     }}
                   />
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   {editable ? (
                     <select
                       value={ranks[tag.displayName] || ''}
@@ -1058,7 +1084,7 @@ export default function TagManager({ adminToken }: Props) {
                     <RankBadge rank={unifiedRank} />
                   )}
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd' }}>
                   {editable && editingTag === tag.tagKey ? (
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <input type="text" value={editingName} onChange={e => setEditingName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleRenameTag(tag.tagKey, editingName); if (e.key === 'Escape') { setEditingTag(null); setEditingName(''); } }} style={{ flex: 1, padding: '2px 4px' }} autoFocus />
@@ -1071,11 +1097,11 @@ export default function TagManager({ adminToken }: Props) {
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '13px' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                   {editingTemplate === tag.tagKey ? (
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <input type="text" value={editingTemplateValue} onChange={e => setEditingTemplateValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTemplate(tag.displayName, editingTemplateValue); if (e.key === 'Escape') { setEditingTemplate(null); setEditingTemplateValue(''); } }} style={{ flex: 1, padding: '2px 4px' }} autoFocus />
-                      <button onClick={() => handleSaveTemplate(tag.displayName, editingTemplateValue)} style={{ padding: '2px 6px', fontSize: '11px' }}>✓</button>
+                      <input type="text" value={editingTemplateValue} onChange={e => setEditingTemplateValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTemplate(tag.tagKey, tag.displayName, editingTemplateValue); if (e.key === 'Escape') { setEditingTemplate(null); setEditingTemplateValue(''); } }} style={{ flex: 1, padding: '2px 4px' }} autoFocus />
+                      <button onClick={() => handleSaveTemplate(tag.tagKey, tag.displayName, editingTemplateValue)} style={{ padding: '2px 6px', fontSize: '11px' }}>✓</button>
                       <button onClick={() => { setEditingTemplate(null); setEditingTemplateValue(''); }} style={{ padding: '2px 6px', fontSize: '11px' }}>✕</button>
                     </div>
                   ) : (
@@ -1084,10 +1110,10 @@ export default function TagManager({ adminToken }: Props) {
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', fontSize: '12px' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
                   {tag.workCount}件 {tag.category && <span style={{ color: '#666' }}>/ {tag.category}</span>}
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   <input
                     type="checkbox"
                     checked={vagueDisplayNames.has(tag.displayName)}
@@ -1095,7 +1121,7 @@ export default function TagManager({ adminToken }: Props) {
                     title="抽象質問（11問目以降にのみ出題）"
                   />
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   <input
                     type="checkbox"
                     checked={eroticDisplayNames.has(tag.displayName)}
@@ -1103,7 +1129,7 @@ export default function TagManager({ adminToken }: Props) {
                     title="エロ質問（7問目以降にのみ出題）"
                   />
                 </td>
-                <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   {tag.tagType !== 'OFFICIAL' && (
                     <button onClick={() => handleDeleteTag(tag.tagKey)} style={{ padding: '2px 8px', fontSize: '11px', cursor: 'pointer' }}>削除</button>
                   )}

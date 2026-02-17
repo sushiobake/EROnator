@@ -26,37 +26,14 @@ import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
+import { isTagBanned } from '@/server/admin/bannedTags';
 import fs from 'fs';
 import path from 'path';
 
-// 質問テンプレートキャッシュ
-let questionTemplatesCache: Record<string, string> | null = null;
-let questionTemplatesCacheTime = 0;
 const CACHE_TTL = 5000; // 5秒キャッシュ
 
-/**
- * 質問テンプレートを読み込む
- */
-function loadQuestionTemplates(): Record<string, string> {
-  const now = Date.now();
-  if (questionTemplatesCache && now - questionTemplatesCacheTime < CACHE_TTL) {
-    return questionTemplatesCache;
-  }
-  
-  try {
-    const filePath = path.join(process.cwd(), 'config', 'questionTemplates.json');
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const data = JSON.parse(content);
-    questionTemplatesCache = data.templates || {};
-    questionTemplatesCacheTime = now;
-    return questionTemplatesCache ?? {};
-  } catch {
-    return {};
-  }
-}
-
-/** 汎用パターン（新タグ・BCタグ・未設定時） */
-const DEFAULT_QUESTION_PATTERN = (displayName: string) => `${displayName}が特徴的だったりするのかしら？`;
+/** Phase 4: 汎用パターン（新タグ・BCタグ・未設定時） */
+const DEFAULT_QUESTION_PATTERN = (displayName: string) => `${displayName}が関係している？`;
 
 /** キャラタグ（Xタグ）用パターン */
 const CHARACTER_QUESTION_PATTERN = (displayName: string) => `${displayName}というキャラクターが登場する？`;
@@ -125,12 +102,15 @@ function loadEroticDisplayNames(): Set<string> {
 }
 
 /**
- * タグの質問文を取得（カスタムテンプレート > キャラ用 > 汎用）
+ * タグの質問文を取得（DB唯一。未設定時はキャラ用 or 汎用）
  */
-function getTagQuestionText(displayName: string, tagType?: string): string {
-  const templates = loadQuestionTemplates();
-  if (templates[displayName]) {
-    return templates[displayName];
+function getTagQuestionText(
+  displayName: string,
+  tagType?: string,
+  dbQuestionText?: string | null
+): string {
+  if (dbQuestionText && dbQuestionText.trim()) {
+    return dbQuestionText.trim();
   }
   if (tagType === 'STRUCTURAL') {
     return CHARACTER_QUESTION_PATTERN(displayName);
@@ -226,32 +206,33 @@ export async function selectNextQuestion(
   );
   const usedTagKeys = await buildUsedTagKeysFromHistory(questionHistory);
 
-  // 1問目: 非エロのまとめ質問から完全ランダムで1つ選択
+  // 1問目: 非エロのまとめ質問から完全ランダムで1つ選択（禁止タグは隔離して除外）
   if (questionCount === 0) {
     const summaries = loadSummaryQuestions();
     const unused = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
     if (unused.length > 0) {
-      const summary = unused[Math.floor(Math.random() * unused.length)];
-      const tags = await prisma.tag.findMany({
-        where: { displayName: { in: summary.displayNames } },
-        select: { tagKey: true },
-        take: 1,
-      });
-      const tagKey = tags[0]?.tagKey ?? null;
-      if (tagKey) {
-        return {
-          kind: 'EXPLORE_TAG',
-          displayText: summary.questionText,
-          tagKey,
-          isSummaryQuestion: true,
-          summaryQuestionId: summary.id,
-          summaryDisplayNames: summary.displayNames,
-          exploreTagKind: 'summary',
-        };
+      const shuffled = [...unused].sort(() => Math.random() - 0.5);
+      for (const summary of shuffled) {
+        const tags = await prisma.tag.findMany({
+          where: { displayName: { in: summary.displayNames } },
+          select: { tagKey: true, displayName: true },
+        });
+        const validTag = tags.find(t => !isTagBanned(t.displayName));
+        if (validTag) {
+          return {
+            kind: 'EXPLORE_TAG',
+            displayText: summary.questionText,
+            tagKey: validTag.tagKey,
+            isSummaryQuestion: true,
+            summaryQuestionId: summary.id,
+            summaryDisplayNames: summary.displayNames,
+            exploreTagKind: 'summary',
+          };
+        }
       }
-      // 選んだまとめの displayNames が DB に1件も無い → ログ＋フォールバック
+      // まとめの displayNames に非禁止タグが無い、またはDBに無い → フォールバック
       console.warn(
-        `[selectNextQuestion] Q1: まとめ「${summary.id}」の displayNames に一致する Tag が0件でした。displayNames=${JSON.stringify(summary.displayNames)}`
+        `[selectNextQuestion] Q1: まとめの displayNames に非禁止タグが0件でした。フォールバックします。`
       );
     } else {
       console.warn('[selectNextQuestion] Q1: 非エロの未使用まとめが0件です。');
@@ -306,6 +287,7 @@ export async function selectNextQuestion(
       select: {
         tagKey: true,
         displayName: true,
+        questionText: true,
         workTags: {
           where: {
             workId: { in: weights.map(w => w.workId) },
@@ -335,13 +317,15 @@ export async function selectNextQuestion(
         const directTags = db.prepare(`
           SELECT 
             t.tagKey,
-            t.displayName
+            t.displayName,
+            t.questionText
           FROM Tag t
           WHERE t.tagType = 'DERIVED'
             AND t.tagKey NOT IN (${Array.from(usedTagKeys).map(() => '?').join(',')})
         `).all(...Array.from(usedTagKeys)) as Array<{
           tagKey: string;
           displayName: string;
+          questionText: string | null;
         }>;
         
         // 各タグのworkTagsを取得
@@ -360,6 +344,7 @@ export async function selectNextQuestion(
           return {
             tagKey: tag.tagKey,
             displayName: tag.displayName,
+            questionText: tag.questionText ?? null,
             workTags,
           };
         });
@@ -372,6 +357,9 @@ export async function selectNextQuestion(
         // フォールバックも失敗した場合は空配列のまま続行
       }
     }
+
+    // 禁止タグは隔離（質問に使わない）
+    derivedTags = derivedTags.filter(t => !isTagBanned(t.displayName));
 
     const hasSoftConfirmData = derivedTags.some(tag => tag.workTags.length > 0);
 
@@ -422,7 +410,11 @@ export async function selectNextQuestion(
         const selectedTag = usableTags[0];
         console.log(`[SOFT_CONFIRM] ${top1TagsInBand.length > 0 ? 'top1狙い' : 'フォールバック'}: ${selectedTag.tag.displayName} (p: ${(selectedTag.p * 100).toFixed(1)}%)`);
 
-        const displayText = getTagQuestionText(selectedTag.tag.displayName, 'DERIVED');
+        const displayText = getTagQuestionText(
+          selectedTag.tag.displayName,
+          'DERIVED',
+          selectedTag.tag.questionText
+        );
         return {
           kind: 'SOFT_CONFIRM',
           displayText,
@@ -669,13 +661,17 @@ async function tryEmergencyExploreFallback(
   const tagKey = candidateTagKeys[0];
   const tag = await prisma.tag.findUnique({
     where: { tagKey },
-    select: { displayName: true, tagType: true },
+    select: { displayName: true, tagType: true, questionText: true },
   });
   if (!tag) return null;
 
   const abstractDisplayNames = loadAbstractDisplayNames();
   const eroticDisplayNames = loadEroticDisplayNames();
-  const displayText = getTagQuestionText(tag.displayName, tag.tagType ?? undefined);
+  const displayText = getTagQuestionText(
+    tag.displayName,
+    tag.tagType ?? undefined,
+    tag.questionText
+  );
   const exploreTagKind: ExploreTagKind = eroticDisplayNames.has(tag.displayName)
     ? 'erotic'
     : abstractDisplayNames.has(tag.displayName)
@@ -956,10 +952,14 @@ async function selectUnifiedExploreOrSummary(
 
   const selectedTag = await prisma.tag.findUnique({
     where: { tagKey: selectedKey },
-    select: { displayName: true, tagType: true },
+    select: { displayName: true, tagType: true, questionText: true },
   });
   if (!selectedTag) return null;
-  const displayText = getTagQuestionText(selectedTag.displayName, selectedTag.tagType ?? undefined);
+  const displayText = getTagQuestionText(
+    selectedTag.displayName,
+    selectedTag.tagType ?? undefined,
+    selectedTag.questionText
+  );
   const exploreTagKind: ExploreTagKind = eroticDisplayNames.has(selectedTag.displayName)
     ? 'erotic'
     : abstractDisplayNames.has(selectedTag.displayName)
@@ -1055,6 +1055,7 @@ async function selectExploreQuestion(
       tagKey: true,
       displayName: true,
       tagType: true,
+      questionText: true,
     },
   });
 
@@ -1071,7 +1072,7 @@ async function selectExploreQuestion(
       
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
       allTags = db.prepare(`
-        SELECT tagKey, displayName, tagType
+        SELECT tagKey, displayName, tagType, questionText
         FROM Tag
         WHERE tagKey IN (${placeholders})
           AND tagType IN ('OFFICIAL', 'DERIVED')
@@ -1079,6 +1080,7 @@ async function selectExploreQuestion(
         tagKey: string;
         displayName: string;
         tagType: string;
+        questionText: string | null;
       }>;
       
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
@@ -1097,6 +1099,8 @@ async function selectExploreQuestion(
       console.log(`[selectExploreQuestion] WARNING: tag "${tag.tagKey}" was in allTags but should be excluded`);
       continue;
     }
+    // 禁止タグは隔離（質問に使わない）
+    if (isTagBanned(tag.displayName)) continue;
     // 抽象質問（旧ふわっと）: 11問目以降のみ候補
     if (questionIndex < 11 && abstractSet.has(tag.displayName)) {
       continue;
@@ -1169,7 +1173,11 @@ async function selectExploreQuestion(
     return null;
   }
 
-  const displayText = getTagQuestionText(selectedTag.displayName, selectedTag.tagType);
+  const displayText = getTagQuestionText(
+    selectedTag.displayName,
+    selectedTag.tagType,
+    selectedTag.questionText
+  );
   const exploreTagKind: ExploreTagKind = eroticSet.has(selectedTag.displayName)
     ? 'erotic'
     : abstractSet.has(selectedTag.displayName)

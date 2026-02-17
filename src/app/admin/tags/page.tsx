@@ -54,7 +54,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate' | 'history';
+type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate' | 'history' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
@@ -111,12 +111,12 @@ export default function AdminTagsPage() {
     displayName: string;
     tagType: string;
     category: string | null;
-    questionTemplate: string | null;
+    questionText: string | null;
     workCount: number;
   }>>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
   const [tagsFilter, setTagsFilter] = useState<'ALL' | 'OFFICIAL' | 'DERIVED' | 'STRUCTURAL'>('ALL');
-  const [editingTag, setEditingTag] = useState<{ tagKey: string; questionTemplate: string | null } | null>(null);
+  const [editingTag, setEditingTag] = useState<{ tagKey: string; questionText: string | null } | null>(null);
   const [tagsStats, setTagsStats] = useState<{
     total: number;
     byType: { OFFICIAL: number; DERIVED: number; STRUCTURAL: number };
@@ -233,6 +233,13 @@ export default function AdminTagsPage() {
   const [simBatchLoading, setSimBatchLoading] = useState(false);
   const [simSampleSize, setSimSampleSize] = useState<number>(0); // 0=全件
   const [simSaving, setSimSaving] = useState(false);
+
+  // 更新履歴編集タブ用
+  const [appInfoVersion, setAppInfoVersion] = useState('');
+  const [appInfoChangelog, setAppInfoChangelog] = useState<Array<{ date: string; text: string }>>([]);
+  const [appInfoLoading, setAppInfoLoading] = useState(false);
+  const [appInfoSaving, setAppInfoSaving] = useState(false);
+  const [appInfoMessage, setAppInfoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // サービスプレイ履歴タブ用
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1054,6 +1061,17 @@ export default function AdminTagsPage() {
         const stored = localStorage.getItem('eronator.debugEnabled') === '1';
         setDebugEnabled(stored);
       }
+    } else if (activeTab === 'changelog' && adminToken) {
+      setAppInfoLoading(true);
+      setAppInfoMessage(null);
+      fetch('/api/admin/app-info', { headers: { 'x-eronator-admin-token': adminToken } })
+        .then(res => res.ok ? res.json() : Promise.reject(new Error('取得失敗')))
+        .then((data: { version: string; changelog: Array<{ date: string; text: string }> }) => {
+          setAppInfoVersion(data.version ?? '');
+          setAppInfoChangelog(data.changelog ?? []);
+        })
+        .catch(() => setAppInfoMessage({ type: 'error', text: '取得に失敗しました' }))
+        .finally(() => setAppInfoLoading(false));
     } else if (activeTab === 'tags') {
       void handleLoadBannedTags(); // 禁止タグは認証不要で常に取得
       if (adminToken) void handleLoadTags();
@@ -1244,7 +1262,7 @@ export default function AdminTagsPage() {
         },
         body: JSON.stringify({
           tagKey,
-          questionTemplate: editingTag.questionTemplate || null,
+          questionText: editingTag.questionText || null,
         }),
       });
 
@@ -1258,7 +1276,7 @@ export default function AdminTagsPage() {
         setTags(prevTags =>
           prevTags.map(tag =>
             tag.tagKey === tagKey
-              ? { ...tag, questionTemplate: editingTag.questionTemplate }
+              ? { ...tag, questionText: editingTag.questionText }
               : tag
           )
         );
@@ -1585,6 +1603,21 @@ export default function AdminTagsPage() {
             }}
           >
             サービスプレイ履歴
+          </button>
+          <button
+            onClick={() => setActiveTab('changelog')}
+            style={{
+              padding: '0.75rem 1.5rem',
+              fontSize: '1rem',
+              backgroundColor: activeTab === 'changelog' ? '#059669' : 'transparent',
+              color: activeTab === 'changelog' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'changelog' ? '3px solid #059669' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'changelog' ? 'bold' : 'normal',
+            }}
+          >
+            更新履歴編集
           </button>
         </div>
       </div>
@@ -4715,6 +4748,175 @@ export default function AdminTagsPage() {
                 }}
               >
                 次へ
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 更新履歴編集タブ */}
+      {activeTab === 'changelog' && (
+        <section style={{ marginTop: '1rem' }}>
+          <h2 style={{ marginBottom: '1rem' }}>更新履歴編集</h2>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            トップ画面に表示するバージョン情報と更新履歴を編集できます。保存すると config/appInfo.json に反映されます。
+          </p>
+          {appInfoMessage && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.75rem',
+                backgroundColor: appInfoMessage.type === 'success' ? '#d4edda' : '#f8d7da',
+                color: appInfoMessage.type === 'success' ? '#155724' : '#721c24',
+                borderRadius: '4px',
+              }}
+            >
+              {appInfoMessage.text}
+            </div>
+          )}
+          {appInfoLoading ? (
+            <p>読み込み中...</p>
+          ) : (
+            <div style={{ maxWidth: 640 }}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+                  バージョン表示
+                </label>
+                <input
+                  type="text"
+                  value={appInfoVersion}
+                  onChange={(e) => setAppInfoVersion(e.target.value)}
+                  placeholder="ERONATOR β (v0.91)"
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    fontSize: '1rem',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+                  更新履歴（日付・本文。新しいほど上に表示。追加は最上位に挿入）
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {appInfoChangelog.map((entry, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                      <input
+                        type="text"
+                        value={entry.date}
+                        onChange={(e) => {
+                          const next = [...appInfoChangelog];
+                          next[i] = { ...next[i], date: e.target.value };
+                          setAppInfoChangelog(next);
+                        }}
+                        placeholder="2026-02-19"
+                        style={{
+                          width: 120,
+                          flexShrink: 0,
+                          padding: '0.4rem 0.5rem',
+                          fontSize: '0.9rem',
+                          border: '1px solid #ccc',
+                          borderRadius: '4px',
+                        }}
+                      />
+                      <textarea
+                        value={entry.text}
+                        onChange={(e) => {
+                          const next = [...appInfoChangelog];
+                          next[i] = { ...next[i], text: e.target.value };
+                          setAppInfoChangelog(next);
+                        }}
+                        placeholder="更新内容（複数行可）"
+                        rows={2}
+                        style={{
+                          flex: 1,
+                          minHeight: 52,
+                          padding: '0.4rem 0.5rem',
+                          fontSize: '0.9rem',
+                          border: '1px solid #ccc',
+                          borderRadius: '4px',
+                          resize: 'vertical',
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setAppInfoChangelog(appInfoChangelog.filter((_, j) => j !== i))}
+                        style={{
+                          padding: '0.4rem 0.6rem',
+                          backgroundColor: '#dc3545',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAppInfoChangelog([{ date: new Date().toISOString().split('T')[0], text: '' }, ...appInfoChangelog])}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: '#059669',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    + 行を追加
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!adminToken) return;
+                  setAppInfoSaving(true);
+                  setAppInfoMessage(null);
+                  try {
+                    const res = await fetch('/api/admin/app-info', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-eronator-admin-token': adminToken,
+                      },
+                      body: JSON.stringify({
+                        version: appInfoVersion,
+                        changelog: appInfoChangelog.filter(e => e.date.trim() || e.text.trim()),
+                      }),
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                      setAppInfoMessage({ type: 'success', text: '保存しました' });
+                    } else {
+                      setAppInfoMessage({ type: 'error', text: data.error || '保存に失敗しました' });
+                    }
+                  } catch {
+                    setAppInfoMessage({ type: 'error', text: '保存に失敗しました' });
+                  } finally {
+                    setAppInfoSaving(false);
+                  }
+                }}
+                disabled={appInfoSaving}
+                style={{
+                  padding: '0.6rem 1.5rem',
+                  backgroundColor: appInfoSaving ? '#ccc' : '#059669',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: appInfoSaving ? 'not-allowed' : 'pointer',
+                  fontSize: '1rem',
+                }}
+              >
+                {appInfoSaving ? '保存中...' : '保存'}
               </button>
             </div>
           )}

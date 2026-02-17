@@ -133,6 +133,7 @@ async function main() {
     legacy_ai: 0,
   };
 
+  const gameEnabledFolders: Folder[] = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
   for (const w of works) {
     const folder = decideFolder({
       needsReview: w.needsReview,
@@ -144,16 +145,33 @@ async function main() {
       hasDerived: hasDerived(w),
     });
     counts[folder]++;
+    const setGameEnabled = gameEnabledFolders.includes(folder);
     if (isPostgres) {
-      await prisma.$executeRaw(
-        Prisma.sql`UPDATE "Work" SET "manualTaggingFolder" = ${folder} WHERE "workId" = ${w.workId}`
-      );
+      if (setGameEnabled) {
+        await prisma.$executeRawUnsafe(
+          'UPDATE "Work" SET "manualTaggingFolder" = $1, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2',
+          folder,
+          w.workId
+        );
+      } else {
+        await prisma.$executeRaw(
+          Prisma.sql`UPDATE "Work" SET "manualTaggingFolder" = ${folder} WHERE "workId" = ${w.workId}`
+        );
+      }
     } else {
-      await prisma.$executeRawUnsafe(
-        'UPDATE Work SET manualTaggingFolder = ? WHERE workId = ?',
-        folder,
-        w.workId
-      );
+      if (setGameEnabled) {
+        await prisma.$executeRawUnsafe(
+          'UPDATE Work SET manualTaggingFolder = ?, gameRegistered = 1, needsReview = 0 WHERE workId = ?',
+          folder,
+          w.workId
+        );
+      } else {
+        await prisma.$executeRawUnsafe(
+          'UPDATE Work SET manualTaggingFolder = ? WHERE workId = ?',
+          folder,
+          w.workId
+        );
+      }
     }
   }
 

@@ -159,10 +159,16 @@
       "addedAt": "2026-01-28"
     },
     {
-      "pattern": "COMITIA154",
-      "type": "exact",
+      "pattern": "^COMITIA\\d+",
+      "type": "regex",
       "reason": "イベントタグ（作品特徴でない）",
-      "addedAt": "2026-01-28"
+      "addedAt": "2026-02-19"
+    },
+    {
+      "pattern": "FANZA限定",
+      "type": "exact",
+      "reason": "販売形態タグ（作品特徴でない）",
+      "addedAt": "2026-02-19"
     },
     {
       "pattern": "NEW(AI)サークル",

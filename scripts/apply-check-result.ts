@@ -172,19 +172,20 @@ async function main() {
         ? JSON.stringify(item.tagChanges ?? { added: [], removed: [] })
         : null;
 
+    // tagged / needs_human_check はゲーム有効（gameRegistered=true, needsReview=false）
     if (folder === 'tagged') {
       // 逆順の i: 0=JSONの最後、listToProcess.length-1=JSONの先頭。先頭を最も新しくする。
       const taggedAtStr = formatTaggedAt(i);
       if (isPostgres) {
         await prisma.$executeRawUnsafe(
-          'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = $3::timestamp, "taggedAt" = $3::timestamp, "lastCheckTagChanges" = NULL WHERE "workId" = $2',
+          'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = $3::timestamp, "taggedAt" = $3::timestamp, "lastCheckTagChanges" = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2',
           folder,
           actualWorkId,
           taggedAtStr
         );
       } else {
         await prisma.$executeRawUnsafe(
-          'UPDATE Work SET manualTaggingFolder = ?, updatedAt = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          'UPDATE Work SET manualTaggingFolder = ?, updatedAt = ?, taggedAt = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?',
           folder,
           taggedAtStr,
           taggedAtStr,
@@ -193,14 +194,14 @@ async function main() {
       }
     } else if (isPostgres) {
       await prisma.$executeRawUnsafe(
-        'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = NOW(), "lastCheckTagChanges" = $3 WHERE "workId" = $2',
+        'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = NOW(), "lastCheckTagChanges" = $3, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2',
         folder,
         actualWorkId,
         tagChangesJson
       );
     } else {
       await prisma.$executeRawUnsafe(
-        'UPDATE Work SET manualTaggingFolder = ?, updatedAt = datetime(\'now\'), lastCheckTagChanges = ? WHERE workId = ?',
+        'UPDATE Work SET manualTaggingFolder = ?, updatedAt = datetime(\'now\'), lastCheckTagChanges = ?, gameRegistered = 1, needsReview = 0 WHERE workId = ?',
         folder,
         tagChangesJson,
         actualWorkId
