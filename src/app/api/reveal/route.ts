@@ -222,6 +222,7 @@ export async function POST(request: NextRequest) {
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
         displayText: nextQuestion.displayText,
+        exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
       });
 
       // questionCountをインクリメント
@@ -241,6 +242,7 @@ export async function POST(request: NextRequest) {
         tagKey: nextQuestion.tagKey,
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
+        exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
       };
 
       const confidence = calculateConfidence(updatedProbabilities);

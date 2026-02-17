@@ -422,6 +422,13 @@ export default function Home() {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
         setQuestion(data.question);
+        setQuestionCharacterVariant(
+          data.question?.exploreTagKind === 'erotic'
+            ? 'very_embarrassing'
+            : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
+              ? 'thinking'
+              : Math.random() < 0.5 ? 'question' : 'embarrassing'
+        );
         setQuestionCount(data.sessionState.questionCount);
         setState('QUIZ');
       }
