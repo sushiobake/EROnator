@@ -346,6 +346,7 @@ export async function POST(request: NextRequest) {
       tagKey: nextQuestion.tagKey, // 最小限（質問プール全体は返さない）
       hardConfirmType: nextQuestion.hardConfirmType,
       hardConfirmValue: nextQuestion.hardConfirmValue,
+      exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
     };
 
     const sessionState: SessionStateResponse = {

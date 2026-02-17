@@ -12,7 +12,7 @@ import { Reveal } from './components/Reveal';
 import { Success, SuccessRecommendationsVertical } from './components/Success';
 import { FailList, FailListVerticalList } from './components/FailList';
 import { DebugPanel } from './components/DebugPanel';
-import { Stage } from './components/Stage';
+import { Stage, type CharacterVariant } from './components/Stage';
 import { useMediaQuery } from './components/useMediaQuery';
 
 type GameState =
@@ -27,6 +27,7 @@ type GameState =
 interface Question {
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
   displayText: string;
+  exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
 }
 
 interface Work {
@@ -130,6 +131,13 @@ export default function Home() {
   const [revealAnalysis, setRevealAnalysis] = useState<any>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [questionCharacterVariant, setQuestionCharacterVariant] = useState<CharacterVariant>('usually');
+  const [isThinking, setIsThinking] = useState(false);
+
+  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 0ms */
+  const MIN_THINKING_MS =
+    (typeof process.env.NEXT_PUBLIC_MIN_THINKING_MS !== 'undefined' && Number(process.env.NEXT_PUBLIC_MIN_THINKING_MS)) ||
+    (process.env.NODE_ENV === 'development' ? 1500 : 0);
 
   useEffect(() => {
     setIsClient(true);
@@ -224,17 +232,22 @@ export default function Home() {
   };
 
   const handleAiGateSelect = async (choice: 'YES' | 'NO' | 'DONT_CARE') => {
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
         headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
       }
 
-      const response = await fetch('/api/start', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ aiGateChoice: choice }),
-      });
+      const [response] = await Promise.all([
+        fetch('/api/start', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ aiGateChoice: choice }),
+        }),
+        minDelay,
+      ]);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -246,6 +259,13 @@ export default function Home() {
       setSessionId(data.sessionId);
       localStorage.setItem('eronator_sessionId', data.sessionId);
       setQuestion(data.question);
+      setQuestionCharacterVariant(
+        data.question?.exploreTagKind === 'erotic'
+          ? 'very_embarrassing'
+          : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
+            ? 'thinking'
+            : Math.random() < 0.5 ? 'question' : 'embarrassing'
+      );
       setQuestionCount(data.sessionState.questionCount);
       setDebugData(data.debug || null);
       setState('QUIZ');
@@ -253,23 +273,30 @@ export default function Home() {
       console.error('Error starting session:', error);
       const errorMessage = error instanceof Error ? error.message : 'セッション開始に失敗しました';
       alert(`セッション開始に失敗しました: ${errorMessage}`);
+    } finally {
+      setIsThinking(false);
     }
   };
 
   const handleQuizAnswer = async (choice: string) => {
     if (!sessionId) return;
 
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
         headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
       }
 
-      const response = await fetch('/api/answer', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ sessionId, choice }),
-      });
+      const [response] = await Promise.all([
+        fetch('/api/answer', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ sessionId, choice }),
+        }),
+        minDelay,
+      ]);
 
       if (!response.ok) {
         throw new Error('Failed to submit answer');
@@ -285,24 +312,38 @@ export default function Home() {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
         setQuestion(data.question);
+        setQuestionCharacterVariant(
+          data.question?.exploreTagKind === 'erotic'
+            ? 'very_embarrassing'
+            : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
+              ? 'thinking'
+              : Math.random() < 0.5 ? 'question' : 'embarrassing'
+        );
         setQuestionCount(data.sessionState.questionCount);
         setState('QUIZ');
       }
     } catch (error) {
       console.error('Error submitting answer:', error);
       alert('回答の送信に失敗しました');
+    } finally {
+      setIsThinking(false);
     }
   };
 
   const handleQuizBack = async () => {
     if (!sessionId) return;
 
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
-      const response = await fetch('/api/back', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      });
+      const [response] = await Promise.all([
+        fetch('/api/back', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        }),
+        minDelay,
+      ]);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -319,11 +360,20 @@ export default function Home() {
 
       // 前の質問に戻る場合
       setQuestion(data.question);
+      setQuestionCharacterVariant(
+        data.question?.exploreTagKind === 'erotic'
+          ? 'very_embarrassing'
+          : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
+            ? 'thinking'
+            : Math.random() < 0.5 ? 'question' : 'embarrassing'
+      );
       setQuestionCount(data.sessionState.questionCount);
       setState('QUIZ');
     } catch (error) {
       console.error('Error going back:', error);
       alert(error instanceof Error ? error.message : '前の質問に戻れませんでした');
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -337,17 +387,22 @@ export default function Home() {
   const handleRevealAnswer = async (answer: 'YES' | 'NO') => {
     if (!sessionId) return;
 
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
         headers['x-eronator-debug-token'] = process.env.NEXT_PUBLIC_DEBUG_TOKEN;
       }
 
-      const response = await fetch('/api/reveal', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ sessionId, answer }),
-      });
+      const [response] = await Promise.all([
+        fetch('/api/reveal', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ sessionId, answer }),
+        }),
+        minDelay,
+      ]);
 
       if (!response.ok) {
         throw new Error('Failed to submit reveal answer');
@@ -373,6 +428,8 @@ export default function Home() {
     } catch (error) {
       console.error('Error submitting reveal answer:', error);
       alert('回答の送信に失敗しました');
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -395,10 +452,16 @@ export default function Home() {
 
   const handleFailListSelectWork = async (workId: string) => {
     if (!sessionId) return;
+
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
-      const response = await fetch(
-        `/api/failList/selected?sessionId=${encodeURIComponent(sessionId)}&workId=${encodeURIComponent(workId)}`
-      );
+      const [response] = await Promise.all([
+        fetch(
+          `/api/failList/selected?sessionId=${encodeURIComponent(sessionId)}&workId=${encodeURIComponent(workId)}`
+        ),
+        minDelay,
+      ]);
       if (!response.ok) throw new Error('Failed to load selected work');
       const data = await response.json();
       setAlmostSuccessWork(data.work);
@@ -407,18 +470,25 @@ export default function Home() {
     } catch (error) {
       console.error('Error loading selected work:', error);
       alert('データの取得に失敗しました');
+    } finally {
+      setIsThinking(false);
     }
   };
 
   const handleFailListNotInList = async (submittedTitleText: string) => {
     if (!sessionId) return;
 
+    setIsThinking(true);
+    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
-      const response = await fetch('/api/failList', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, submittedTitleText }),
-      });
+      const [response] = await Promise.all([
+        fetch('/api/failList', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, submittedTitleText }),
+        }),
+        minDelay,
+      ]);
 
       if (!response.ok) {
         throw new Error('Failed to submit not in list');
@@ -426,6 +496,8 @@ export default function Home() {
     } catch (error) {
       console.error('Error submitting not in list:', error);
       alert('送信に失敗しました');
+    } finally {
+      setIsThinking(false);
     }
   };
 
@@ -445,6 +517,10 @@ export default function Home() {
     );
   }
 
+  const thinkingSpeech = (
+    <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>考え中…</p>
+  );
+
   if (state === 'AI_GATE') {
     return (
       <>
@@ -457,14 +533,19 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant={isThinking ? 'thinking' : 'usually'}
           characterSpeech={
-            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
-              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>AI生成作品ではない？</p>
-            </div>
+            isThinking
+              ? thinkingSpeech
+              : (
+                <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>AI生成作品ではない？</p>
+                </div>
+              )
           }
         >
-          <AiGate onSelect={handleAiGateSelect} />
+          {isThinking ? null : <AiGate onSelect={handleAiGateSelect} />}
         </Stage>
       </>
     );
@@ -482,18 +563,24 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant={isThinking ? 'thinking' : questionCharacterVariant}
           characterSpeech={
-            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
-              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
-                  {questionCount + 1}
-                </span>
-                {question.displayText}
-              </p>
-            </div>
+            isThinking
+              ? thinkingSpeech
+              : (
+                <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
+                      {questionCount + 1}
+                    </span>
+                    {question.displayText}
+                  </p>
+                </div>
+              )
           }
         >
+          {isThinking ? null : (
           <Quiz
             question={question}
             questionCount={questionCount + 1}
@@ -501,6 +588,7 @@ export default function Home() {
             onBack={handleQuizBack}
             canGoBack={true}
           />
+          )}
         </Stage>
       </>
     );
@@ -518,15 +606,20 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant={isThinking ? 'thinking' : 'usually'}
           characterSpeech={
-            <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
-              <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>ズバリ！コレ…でしょ！</p>
-            </div>
+            isThinking
+              ? thinkingSpeech
+              : (
+                <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>ズバリ！コレ…でしょ！</p>
+                </div>
+              )
           }
           mobileExtendWhiteboard={isMobile}
         >
-          <Reveal work={revealWork} onAnswer={handleRevealAnswer} />
+          {isThinking ? null : <Reveal work={revealWork} onAnswer={handleRevealAnswer} />}
         </Stage>
       </>
     );
@@ -544,6 +637,7 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
               正解！？やっぱりね！
@@ -576,6 +670,7 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
               それか～～～！次回は当てるからね！
@@ -613,21 +708,27 @@ export default function Home() {
           />
         )}
         <Stage
+          characterVariant={isThinking ? 'thinking' : 'usually'}
           characterSpeech={
-            <div style={isMobile ? { textAlign: 'center' } : {}}>
-              <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>うーん…ちょっとわからなかったわ。</p>
-              <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: isMobile ? 20 : 15 }}>
-                {isMobile ? '下のリストにある？' : 'ちなみにこの中にはある？'}
-              </p>
-            </div>
+            isThinking
+              ? thinkingSpeech
+              : (
+                <div style={isMobile ? { textAlign: 'center' } : {}}>
+                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>うーん…ちょっとわからなかったわ。</p>
+                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: isMobile ? 20 : 15 }}>
+                    {isMobile ? '下のリストにある？' : 'ちなみにこの中にはある？'}
+                  </p>
+                </div>
+              )
           }
-          mobileBelowCanvas={isMobile ? (
+          mobileBelowCanvas={isThinking ? undefined : (isMobile ? (
             <FailListVerticalList
               candidates={failListCandidates}
               onSelectWork={handleFailListSelectWork}
             />
-          ) : undefined}
+          ) : undefined)}
         >
+          {isThinking ? null : (
           <FailList
             candidates={failListCandidates}
             onSelectWork={handleFailListSelectWork}
@@ -635,6 +736,7 @@ export default function Home() {
             onRestart={handleRestart}
             mobileListBelow={isMobile}
           />
+          )}
         </Stage>
       </>
     );

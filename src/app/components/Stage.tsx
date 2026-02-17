@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   STAGE_WIDTH_PX,
   STAGE_HEIGHT_PX,
@@ -20,11 +20,83 @@ import {
 import { useMediaQuery } from './useMediaQuery';
 
 const BACKGROUND_URL = '/ilust/back.png';
-const CHARACTER_URL = '/ilust/inari_1.png';
+const CHARACTER_VARIANTS: Record<string, string> = {
+  usually: '/ilust/inari_usually.png',
+  question: '/ilust/inari_question.png',
+  embarrassing: '/ilust/inari_embarrassing.png',
+  very_embarrassing: '/ilust/inari_very_embarrassing.png',
+  thinking: '/ilust/inari_thinking.png',
+};
+const DEFAULT_CHARACTER_URL = CHARACTER_VARIANTS.usually;
 const LOGO_URL = '/ilust/eronator_logo.jpg';
+
+/** キャラ画像切り替えのクロスフェード。false で従来の単一表示に戻せる */
+const USE_CHARACTER_CROSSFADE = true;
+/** ノベルゲーム風のスムーズさ（300ms, ease-out） */
+const CROSSFADE_DURATION_MS = 300;
+
+/** 2枚重ねでクロスフェードするキャラ画像。戻す場合は USE_CHARACTER_CROSSFADE=false */
+function CharacterImage({ src, style }: { src: string; style: React.CSSProperties }) {
+  const [prevSrc, setPrevSrc] = useState<string | null>(null);
+  const [currentSrc, setCurrentSrc] = useState(src);
+  const [prevVisible, setPrevVisible] = useState(false);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (src === currentSrc) return;
+    setPrevSrc(currentSrc);
+    setCurrentSrc(src);
+    setPrevVisible(true);
+    rafRef.current = requestAnimationFrame(() => {
+      setPrevVisible(false);
+      rafRef.current = null;
+    });
+    const t = setTimeout(() => setPrevSrc(null), CROSSFADE_DURATION_MS + 50);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      clearTimeout(t);
+    };
+  }, [src, currentSrc]);
+
+  if (!USE_CHARACTER_CROSSFADE) {
+    return <img src={src} alt="" style={style} />;
+  }
+
+  const transition = `opacity ${CROSSFADE_DURATION_MS}ms ease-out`;
+  const overlayStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: (style as React.CSSProperties).objectFit ?? 'contain',
+    objectPosition: (style as React.CSSProperties).objectPosition ?? 'left bottom',
+    filter: (style as React.CSSProperties).filter,
+    transition,
+  };
+  const imgStyle = { ...style, opacity: prevSrc ? (prevVisible ? 0 : 1) : 1, transition } as React.CSSProperties;
+
+  /** 親コンテナを埋める（レイアウトを壊さない）。PCは絶対配置、モバイルは相対でコンテンツに合わせる */
+  const isAbsoluteFill = (style as React.CSSProperties).width === '100%' && (style as React.CSSProperties).height === '100%';
+  const wrapperStyle: React.CSSProperties = isAbsoluteFill
+    ? { position: 'absolute', inset: 0, width: '100%', height: '100%' }
+    : { position: 'relative' };
+
+  return (
+    <div style={wrapperStyle}>
+      <img src={currentSrc} alt="" style={imgStyle} />
+      {prevSrc && (
+        <img src={prevSrc} alt="" style={{ ...overlayStyle, opacity: prevVisible ? 1 : 0, zIndex: 1 }} />
+      )}
+    </div>
+  );
+}
+
+export type CharacterVariant = 'usually' | 'question' | 'embarrassing' | 'very_embarrassing' | 'thinking';
 
 interface StageProps {
   children: React.ReactNode;
+  /** キャラ画像の差分（usually=トップ・断定、question/embarrassing=通常質問、very_embarrassing=エロ質問） */
+  characterVariant?: CharacterVariant;
   /** PCのみ：トップ画面でロゴを表示 */
   showLogo?: boolean;
   /** キャラの発言（全画面共通。スマホ=横長板、PC=質問文と同じスタイル） */
@@ -45,7 +117,7 @@ function getScale(): number {
 }
 
 const PC_FOOTER_HEIGHT = 67;
-/** PC版：キャンバスとフッターの隙間（px）。キャラの足はここにはみ出してフッターとつながる */
+/** PC版：キャンバスとフッターの隙間（px）。キャラの足はここにはみ出してフッターとくっつく（境界で接する） */
 const PC_CANVAS_FOOTER_GAP = 40;
 const PC_CANVAS_CORNER_RADIUS = 16;
 /** PC版：SVGフレームの幅・マーカートレイ高さ（白背景の inset 計算に使用） */
@@ -171,10 +243,12 @@ function WhiteboardFrameSvg() {
 function MobileStageInner({
   children,
   characterSpeech,
+  characterUrl,
   extendWhiteboard,
 }: {
   children: React.ReactNode;
   characterSpeech?: React.ReactNode;
+  characterUrl: string;
   /** 断定画面など：白板を上に伸ばしてスクロールをなくす */
   extendWhiteboard?: boolean;
 }) {
@@ -241,9 +315,8 @@ function MobileStageInner({
             overflow: 'visible',
           }}
         >
-          <img
-            src={CHARACTER_URL}
-            alt=""
+          <CharacterImage
+            src={characterUrl}
             style={{
               width: '120%',
               maxWidth: 547,
@@ -264,7 +337,7 @@ function MobileStageInner({
             alignItems: 'center',
             justifyContent: 'flex-end',
             minWidth: 0,
-            zIndex: 2,
+            zIndex: 1,
           }}
         >
           <div
@@ -289,7 +362,7 @@ function MobileStageInner({
           </div>
         </div>
       </div>
-      {/* フッター：キャンバス内 */}
+      {/* フッター：キャンバス内。キャラの足が手前に見えるよう zIndex 1（メインが 2） */}
       <footer
         style={{
           position: 'absolute',
@@ -336,7 +409,7 @@ function MobileStageInner({
   );
 }
 
-function StageInner({ children, showLogo, characterSpeech, scale }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; scale?: number }) {
+function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number }) {
   // 白背景はフレーム内側に収める（フレームの外に白が出ない）
   const insetTop = PC_FRAME_WIDTH;
   const insetBottom = PC_FRAME_TRAY_HEIGHT + PC_FRAME_WIDTH;
@@ -389,13 +462,12 @@ function StageInner({ children, showLogo, characterSpeech, scale }: { children: 
           bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.6)) : 0,
           width: CHARACTER_WIDTH_PX,
           height: CHARACTER_HEIGHT_PX,
-          zIndex: 1,
+          zIndex: 3,
           pointerEvents: 'none',
         }}
       >
-        <img
-          src={CHARACTER_URL}
-          alt=""
+        <CharacterImage
+          src={characterUrl}
           style={{
             width: '100%',
             height: '100%',
@@ -442,7 +514,8 @@ function StageInner({ children, showLogo, characterSpeech, scale }: { children: 
   );
 }
 
-export function Stage({ children, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas }: StageProps) {
+export function Stage({ children, characterVariant, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas }: StageProps) {
+  const characterUrl = CHARACTER_VARIANTS[characterVariant ?? 'usually'] ?? DEFAULT_CHARACTER_URL;
   const [scale, setScale] = useState(1);
   const [mobileScale, setMobileScale] = useState(0.5);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -566,7 +639,7 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
                   boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.5), 0 0 0 2px rgba(0,0,0,0.15)',
                 }}
               >
-                <MobileStageInner characterSpeech={characterSpeech} extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}>{children}</MobileStageInner>
+                <MobileStageInner characterSpeech={characterSpeech} characterUrl={characterUrl} extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}>{children}</MobileStageInner>
               </div>
             </div>
           </div>
@@ -634,7 +707,7 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
           justifyContent: 'center',
           alignItems: 'flex-end',
           position: 'relative',
-          zIndex: 1,
+          zIndex: 2,
           minHeight: 0,
           background: 'transparent',
         }}
@@ -656,7 +729,7 @@ export function Stage({ children, showLogo, characterSpeech, mobileExtendWhitebo
           }}
         >
           <WhiteboardFrameSvg />
-          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} scale={scale}>{children}</StageInner>
+          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale}>{children}</StageInner>
         </div>
       </div>
       <footer

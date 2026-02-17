@@ -47,6 +47,7 @@ export function TopScreen({ onPlay }: TopScreenProps) {
   return (
     <Stage
       showLogo
+      characterVariant="usually"
       characterSpeech={
         <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text)', fontSize, lineHeight: 1.6 }}>
           お気に入りの同人誌、心に浮かべてみて。

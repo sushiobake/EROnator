@@ -7,16 +7,16 @@
  */
 
 /** ステージ固定サイズ（キャラ・白板・文字のバランスを保つためまとめて scale する） */
-export const STAGE_WIDTH_PX = 1200;
+export const STAGE_WIDTH_PX = 1280;
 export const STAGE_HEIGHT_PX = 800;
 
 /** キャラ左余白（px） */
 export const CHARACTER_LEFT_PX = 16;
 
-/** キャラ幅（px）かなり大きく */
-export const CHARACTER_WIDTH_PX = 520;
+/** キャラ幅（px）1024×1024 正方形で旧表示高さ639に合わせて 639 */
+export const CHARACTER_WIDTH_PX = 639;
 
-/** キャラ高さ（px）画面に対して手前に大きく */
+/** キャラ高さ（px）画面に対して手前に大きく。はみ出し（髪）OK */
 export const CHARACTER_HEIGHT_PX = 720;
 
 /** キャラ上余白（下は0のため、上で調整） */

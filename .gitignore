@@ -47,3 +47,6 @@ next-env.d.ts
 
 # duplicate cloned folders
 /EROnator/
+
+# project backups (use backup:project for local backups)
+/backups/

@@ -19,6 +19,11 @@ const backupDir = path.join(backupBaseDir, `backup_${timestamp}`);
 // バックアップ対象（相対パス）
 const backupTargets = [
   {
+    source: 'src/app',
+    dest: 'src/app',
+    type: 'directory'
+  },
+  {
     source: 'src/app/components',
     dest: 'src/app/components',
     type: 'directory'
