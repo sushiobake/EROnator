@@ -23,6 +23,7 @@
     "prepare:push": "node scripts/prepare-push.js",
     "restore:sqlite": "node scripts/restore-sqlite.js",
     "sync:supabase": "node scripts/run-sync-to-supabase.js",
+    "db:push:supabase": "node scripts/run-db-push-supabase.js",
     "backup:admin-tags": "node scripts/auto-backup-admin-tags.js",
     "backup:project": "node scripts/backup-project.js",
     "setup:git-hooks": "node scripts/setup-git-hooks.js",
