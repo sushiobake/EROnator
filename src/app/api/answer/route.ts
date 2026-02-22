@@ -23,10 +23,12 @@ import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
+  const t0 = Date.now();
   try {
     // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
-    
+    console.log(`[perf] /api/answer ensurePrismaConnected: ${Date.now() - t0}ms`);
+
     const body = await request.json();
     const { sessionId, choice } = body;
 
@@ -39,7 +41,9 @@ export async function POST(request: NextRequest) {
     }
 
     // セッション取得
+    const t1 = Date.now();
     const session = await SessionManager.getSession(sessionId);
+    console.log(`[perf] /api/answer getSession: ${Date.now() - t1}ms`);
     if (!session) {
       throw new ApiError(
         404,
@@ -81,11 +85,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 回答処理前に重みのスナップショットを保存（修正機能用）
+    const t2 = Date.now();
     await SessionManager.saveWeightsSnapshot(
       sessionId,
       currentQuestion.qIndex,
       weights
     );
+    console.log(`[perf] /api/answer saveWeightsSnapshot: ${Date.now() - t2}ms`);
 
     // 回答処理（まとめ質問のときは strength ±0.6 と summaryDisplayNames を使用）
     const questionData = {
@@ -98,12 +104,14 @@ export async function POST(request: NextRequest) {
       summaryDisplayNames: currentQuestion.summaryDisplayNames,
     };
 
+    const t3 = Date.now();
     const updatedWeights = await processAnswer(
       weights,
       questionData,
       choice,
       config
     );
+    console.log(`[perf] /api/answer processAnswer: ${Date.now() - t3}ms`);
 
     // 正規化
     const probabilities = normalizeWeights(updatedWeights);
@@ -256,6 +264,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 次の質問を選択（回答付き履歴を渡して連続NO判定に使う）
+    const t4 = Date.now();
     const nextQuestion = await selectNextQuestion(
       updatedWeights,
       probabilities,
@@ -263,6 +272,7 @@ export async function POST(request: NextRequest) {
       historyWithAnswer,
       config
     );
+    console.log(`[perf] /api/answer selectNextQuestion: ${Date.now() - t4}ms`);
 
     if (!nextQuestion) {
       // 質問が無い → 強制 REVEAL または FAIL_LIST（いずれも1回だけセッション更新）
@@ -327,6 +337,7 @@ export async function POST(request: NextRequest) {
       qIndex: nextQIndex,
       weights: weightsMap,
     }];
+    const t5 = Date.now();
     await SessionManager.updateSession(sessionId, {
       weights: weightsMap,
       questionCount: newQuestionCount,
@@ -338,6 +349,8 @@ export async function POST(request: NextRequest) {
       weights: weightsMap,
       weightsHistory: weightsHistoryWithNext,
     });
+    console.log(`[perf] /api/answer updateSession: ${Date.now() - t5}ms`);
+    console.log(`[perf] /api/answer TOTAL: ${Date.now() - t0}ms`);
 
     // 返却（最小限の情報のみ）
     const questionResponse: QuestionResponse = {
