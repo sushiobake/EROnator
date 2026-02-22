@@ -27,11 +27,16 @@ export function getWorkTagMatrix(): WorkTagMatrix | null {
   if (cachedMatrix) return cachedMatrix;
   try {
     const p = path.join(process.cwd(), 'data', 'workTagMatrix.json');
-    if (!fs.existsSync(p)) return null;
+    if (!fs.existsSync(p)) {
+      console.log('[WorkTag] Matrix NOT found:', p, 'cwd:', process.cwd());
+      return null;
+    }
     const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as WorkTagMatrix;
     cachedMatrix = raw;
+    console.log('[WorkTag] Matrix loaded, works:', raw.workCount ?? '?');
     return cachedMatrix;
-  } catch {
+  } catch (err) {
+    console.error('[WorkTag] Matrix load failed:', err);
     return null;
   }
 }
