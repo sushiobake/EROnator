@@ -2,6 +2,40 @@ import { prisma } from '@/server/db/client';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import { randomUUID } from 'crypto';
 
+/** 配列形式（JSON サイズ削減用）: { w: workIds[], v: values[] } */
+type WeightsArrayFormat = { w: string[]; v: number[] };
+
+function isArrayFormat(obj: unknown): obj is WeightsArrayFormat {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    Array.isArray((obj as WeightsArrayFormat).w) &&
+    Array.isArray((obj as WeightsArrayFormat).v)
+  );
+}
+
+/** 配列形式 → Record（ロード時） */
+function weightsFromStored(raw: unknown): Record<string, number> {
+  if (isArrayFormat(raw)) {
+    const out: Record<string, number> = {};
+    for (let i = 0; i < raw.w.length; i++) {
+      out[raw.w[i]] = raw.v[i] ?? 0;
+    }
+    return out;
+  }
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+    return raw as Record<string, number>;
+  }
+  return {};
+}
+
+/** Record → 配列形式（保存時、JSON サイズ削減） */
+function weightsToStored(weights: Record<string, number>): WeightsArrayFormat {
+  const w = Object.keys(weights);
+  const v = w.map((k) => weights[k] ?? 0);
+  return { w, v };
+}
+
 /**
  * セッション状態（内部）
  */
@@ -77,14 +111,20 @@ export class SessionManager {
       return null;
     }
 
+    const weightsHistoryRaw = JSON.parse((session as any).weightsHistory ?? '[]') as WeightsHistoryEntry[];
+    const weightsHistory = weightsHistoryRaw.map((e) => ({
+      qIndex: e.qIndex,
+      weights: weightsFromStored(e.weights),
+    }));
+
     return {
       sessionId: session.sessionId,
       aiGateChoice: (session.aiGateChoice as AiGateChoice) || null,
       questionCount: session.questionCount,
       revealMissCount: session.revealMissCount,
       revealRejectedWorkIds: JSON.parse(session.revealRejectedWorkIds || '[]'),
-      weights: JSON.parse(session.weights || '{}'),
-      weightsHistory: JSON.parse((session as any).weightsHistory ?? '[]'),
+      weights: weightsFromStored(JSON.parse(session.weights || '{}')),
+      weightsHistory,
       questionHistory: JSON.parse(session.questionHistory || '[]'),
     };
   }
@@ -108,6 +148,11 @@ export class SessionManager {
       ...updates,
     };
 
+    const weightsHistoryToStore = updated.weightsHistory.map((e) => ({
+      qIndex: e.qIndex,
+      weights: weightsToStored(e.weights),
+    }));
+
     await prisma.session.update({
       where: { sessionId },
       data: {
@@ -115,8 +160,8 @@ export class SessionManager {
         questionCount: updated.questionCount,
         revealMissCount: updated.revealMissCount,
         revealRejectedWorkIds: JSON.stringify(updated.revealRejectedWorkIds),
-        weights: JSON.stringify(updated.weights),
-        weightsHistory: JSON.stringify(updated.weightsHistory),
+        weights: JSON.stringify(weightsToStored(updated.weights)),
+        weightsHistory: JSON.stringify(weightsHistoryToStore),
         questionHistory: JSON.stringify(updated.questionHistory),
       } as any, // 一時的な回避策: Prisma Client再生成前の型エラー回避
     });

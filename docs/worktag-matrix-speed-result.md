@@ -76,6 +76,14 @@
 
 ---
 
+## 6. Session 配列形式（2026-02-22）
+
+weights / weightsHistory の JSON を `{ workId: weight }` から `{ w: workIds[], v: values[] }` に変更。
+キー名の繰り返しをなくし、JSON サイズを 30〜50% 削減。作品数増加時の Session 肥大化を抑制。
+- 後方互換: 旧形式（オブジェクト）も読み取り可能。
+
+---
+
 ## 4. バックアップ
 
 - `engine.backup.pre-derivedtags-matrix.20260222-141250.ts`
