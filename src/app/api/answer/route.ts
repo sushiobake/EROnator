@@ -134,10 +134,15 @@ export async function POST(request: NextRequest) {
       : session.questionHistory;
     
     // 重みのスナップショット（修正機能用）。QUIZ 返却時は次の質問追加とまとめて1回で更新する
+    // O(n)で構築（reduce+spreadはO(n^2)で2800件で約2秒かかっていた）
+    const snapshotWeights: Record<string, number> = {};
+    for (const w of weights) {
+      snapshotWeights[w.workId] = w.weight;
+    }
     const currentWeightsHistory = session.weightsHistory || [];
     const newWeightsHistory = [...currentWeightsHistory, {
       qIndex: currentQuestion.qIndex,
-      weights: weights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+      weights: snapshotWeights,
     }];
 
     console.log(`[perf] /api/answer prepare(post-normalize): ${Date.now() - t3b}ms`);
@@ -186,7 +191,7 @@ export async function POST(request: NextRequest) {
             const updatedSessionForDebug = {
               ...session,
               questionCount: session.questionCount + 1,
-              weights: updatedWeights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+              weights: weightsMap,
             };
             debug = await buildDebugPayload(
               updatedSessionForDebug,
@@ -384,7 +389,7 @@ export async function POST(request: NextRequest) {
       const updatedSessionForDebug = {
         ...session,
         questionCount: session.questionCount + 1,
-        weights: updatedWeights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
+        weights: weightsMap,
       };
       debug = await buildDebugPayload(
         updatedSessionForDebug,

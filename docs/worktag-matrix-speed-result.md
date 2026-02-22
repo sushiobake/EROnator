@@ -65,6 +65,17 @@
 
 ---
 
+## 5. ボトルネック特定結果（2026-02-22）
+
+計測で判明: **prepare(post-normalize): 1921ms** が原因
+
+原因: `weights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {})` が O(n^2)。
+2800件でスプレッドを繰り返すと約2秒。
+
+対応: ループで O(n) に変更済み。`weightsMap` や `snapshotWeights` を使用。
+
+---
+
 ## 4. バックアップ
 
 - `engine.backup.pre-derivedtags-matrix.20260222-141250.ts`
