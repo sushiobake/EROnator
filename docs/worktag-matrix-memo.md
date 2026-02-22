@@ -65,7 +65,7 @@
 | 792 | selectUnifiedExploreOrSummary | prisma.workTag.findMany | getWorkTagsForWorks(workIds) |
 | 1002 | selectExploreQuestion | prisma.workTag.findMany | getWorkTagsForWorks(workIds) |
 | 1249 | processAnswer (EXPLORE_TAG/SOFT_CONFIRM) | prisma.workTag.findMany (groupTagKeys で絞り込み) | 行列から groupTagKeys に該当するものをフィルタ |
-| 282-358 | selectNextQuestion (SOFT_CONFIRM derivedTags) | prisma.tag + workTags include | derivedTags 取得は Tag のみ DB、workTags は行列から |
+| 282-358 | selectNextQuestion (SOFT_CONFIRM derivedTags) | prisma.tag + workTags include | derivedTags 取得は Tag のみ DB、workTags は行列から ✅ |
 
 **注意**: 282 行付近の `derivedTags` は `prisma.tag.findMany` に `workTags: { where: { workId: in, derivedConfidence: gte } }` が含まれる。これを「Tag を DB から取得し、各 Tag の workTags を行列から取得」に分割する必要がある。
 
@@ -95,6 +95,7 @@
 7. ローカルで `npm run dev` → ゲーム開始〜数問回答で動作確認 ※要確認
 8. `npm run build` → AdminProgressContext の型エラーで失敗（workTagMatrix とは無関係）
 9. 問題なければコミット・デプロイ
+10. derivedTags（307行付近）を行列ベースに置換 ✅（2026-02-22）
 
 ---
 

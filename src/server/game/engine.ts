@@ -303,30 +303,69 @@ export async function selectNextQuestion(
       .filter((t): t is 'TITLE_INITIAL' | 'AUTHOR' => !!t);
 
     // SOFT_CONFIRM候補（DERIVEDタグ）を探す（使用済みタグを除外）
-    // パフォーマンス最適化: 必要なフィールドのみ取得
-    let derivedTags = await prisma.tag.findMany({
-      where: {
-        tagType: 'DERIVED',
-        tagKey: { notIn: Array.from(usedTagKeys) },
-      },
-      select: {
-        tagKey: true,
-        displayName: true,
-        questionText: true,
-        workTags: {
-          where: {
-            workId: { in: weights.map(w => w.workId) },
-            derivedConfidence: { gte: config.algo.derivedConfidenceThreshold },
-          },
-          select: {
-            workId: true,
+    // パフォーマンス最適化: 行列があれば workTags を行列から取得（DB の重い JOIN を避ける）
+    const workIds = weights.map(w => w.workId);
+    const threshold = config.algo.derivedConfidenceThreshold;
+    const matrix = getWorkTagMatrix();
+
+    let derivedTags: Array<{ tagKey: string; displayName: string; questionText: string | null; workTags: Array<{ workId: string }> }>;
+
+    if (matrix) {
+      // 行列あり: Tag のみ DB、workTags は行列から
+      const tagsFromDb = await prisma.tag.findMany({
+        where: {
+          tagType: 'DERIVED',
+          tagKey: { notIn: Array.from(usedTagKeys) },
+        },
+        select: {
+          tagKey: true,
+          displayName: true,
+          questionText: true,
+        },
+      });
+
+      const tagKeys = tagsFromDb.map(t => t.tagKey);
+      const workTagsRaw = tagKeys.length > 0
+        ? getWorkTagsFromMatrix(workIds, { tagKeys })
+        : [];
+      const workTagsFiltered = workTagsRaw.filter(
+        wt => hasDerivedFeature(wt.derivedConfidence, threshold)
+      );
+      const tagToWorkIds = new Map<string, Array<{ workId: string }>>();
+      for (const wt of workTagsFiltered) {
+        if (!tagToWorkIds.has(wt.tagKey)) tagToWorkIds.set(wt.tagKey, []);
+        tagToWorkIds.get(wt.tagKey)!.push({ workId: wt.workId });
+      }
+      derivedTags = tagsFromDb.map(t => ({
+        tagKey: t.tagKey,
+        displayName: t.displayName,
+        questionText: t.questionText,
+        workTags: tagToWorkIds.get(t.tagKey) ?? [],
+      }));
+    } else {
+      // 行列なし: 従来通り prisma で workTags も取得
+      derivedTags = await prisma.tag.findMany({
+        where: {
+          tagType: 'DERIVED',
+          tagKey: { notIn: Array.from(usedTagKeys) },
+        },
+        select: {
+          tagKey: true,
+          displayName: true,
+          questionText: true,
+          workTags: {
+            where: {
+              workId: { in: workIds },
+              derivedConfidence: { gte: threshold },
+            },
+            select: { workId: true },
           },
         },
-      },
-    });
+      });
+    }
 
-    // Prismaで0件の場合、直接SQLiteで取得（フォールバック）
-    if (derivedTags.length === 0) {
+    // Prismaで0件の場合（行列なし時のみ）、直接SQLiteで取得（フォールバック）
+    if (derivedTags.length === 0 && !matrix) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const sqlite3 = require('better-sqlite3');
