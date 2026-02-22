@@ -823,10 +823,12 @@ async function selectUnifiedExploreOrSummary(
   for (const s of summaryCandidates) for (const d of s.displayNames) allSummaryDisplayNames.add(d);
   const summaryDisplayNameToTagKeys = new Map<string, string[]>();
   if (allSummaryDisplayNames.size > 0) {
+    const tTag1 = Date.now();
     const tagsInSummaries = await prisma.tag.findMany({
       where: { displayName: { in: Array.from(allSummaryDisplayNames) } },
       select: { tagKey: true, displayName: true },
     });
+    console.log(`[perf] selectUnifiedExploreOrSummary tagsInSummaries: ${Date.now() - tTag1}ms`);
     for (const t of tagsInSummaries) {
       if (!summaryDisplayNameToTagKeys.has(t.displayName)) {
         summaryDisplayNameToTagKeys.set(t.displayName, []);
@@ -850,7 +852,9 @@ async function selectUnifiedExploreOrSummary(
   }
 
   // 通常タグ候補（カバレッジゲート＋質問番号フィルタ）
+  const tFetch = Date.now();
   const workTagsAll = await fetchWorkTags(workIds);
+  console.log(`[perf] selectUnifiedExploreOrSummary fetchWorkTags: ${Date.now() - tFetch}ms`);
   const tagWorkCountMap = new Map<string, number>();
   for (const wt of workTagsAll) {
     tagWorkCountMap.set(wt.tagKey, (tagWorkCountMap.get(wt.tagKey) || 0) + 1);
@@ -862,10 +866,12 @@ async function selectUnifiedExploreOrSummary(
     passingTagKeys.push(tagKey);
   }
   if (questionIndex < 11) {
+    const tFilter = Date.now();
     const tagsForFilter = await prisma.tag.findMany({
       where: { tagKey: { in: passingTagKeys } },
       select: { tagKey: true, displayName: true },
     });
+    console.log(`[perf] selectUnifiedExploreOrSummary tagsForFilter: ${Date.now() - tFilter}ms`);
     passingTagKeys = passingTagKeys.filter(tagKey => {
       const tag = tagsForFilter.find(t => t.tagKey === tagKey);
       if (!tag) return true;
@@ -912,10 +918,12 @@ async function selectUnifiedExploreOrSummary(
 
   // Q4以降のみ通常タグを候補に追加（Q2-3は非エロまとめのみ）
   if (questionIndex >= 4 && passingTagKeys.length > 0) {
+    const tAll = Date.now();
     const allTags = await prisma.tag.findMany({
       where: { tagKey: { in: passingTagKeys } },
       select: { tagKey: true, displayName: true, tagType: true },
     });
+    console.log(`[perf] selectUnifiedExploreOrSummary allTags: ${Date.now() - tAll}ms`);
     for (const tag of allTags) {
       const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
       availableTags.push({

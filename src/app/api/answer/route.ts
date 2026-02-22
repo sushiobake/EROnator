@@ -113,6 +113,7 @@ export async function POST(request: NextRequest) {
     );
     console.log(`[perf] /api/answer processAnswer: ${Date.now() - t3}ms`);
 
+    const t3b = Date.now();
     // 正規化
     const probabilities = normalizeWeights(updatedWeights);
     const confidence = calculateConfidence(probabilities);
@@ -139,7 +140,10 @@ export async function POST(request: NextRequest) {
       weights: weights.reduce((acc, w) => ({ ...acc, [w.workId]: w.weight }), {}),
     }];
 
+    console.log(`[perf] /api/answer prepare(post-normalize): ${Date.now() - t3b}ms`);
+
     // REVEAL判定（一度外した作品は候補から外し、確度順で未出の先頭をREVEAL）
+    const tReveal = Date.now();
     if (confidence >= config.confirm.revealThreshold) {
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) {
@@ -262,6 +266,7 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+    console.log(`[perf] /api/answer revealChecks: ${Date.now() - tReveal}ms`);
 
     // 次の質問を選択（回答付き履歴を渡して連続NO判定に使う）
     const t4 = Date.now();
