@@ -39,6 +39,7 @@
     "test:scrape-comment": "tsx scripts/test-scrape-work-comment.ts",
     "compare:api-scraping": "tsx scripts/compare-api-vs-scraping.ts",
     "generate:derived-tags": "tsx scripts/generate-derived-tags-batch.ts",
+    "generate:worktag-matrix": "node scripts/generate-worktag-matrix.js",
     "import:from-json": "tsx scripts/import-from-json.ts",
     "deduplicate:works": "tsx scripts/deduplicate-works-by-title.ts",
     "deduplicate:works:run": "tsx scripts/deduplicate-works-by-title.ts --run",

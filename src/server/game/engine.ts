@@ -27,6 +27,7 @@ import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import { isTagBanned } from '@/server/admin/bannedTags';
+import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 import fs from 'fs';
 import path from 'path';
 
@@ -104,6 +105,30 @@ function loadEroticDisplayNames(): Set<string> {
 /**
  * タグの質問文を取得（DB唯一。未設定時はキャラ用 or 汎用）
  */
+/** WorkTag を行列または DB から取得（行列があれば行列を優先） */
+async function fetchWorkTags(
+  workIds: string[],
+  options?: { tagKeys?: string[] }
+): Promise<Array<{ workId: string; tagKey: string; derivedConfidence: number | null }>> {
+  if (workIds.length === 0) return [];
+  const matrix = getWorkTagMatrix();
+  if (matrix) {
+    return getWorkTagsFromMatrix(workIds, options);
+  }
+  const result = await prisma.workTag.findMany({
+    where: {
+      workId: { in: workIds },
+      ...(options?.tagKeys?.length ? { tagKey: { in: options.tagKeys } } : {}),
+    },
+    select: { workId: true, tagKey: true, derivedConfidence: true },
+  });
+  return result.map((r) => ({
+    workId: r.workId,
+    tagKey: r.tagKey,
+    derivedConfidence: r.derivedConfidence ?? null,
+  }));
+}
+
 function getTagQuestionText(
   displayName: string,
   tagType?: string,
@@ -650,10 +675,7 @@ async function tryEmergencyExploreFallback(
   const workIds = weights.map(w => w.workId);
   if (workIds.length === 0) return null;
 
-  const workTags = await prisma.workTag.findMany({
-    where: { workId: { in: workIds } },
-    select: { tagKey: true },
-  });
+  const workTags = await fetchWorkTags(workIds);
   const tagKeysFromWorks = new Set(workTags.map(wt => wt.tagKey));
   const candidateTagKeys = Array.from(tagKeysFromWorks).filter(tk => !usedTagKeys.has(tk));
   if (candidateTagKeys.length === 0) return null;
@@ -789,10 +811,7 @@ async function selectUnifiedExploreOrSummary(
   }
 
   // 通常タグ候補（カバレッジゲート＋質問番号フィルタ）
-  const workTagsAll = await prisma.workTag.findMany({
-    where: { workId: { in: workIds } },
-    select: { tagKey: true, workId: true },
-  });
+  const workTagsAll = await fetchWorkTags(workIds);
   const tagWorkCountMap = new Map<string, number>();
   for (const wt of workTagsAll) {
     tagWorkCountMap.set(wt.tagKey, (tagWorkCountMap.get(wt.tagKey) || 0) + 1);
@@ -999,15 +1018,7 @@ async function selectExploreQuestion(
   const totalWorks = weights.length;
 
   // まず、WorkTagsを取得してタグごとの作品数を集計
-  const workTags = await prisma.workTag.findMany({
-    where: {
-      workId: { in: workIds },
-    },
-    select: {
-      tagKey: true,
-      workId: true,
-    },
-  });
+  const workTags = await fetchWorkTags(workIds);
 
   // タグごとの作品数を集計
   const tagWorkCountMap = new Map<string, number>();
@@ -1246,16 +1257,8 @@ export async function processAnswer(
     });
     const groupTagKeys = groupTags.map(t => t.tagKey);
 
-    const workTags = await prisma.workTag.findMany({
-      where: {
-        workId: { in: workIds },
-        tagKey: { in: groupTagKeys.length > 0 ? groupTagKeys : [tagKey] },
-      },
-      select: {
-        workId: true,
-        tagKey: true,
-        derivedConfidence: true,
-      },
+    const workTags = await fetchWorkTags(workIds, {
+      tagKeys: groupTagKeys.length > 0 ? groupTagKeys : [tagKey],
     });
 
     const workTagMap = new Map<string, Array<number | null>>();
