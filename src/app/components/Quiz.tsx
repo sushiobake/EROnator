@@ -37,9 +37,10 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
   const isMobile = useMediaQuery(768);
 
   useEffect(() => {
+    setInteractionDisabled(true);
     const t = setTimeout(() => setInteractionDisabled(false), CLICK_GUARD_MS);
     return () => clearTimeout(t);
-  }, []);
+  }, [questionCount]);
 
   const handleAnswer = (choice: string) => {
     if (interactionDisabled) return;
