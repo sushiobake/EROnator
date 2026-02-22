@@ -1393,7 +1393,7 @@ export default function ImportWorkflow() {
             AI分析プレビュー（非表示）
           </div>
         )}
-        {false && importPreview && importPreview.stats.worksWithChanges > 0 && (
+        {false && (importPreview?.stats?.worksWithChanges ?? 0) > 0 && (
           <div style={{ display: 'none' }}>ChatGPTプレビュー（非表示）</div>
         )}
         
