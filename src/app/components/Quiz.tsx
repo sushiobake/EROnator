@@ -5,8 +5,11 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMediaQuery } from './useMediaQuery';
+
+/** 選択肢表示直後の連打防止。この秒数以内のクリックは無視 */
+const CLICK_GUARD_MS = 200;
 
 interface QuizProps {
   question: {
@@ -30,7 +33,23 @@ const ANSWER_CHOICES = [
 
 export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: QuizProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const [interactionDisabled, setInteractionDisabled] = useState(true);
   const isMobile = useMediaQuery(768);
+
+  useEffect(() => {
+    const t = setTimeout(() => setInteractionDisabled(false), CLICK_GUARD_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleAnswer = (choice: string) => {
+    if (interactionDisabled) return;
+    onAnswer(choice);
+  };
+
+  const handleBack = () => {
+    if (interactionDisabled) return;
+    onBack?.();
+  };
 
   return (
     <>
@@ -48,9 +67,10 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
           {ANSWER_CHOICES.map((choice, index) => (
             <button
               key={choice.value}
-              onClick={() => onAnswer(choice.value)}
+              onClick={() => handleAnswer(choice.value)}
               onMouseEnter={() => setHoveredChoice(choice.value)}
               onMouseLeave={() => setHoveredChoice(null)}
+              disabled={interactionDisabled}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -59,12 +79,13 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
                 textAlign: 'center',
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
-                cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice.value ? '#dbeafe' : 'var(--color-surface)',
-                color: hoveredChoice === choice.value ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+                opacity: interactionDisabled ? 0.7 : 1,
+                backgroundColor: hoveredChoice === choice.value && !interactionDisabled ? '#dbeafe' : 'var(--color-surface)',
+                color: hoveredChoice === choice.value && !interactionDisabled ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
-                boxShadow: hoveredChoice === choice.value ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
+                boxShadow: hoveredChoice === choice.value && !interactionDisabled ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
                 transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
               }}
             >
@@ -81,14 +102,16 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
       {canGoBack && onBack && (
         <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
           <button
-            onClick={onBack}
+            onClick={handleBack}
+            disabled={interactionDisabled}
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 6,
               padding: '6px 12px',
               fontSize: 14,
-              cursor: 'pointer',
+              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+              opacity: interactionDisabled ? 0.7 : 1,
               backgroundColor: 'transparent',
               border: 'none',
               borderRadius: 6,
