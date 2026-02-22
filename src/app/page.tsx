@@ -24,6 +24,16 @@ type GameState =
   | 'FAIL_LIST'
   | 'ALMOST_SUCCESS';
 
+/** 質問種別に応じてキャラ画像バリアントを返す。通常→question固定、エロ→embarrassing/very_embarrassingをランダム */
+function getQuestionCharacterVariant(question: { exploreTagKind?: string; kind?: string } | null): CharacterVariant {
+  if (!question) return 'question';
+  if (question.exploreTagKind === 'erotic') {
+    return Math.random() < 0.5 ? 'embarrassing' : 'very_embarrassing';
+  }
+  // 通常・まとめ・抽象・HARD_CONFIRM は question に統一（thinking は isThinking 時のみ使用）
+  return 'question';
+}
+
 interface Question {
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
   displayText: string;
@@ -259,13 +269,7 @@ export default function Home() {
       setSessionId(data.sessionId);
       localStorage.setItem('eronator_sessionId', data.sessionId);
       setQuestion(data.question);
-      setQuestionCharacterVariant(
-        data.question?.exploreTagKind === 'erotic'
-          ? 'very_embarrassing'
-          : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
-            ? 'thinking'
-            : Math.random() < 0.5 ? 'question' : 'embarrassing'
-      );
+      setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
       setQuestionCount(data.sessionState.questionCount);
       setDebugData(data.debug || null);
       setState('QUIZ');
@@ -312,13 +316,7 @@ export default function Home() {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
         setQuestion(data.question);
-        setQuestionCharacterVariant(
-          data.question?.exploreTagKind === 'erotic'
-            ? 'very_embarrassing'
-            : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
-              ? 'thinking'
-              : Math.random() < 0.5 ? 'question' : 'embarrassing'
-        );
+        setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
         setQuestionCount(data.sessionState.questionCount);
         setState('QUIZ');
       }
@@ -360,13 +358,7 @@ export default function Home() {
 
       // 前の質問に戻る場合
       setQuestion(data.question);
-      setQuestionCharacterVariant(
-        data.question?.exploreTagKind === 'erotic'
-          ? 'very_embarrassing'
-          : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
-            ? 'thinking'
-            : Math.random() < 0.5 ? 'question' : 'embarrassing'
-      );
+      setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
       setQuestionCount(data.sessionState.questionCount);
       setState('QUIZ');
     } catch (error) {
@@ -422,13 +414,7 @@ export default function Home() {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
         setQuestion(data.question);
-        setQuestionCharacterVariant(
-          data.question?.exploreTagKind === 'erotic'
-            ? 'very_embarrassing'
-            : data.question?.exploreTagKind === 'abstract' || data.question?.kind === 'HARD_CONFIRM'
-              ? 'thinking'
-              : Math.random() < 0.5 ? 'question' : 'embarrassing'
-        );
+        setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
         setQuestionCount(data.sessionState.questionCount);
         setState('QUIZ');
       }

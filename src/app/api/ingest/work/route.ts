@@ -18,7 +18,11 @@ function clampRawText(rawText: unknown): string {
 }
 
 function stableWorkId(cid: string | null, productUrl: string): string {
-  if (cid) return `cid:${cid}`;
+  if (cid) {
+    // DMM content_id (d_数字) は cid: を付けない（import と統一して重複防止）
+    if (/^d_\d+$/.test(cid.trim())) return cid.trim();
+    return `cid:${cid}`;
+  }
   const h = crypto.createHash('sha1').update(productUrl).digest('hex').slice(0, 12);
   return `urlhash:${h}`;
 }

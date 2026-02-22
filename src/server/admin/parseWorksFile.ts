@@ -36,8 +36,8 @@ export function parseWorksFile(content: string): ParsedWork[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // @@BEGIN でブロック開始 (works_A.txt形式)
-    const beginMatch = line.match(/^@@BEGIN\s+cid:([^\s]+)/);
+    // @@BEGIN でブロック開始 (works_A.txt形式) cid:xxx または d_xxx をサポート
+    const beginMatch = line.match(/^@@BEGIN\s+(.+?)(?:\s|$)/);
     if (beginMatch) {
       // 前のブロックが未完了の場合は処理
       if (inBlock && currentWorkId && format === 'beginEnd') {
@@ -54,7 +54,7 @@ export function parseWorksFile(content: string): ParsedWork[] {
     }
 
     // @@END でブロック終了 (works_A.txt形式)
-    const endMatch = line.match(/^@@END\s+cid:([^\s]+)/);
+    const endMatch = line.match(/^@@END\s+(.+?)(?:\s|$)/);
     if (endMatch && inBlock && format === 'beginEnd' && endMatch[1] === currentWorkId) {
       const work = parseWorkBlock(currentBlock, currentWorkId!);
       if (work) {
@@ -67,8 +67,8 @@ export function parseWorksFile(content: string): ParsedWork[] {
       continue;
     }
 
-    // === CREATED === でブロック開始/終了 (works_C.txt形式)
-    const createdMatch = line.match(/^===\s+[^\s]+\s+CREATED\s+cid:([^\s]+)\s+===$/);
+    // === CREATED === でブロック開始/終了 (works_C.txt形式) cid:xxx または d_xxx をサポート
+    const createdMatch = line.match(/^===\s+[^\s]+\s+(?:CREATED|UPDATED)\s+(\S+)\s+===$/);
     if (createdMatch) {
       // 前のブロックが未完了の場合は処理
       if (inBlock && currentWorkId && format === 'created') {
@@ -107,8 +107,8 @@ export function parseWorksFile(content: string): ParsedWork[] {
  */
 function parseWorkBlock(block: string[], workId: string): ParsedWork | null {
   const work: Partial<ParsedWork> = {
-    workId: `cid:${workId}`,
-    cid: workId,
+    workId: workId.startsWith('cid:') ? workId : `cid:${workId}`,
+    cid: workId.startsWith('cid:') ? workId.slice(4) : workId,
     officialTags: [],
     metaText: '',
     commentText: '',

@@ -1,20 +1,24 @@
 #!/usr/bin/env tsx
 /**
  * DMM Affiliate API - バッチ取得スクリプト
- * sort=rankで人気順に作品を取得し、DBに保存
- * 
+ * 人気順/レビュー順/発売日順で作品を取得し、DBに保存
+ *
  * 使い方:
  *   npm run import:dmm-batch -- --target=100
- *   npm run import:dmm-batch -- --target=1000 --offset=1
- * 
+ *   npm run import:dmm-batch -- --target=500 --sort=review
+ *   npm run import:dmm-batch -- --target=200 --sort=rank --gte-date=2021-01-01 --lte-date=2021-12-31
+ *
  * 環境変数:
  *   DMM_API_ID: DMM API ID
  *   DMM_AFFILIATE_ID: アフィリエイトID (末尾990-999)
- * 
+ *
  * パラメータ:
  *   --target: 目標取得件数（デフォルト: 100）
  *   --offset: 開始offset（デフォルト: 1）
  *   --hits: 1回のリクエストあたりの取得件数（デフォルト: 100、最大: 100）
+ *   --sort: ソート順 rank=人気順, review=レビュー順, date=発売日順（デフォルト: rank）
+ *   --gte-date: 発売日以降（例: 2021-01-01）
+ *   --lte-date: 発売日以前（例: 2021-12-31）
  */
 
 import dotenv from 'dotenv';
@@ -23,6 +27,7 @@ import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 import { isTagBanned } from '../src/server/admin/bannedTags';
 import { resolveOfficialTagKeyByDisplayName } from '../src/server/admin/resolveTagByDisplayName';
+import { getWorkIdLookupVariants, toCanonicalWorkId } from '../src/server/utils/workId';
 
 // .env.localを優先的に読み込む
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
@@ -190,6 +195,8 @@ async function fetchItemList(
     hits?: number;
     offset?: number;
     sort?: string;
+    gte_date?: string;
+    lte_date?: string;
   }
 ): Promise<ItemListResponse> {
   const params = new URLSearchParams({
@@ -203,6 +210,9 @@ async function fetchItemList(
     sort: options.sort || 'rank',
     output: 'json',
   });
+
+  if (options.gte_date) params.append('gte_date', options.gte_date);
+  if (options.lte_date) params.append('lte_date', options.lte_date);
 
   const url = `https://api.dmm.com/affiliate/v3/ItemList?${params.toString()}`;
   console.log(`[API] Requesting item list...`);
@@ -311,7 +321,8 @@ function computePopularityBase(reviewCount: number | null, reviewAverage: number
  * 作品をDBに保存
  */
 async function saveWorkToDb(item: Item): Promise<{ saved: boolean; workId: string }> {
-  const workId = item.content_id; // content_idをworkIdとして使用
+  const rawWorkId = item.content_id;
+  const workId = toCanonicalWorkId(rawWorkId);
   const isAi = determineIsAi(item);
   const authorName = getAuthorName(item);
   const reviewCount = item.review?.count ? parseInt(item.review.count.toString(), 10) : null;
@@ -327,13 +338,14 @@ async function saveWorkToDb(item: Item): Promise<{ saved: boolean; workId: strin
   
   const popularityBase = computePopularityBase(reviewCount, reviewAverage);
 
-  // 既存チェック（workId）
-  const existing = await prisma.work.findUnique({
-    where: { workId },
-  });
+  // 既存チェック（workId のバリアント: d_xxx と cid:d_xxx の両方を検索）
+  const variants = getWorkIdLookupVariants(workId);
+  const existing = variants.length > 0
+    ? await prisma.work.findFirst({ where: { workId: { in: variants } }, select: { workId: true } })
+    : null;
 
   if (existing) {
-    return { saved: false, workId };
+    return { saved: false, workId: existing.workId };
   }
 
   // 同一作品の重複防止: タイトル＋作者が同じ既存作品があればそちらにタグだけ付与
@@ -423,11 +435,21 @@ async function saveWorkToDb(item: Item): Promise<{ saved: boolean; workId: strin
 /**
  * コマンドライン引数をパース
  */
-function parseArgs(): { target: number; offset: number; hits: number } {
+function parseArgs(): {
+  target: number;
+  offset: number;
+  hits: number;
+  sort: string;
+  gte_date?: string;
+  lte_date?: string;
+} {
   const args = process.argv.slice(2);
   let target = 100;
   let offset = 1;
   let hits = 100;
+  let sort = 'rank';
+  let gte_date: string | undefined;
+  let lte_date: string | undefined;
 
   for (const arg of args) {
     if (arg.startsWith('--target=')) {
@@ -436,10 +458,16 @@ function parseArgs(): { target: number; offset: number; hits: number } {
       offset = parseInt(arg.split('=')[1], 10);
     } else if (arg.startsWith('--hits=')) {
       hits = parseInt(arg.split('=')[1], 10);
+    } else if (arg.startsWith('--sort=')) {
+      sort = arg.split('=')[1] || 'rank';
+    } else if (arg.startsWith('--gte-date=')) {
+      gte_date = arg.split('=')[1]?.trim();
+    } else if (arg.startsWith('--lte-date=')) {
+      lte_date = arg.split('=')[1]?.trim();
     }
   }
 
-  return { target, offset, hits };
+  return { target, offset, hits, sort, gte_date, lte_date };
 }
 
 /**
@@ -474,14 +502,20 @@ async function main() {
   }
 
   const args = parseArgs();
-  const { target, offset: startOffset, hits } = args;
+  const { target, offset: startOffset, hits, sort, gte_date, lte_date } = args;
+
+  const sortLabel = { rank: '人気順', review: 'レビュー順', date: '発売日順' }[sort] ?? sort;
 
   console.log('🚀 DMM Affiliate API - バッチ取得スクリプト\n');
   console.log('設定:');
   console.log(`  目標取得件数: ${target}件`);
   console.log(`  開始offset: ${startOffset}`);
   console.log(`  1回のリクエストあたり: ${hits}件`);
-  console.log(`  ソート: rank（人気順）\n`);
+  console.log(`  ソート: ${sort}（${sortLabel}）`);
+  if (gte_date || lte_date) {
+    console.log(`  発売日範囲: ${gte_date ?? '(なし)'} ～ ${lte_date ?? '(なし)'}`);
+  }
+  console.log('');
 
   // 開発サーバーが実行中かチェック
   const fs = require('fs');
@@ -509,7 +543,9 @@ async function main() {
         floor: 'digital_doujin',
         hits,
         offset: currentOffset,
-        sort: 'rank',
+        sort,
+        gte_date,
+        lte_date,
       });
 
       // 同人誌フィルタ適用

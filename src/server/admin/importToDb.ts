@@ -7,6 +7,7 @@ import { prisma } from '@/server/db/client';
 import crypto from 'crypto';
 import { isTagBanned } from './bannedTags';
 import { resolveTagKeyForDisplayName, resolveOfficialTagKeyByDisplayName } from './resolveTagByDisplayName';
+import { toCanonicalWorkId, getWorkIdLookupVariants } from '@/server/utils/workId';
 
 /**
  * SHA1ハッシュの先頭10桁を取得
@@ -153,9 +154,23 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
         result.stats.worksProcessed++;
 
         try {
-          // Work の既存優先マージ
-          const existingWork = await tx.work.findUnique({
-            where: { workId: workData.workId },
+          // workId を正規化（cid:d_xxx ↔ d_xxx の統一）
+          const canonicalWorkId = toCanonicalWorkId(workData.workId);
+          const variants = getWorkIdLookupVariants(canonicalWorkId);
+
+          // Work の既存優先マージ（バリアント両方で検索）
+          const existingWork = variants.length > 0
+            ? await tx.work.findFirst({
+                where: { workId: { in: variants } },
+                include: {
+                  workTags: {
+                    include: {
+                      tag: true,
+                    },
+                  },
+                },
+              })
+            : null;
             include: {
               workTags: {
                 include: {
@@ -177,8 +192,9 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
             sourcePayload.commentText = workData.commentText;
           }
 
+          const workIdForRecord = existingWork?.workId ?? canonicalWorkId;
           const workDataToUpsert = {
-            workId: workData.workId,
+            workId: workIdForRecord,
             title: existingWork?.title || workData.title,
             authorName: existingWork?.authorName || workData.circleName,
             isAi: existingWork?.isAi || workData.isAi,
@@ -192,7 +208,7 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
           };
 
           const work = await tx.work.upsert({
-            where: { workId: workData.workId },
+            where: { workId: workIdForRecord },
             create: workDataToUpsert,
             update: workDataToUpsert,
           });

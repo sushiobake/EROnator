@@ -228,6 +228,18 @@ function main() {
     }
   }
 
+  // 管理画面必須機能の検証（オプション: バックアップ後の確認）
+  console.log('\n🔍 Verifying admin critical features...');
+  try {
+    const { execSync } = require('child_process');
+    execSync('node scripts/verify-admin-critical.js', {
+      stdio: 'inherit',
+      cwd: path.resolve(__dirname, '..'),
+    });
+  } catch (e) {
+    console.warn('\n⚠️  Admin verification reported issues. See docs/admin-critical-features.md');
+  }
+
   // 結果表示
   console.log('\n' + '='.repeat(50));
   console.log('📊 Backup Summary:');

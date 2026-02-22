@@ -62,6 +62,7 @@ export async function toQuestionResponse(
       tagKey: entry.tagKey,
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
+      exploreTagKind: entry.exploreTagKind,
     };
   }
   if (entry.kind === 'HARD_CONFIRM') {
@@ -72,6 +73,7 @@ export async function toQuestionResponse(
         : `作者（サークル）は「${entry.hardConfirmValue}」ですか？`,
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
+      exploreTagKind: entry.exploreTagKind,
     };
   }
   // EXPLORE_TAG or SOFT_CONFIRM
@@ -88,5 +90,6 @@ export async function toQuestionResponse(
     kind: entry.kind,
     displayText: `この作品は「${tag.displayName}」ですか？`,
     tagKey: entry.tagKey,
+    exploreTagKind: entry.exploreTagKind,
   };
 }

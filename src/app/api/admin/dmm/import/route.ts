@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { isTagBanned } from '@/server/admin/bannedTags';
+import { getWorkIdLookupVariants, toCanonicalWorkId } from '@/server/utils/workId';
 import crypto from 'crypto';
 
 // DMM API レスポンス型
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
     await ensurePrismaConnected();
 
     const body = await request.json();
-    const { target = 10, sort = 'rank', offset: rawOffset = 1, rounds: rawRounds = 1 } = body;
+    const { target = 10, sort = 'rank', offset: rawOffset = 1, rounds: rawRounds = 1, gte_date, lte_date } = body;
 
     // offset を数値として検証（1以上）
     const offset = Math.max(1, parseInt(String(rawOffset), 10) || 1);
@@ -182,6 +183,8 @@ export async function POST(request: NextRequest) {
         sort,
         output: 'json',
       });
+      if (gte_date) params.append('gte_date', String(gte_date).trim());
+      if (lte_date) params.append('lte_date', String(lte_date).trim());
 
       const apiUrl = `https://api.dmm.com/affiliate/v3/ItemList?${params.toString()}`;
       console.log(`[DMM Import API] Round ${r + 1}/${rounds} offset=${currentOffset}...`);
@@ -205,8 +208,12 @@ export async function POST(request: NextRequest) {
       for (const item of filteredItems) {
         if (roundTarget != null && totalSaved >= roundTarget) break;
 
-        const workId = item.content_id;
-        const existing = await prisma.work.findUnique({ where: { workId } });
+        const rawWorkId = item.content_id;
+        const workId = toCanonicalWorkId(rawWorkId);
+        const variants = getWorkIdLookupVariants(workId);
+        const existing = variants.length > 0
+          ? await prisma.work.findFirst({ where: { workId: { in: variants } } })
+          : null;
         if (existing) {
           totalSkipped++;
           continue;

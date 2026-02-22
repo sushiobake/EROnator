@@ -92,36 +92,90 @@ export async function GET(
 
     const folder = (work as { manualTaggingFolder?: string | null }).manualTaggingFolder ?? 'pending';
 
-    let rawTagChanges: string | null =
-      (work as { lastCheckTagChanges?: string | null }).lastCheckTagChanges ?? null;
-    if (rawTagChanges == null) {
+    const workExt = work as {
+      lastCheckTagChanges?: string | null;
+      lastCheckReasoning?: string | null;
+      lastCheckResultJson?: string | null;
+      lastTaggingReasoning?: string | null;
+    };
+    let rawTagChanges: string | null = workExt.lastCheckTagChanges ?? null;
+    let rawReasoning: string | null = workExt.lastCheckReasoning ?? null;
+    let rawResultJson: string | null = workExt.lastCheckResultJson ?? null;
+    let rawTaggingReasoning: string | null = workExt.lastTaggingReasoning ?? null;
+    if (
+      rawTagChanges == null ||
+      rawReasoning == null ||
+      rawResultJson == null ||
+      rawTaggingReasoning == null
+    ) {
       try {
         const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
-        if (isPostgres) {
-          const rows = await prisma.$queryRawUnsafe<Array<{ lastCheckTagChanges: string | null }>>(
-            'SELECT "lastCheckTagChanges" FROM "Work" WHERE "workId" = $1',
-            workId
-          );
-          rawTagChanges = rows[0]?.lastCheckTagChanges ?? null;
-        } else {
-          const rows = await prisma.$queryRawUnsafe<Array<{ lastCheckTagChanges: string | null }>>(
-            'SELECT lastCheckTagChanges FROM Work WHERE workId = ?',
-            workId
-          );
-          rawTagChanges = rows[0]?.lastCheckTagChanges ?? null;
+        const cols = isPostgres
+          ? '"lastCheckTagChanges", "lastCheckReasoning", "lastCheckResultJson", "lastTaggingReasoning"'
+          : 'lastCheckTagChanges, lastCheckReasoning, lastCheckResultJson, lastTaggingReasoning';
+        const rows = isPostgres
+          ? await prisma.$queryRawUnsafe<
+              Array<{
+                lastCheckTagChanges: string | null;
+                lastCheckReasoning: string | null;
+                lastCheckResultJson: string | null;
+                lastTaggingReasoning: string | null;
+              }>
+            >(`SELECT ${cols} FROM "Work" WHERE "workId" = $1`, workId)
+          : await prisma.$queryRawUnsafe<
+              Array<{
+                lastCheckTagChanges: string | null;
+                lastCheckReasoning: string | null;
+                lastCheckResultJson: string | null;
+                lastTaggingReasoning: string | null;
+              }>
+            >(`SELECT ${cols} FROM Work WHERE workId = ?`, workId);
+        const row = rows[0];
+        if (row) {
+          if (rawTagChanges == null) rawTagChanges = row.lastCheckTagChanges ?? null;
+          if (rawReasoning == null) rawReasoning = row.lastCheckReasoning ?? null;
+          if (rawResultJson == null) rawResultJson = row.lastCheckResultJson ?? null;
+          if (rawTaggingReasoning == null) rawTaggingReasoning = row.lastTaggingReasoning ?? null;
         }
       } catch {
-        rawTagChanges = null;
+        // ignore
       }
     }
-    let lastCheckTagChanges: { added: string[]; removed: string[] } | null = null;
+    let lastCheckTagChanges: { added: string[]; removed: string[]; newProposal?: string } | null = null;
     if (rawTagChanges) {
       try {
-        const parsed = JSON.parse(rawTagChanges) as { added?: string[]; removed?: string[] };
+        const parsed = JSON.parse(rawTagChanges) as { added?: string[]; removed?: string[]; newProposal?: string };
         lastCheckTagChanges = {
           added: Array.isArray(parsed.added) ? parsed.added : [],
           removed: Array.isArray(parsed.removed) ? parsed.removed : [],
+          ...(parsed.newProposal && typeof parsed.newProposal === 'string' && parsed.newProposal.trim()
+            ? { newProposal: parsed.newProposal.trim() }
+            : {}),
         };
+      } catch {
+        // ignore
+      }
+    }
+    let lastCheckReasoning: Record<string, string> | null = null;
+    let lastCheckResultJson: unknown = null;
+    let lastTaggingReasoning: Record<string, string> | null = null;
+    if (rawReasoning) {
+      try {
+        lastCheckReasoning = JSON.parse(rawReasoning) as Record<string, string>;
+      } catch {
+        // ignore
+      }
+    }
+    if (rawResultJson) {
+      try {
+        lastCheckResultJson = JSON.parse(rawResultJson);
+      } catch {
+        // ignore
+      }
+    }
+    if (rawTaggingReasoning) {
+      try {
+        lastTaggingReasoning = JSON.parse(rawTaggingReasoning) as Record<string, string>;
       } catch {
         // ignore
       }
@@ -142,6 +196,9 @@ export async function GET(
         cTags,
         characterTags: structuralTags.map((t) => t.displayName),
         lastCheckTagChanges,
+        lastCheckReasoning,
+        lastCheckResultJson,
+        lastTaggingReasoning,
       },
     });
   } catch (error) {
@@ -296,7 +353,7 @@ export async function PUT(
         });
       }
 
-      const validFolders = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+      const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
       const folder =
         typeof bodyFolder === 'string' && validFolders.includes(bodyFolder) ? bodyFolder : null;
       const gameEnabledFolders = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
@@ -369,7 +426,7 @@ export async function PATCH(
     const { workId } = await params;
     const body = await request.json().catch(() => ({}));
     const manualTaggingFolder = typeof body.manualTaggingFolder === 'string' ? body.manualTaggingFolder : null;
-    const validFolders = ['tagged', 'needs_human_check', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+    const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
     if (!manualTaggingFolder || !validFolders.includes(manualTaggingFolder)) {
       return NextResponse.json({ error: 'Invalid manualTaggingFolder' }, { status: 400 });
     }

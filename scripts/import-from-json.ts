@@ -15,6 +15,7 @@ import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 import { isTagBanned } from '../src/server/admin/bannedTags';
 import { resolveOfficialTagKeyByDisplayName } from '../src/server/admin/resolveTagByDisplayName';
+import { getWorkIdLookupVariants, toCanonicalWorkId } from '../src/server/utils/workId';
 
 // .env.localを優先的に読み込む
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
@@ -158,19 +159,21 @@ function shouldExcludeOfficialTag(displayName: string): boolean {
  * 作品をDBに保存
  */
 async function saveWorkToDb(item: Item): Promise<{ saved: boolean; workId: string }> {
-  const workId = item.content_id;
+  const rawWorkId = item.content_id;
+  const workId = toCanonicalWorkId(rawWorkId);
   const isAi = determineIsAi(item);
   const authorName = getAuthorName(item);
   const reviewCount = item.review?.count ? parseInt(item.review.count.toString(), 10) : null;
   const reviewAverage = item.review?.average ? parseFloat(item.review.average) : null;
 
-  // 既存チェック（workId）
-  const existing = await prisma.work.findUnique({
-    where: { workId },
-  });
+  // 既存チェック（workId のバリアント: d_xxx と cid:d_xxx の両方を検索）
+  const variants = getWorkIdLookupVariants(workId);
+  const existing = variants.length > 0
+    ? await prisma.work.findFirst({ where: { workId: { in: variants } }, select: { workId: true } })
+    : null;
 
   if (existing) {
-    return { saved: false, workId };
+    return { saved: false, workId: existing.workId };
   }
 
   // 同一作品の重複防止: タイトル＋作者が同じ既存作品があればそちらにタグだけ付与

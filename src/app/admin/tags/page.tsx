@@ -9,8 +9,10 @@ import { useState, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
 import ManualTagging from '../components/ManualTagging';
+import ProgressPanel from '../components/ProgressPanel';
 import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
+import { AdminProgressProvider } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
 
 interface ParsedWork {
@@ -694,6 +696,7 @@ export default function AdminTagsPage() {
 
   // DMMからインポートする関数
   const [dmmImportTarget, setDmmImportTarget] = useState(10);
+  const [dmmImportSort, setDmmImportSort] = useState<'rank' | 'review' | 'date'>('rank');
   const [dmmImporting, setDmmImporting] = useState(false);
   const [dmmImportResult, setDmmImportResult] = useState<{
     success: boolean;
@@ -724,7 +727,7 @@ export default function AdminTagsPage() {
         },
         body: JSON.stringify({
           target: dmmImportTarget,
-          sort: 'rank',
+          sort: dmmImportSort,
         }),
       });
 
@@ -1454,6 +1457,8 @@ export default function AdminTagsPage() {
   }, [historyDetailRowId, adminToken, historyItems, historyReplayCache]);
 
   return (
+    <AdminProgressProvider>
+      <>
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h1>管理画面</h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>
@@ -3094,8 +3099,8 @@ export default function AdminTagsPage() {
         <section style={{ marginBottom: '2rem' }}>
           <ImportWorkflow />
 
-          {/* 旧機能（折りたたみ） */}
-          <details style={{ marginTop: '30px' }}>
+          {/* 旧機能（非表示・コード残す） */}
+          <details style={{ display: 'none', marginTop: '30px' }}>
             <summary style={{ cursor: 'pointer', color: '#666', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
               ▶ 旧インポート機能（非推奨）
             </summary>
@@ -3112,6 +3117,25 @@ export default function AdminTagsPage() {
               DMM APIから最新の同人誌作品を取得してDBに保存します。既存の作品はスキップされます。
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <label htmlFor="dmmImportSort" style={{ fontSize: '0.9rem' }}>ソート:</label>
+                <select
+                  id="dmmImportSort"
+                  value={dmmImportSort}
+                  onChange={(e) => setDmmImportSort(e.target.value as 'rank' | 'review' | 'date')}
+                  disabled={dmmImporting}
+                  style={{
+                    padding: '0.5rem',
+                    fontSize: '0.9rem',
+                    borderRadius: '4px',
+                    border: '1px solid #ccc',
+                  }}
+                >
+                  <option value="rank">人気順</option>
+                  <option value="review">レビュー順</option>
+                  <option value="date">発売日順</option>
+                </select>
+              </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <label htmlFor="dmmImportTarget" style={{ fontSize: '0.9rem' }}>取得件数:</label>
                 <select
@@ -4923,5 +4947,8 @@ export default function AdminTagsPage() {
         </section>
       )}
     </div>
+    <ProgressPanel />
+      </>
+    </AdminProgressProvider>
   );
 }
