@@ -41,6 +41,9 @@ model Work {
   manualTaggingFolder String?
   taggedAt            DateTime? // タグ済みフォルダに入れた日時（一覧の整列・整合用）
   lastCheckTagChanges String?  // AIチェック時の追加推奨・削除推奨 JSON: { added: string[], removed: string[] }
+  lastCheckResultJson String?  // 最終チェックの完全な出力 JSON
+  lastCheckReasoning  String?  // AIチェック時の推論 JSON
+  lastTaggingReasoning String?  // AIタグ付け時の推論 JSON
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
