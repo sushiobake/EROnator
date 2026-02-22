@@ -78,7 +78,7 @@ export function AdminProgressProvider({ children }: { children: React.ReactNode 
         etaMin = calcEtaMin(currentVal, totalVal, startTime);
       }
 
-      next[job] = { ...value, startTime, etaMin } as ProgressState[JobType];
+      (next as Record<JobType, ImportProgress | Phase012Progress | SimulateProgress | null>)[job] = { ...value, startTime, etaMin };
       return next;
     });
     if (value === null || value === undefined) {
