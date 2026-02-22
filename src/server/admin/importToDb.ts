@@ -171,14 +171,6 @@ export async function importWorksToDb(works: ImportWorkData[]): Promise<ImportRe
                 },
               })
             : null;
-            include: {
-              workTags: {
-                include: {
-                  tag: true,
-                },
-              },
-            },
-          });
 
           const sourcePayload: any = existingWork?.sourcePayload
             ? JSON.parse(existingWork.sourcePayload)
