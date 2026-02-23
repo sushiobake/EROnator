@@ -89,7 +89,7 @@ export function ChangelogSection({ variant = 'pc', hideVersion = false }: Change
           fontSize: changelogSize,
           color: textColor,
           lineHeight: 1.5,
-          maxHeight: isMobile ? 120 : 200,
+          maxHeight: isMobile ? 120 : 120,
           overflowY: 'auto',
         width: isMobile ? '100%' : undefined,
         alignSelf: isMobile ? 'stretch' : 'flex-end',

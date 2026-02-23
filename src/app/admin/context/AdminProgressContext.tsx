@@ -2,39 +2,24 @@
 
 import { createContext, useContext, useState, useCallback, useRef } from 'react';
 
-export type JobType = 'import' | 'phase012' | 'simulate';
+export type JobType = 'comment' | 'phase0' | 'phase12' | 'simulate';
 
-export type ImportProgress = {
-  current: number;
+export type JobProgress = {
+  done?: number;
+  current?: number;
   total: number;
   phase?: string;
   etaMin?: number;
   startTime?: number;
-};
-
-export type Phase012Progress = {
-  done: number;
-  total: number;
-  phase?: string;
-  etaMin?: number;
-  startTime?: number;
-  /** 一括実行時のラウンド表示（例: 3/10） */
   round?: number;
   roundTotal?: number;
 };
 
-export type SimulateProgress = {
-  current: number;
-  total: number;
-  phase?: string;
-  etaMin?: number;
-  startTime?: number;
-};
-
 export type ProgressState = {
-  import?: ImportProgress | null;
-  phase012?: Phase012Progress | null;
-  simulate?: SimulateProgress | null;
+  comment?: JobProgress | null;
+  phase0?: JobProgress | null;
+  phase12?: JobProgress | null;
+  simulate?: JobProgress | null;
 };
 
 type ProgressContextValue = {
@@ -58,7 +43,7 @@ function calcEtaMin(
 
 export function AdminProgressProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgressState] = useState<ProgressState>({});
-  const startTimeRef = useRef<Record<JobType, number>>({ import: 0, phase012: 0, simulate: 0 });
+  const startTimeRef = useRef<Record<JobType, number>>({ comment: 0, phase0: 0, phase12: 0, simulate: 0 });
 
   const setProgress = useCallback((job: JobType, value: ProgressState[JobType] | null) => {
     setProgressState((prev) => {
@@ -67,8 +52,8 @@ export function AdminProgressProvider({ children }: { children: React.ReactNode 
         delete next[job];
         return next;
       }
-      const v = value as { current?: number; done?: number; total: number; startTime?: number };
-      const currentVal = ('current' in v ? v.current : 'done' in v ? v.done : 0) ?? 0;
+      const v = value as JobProgress;
+      const currentVal = (v.current ?? v.done ?? 0) ?? 0;
       const totalVal = v.total || 1;
       const startTime = v.startTime ?? (startTimeRef.current[job] || Date.now());
       if (!startTimeRef.current[job]) startTimeRef.current[job] = startTime;
@@ -78,7 +63,7 @@ export function AdminProgressProvider({ children }: { children: React.ReactNode 
         etaMin = calcEtaMin(currentVal, totalVal, startTime);
       }
 
-      (next as Record<JobType, ImportProgress | Phase012Progress | SimulateProgress | null>)[job] = { ...value, startTime, etaMin };
+      (next as Record<JobType, JobProgress | null>)[job] = { ...value, startTime, etaMin };
       return next;
     });
     if (value === null || value === undefined) {

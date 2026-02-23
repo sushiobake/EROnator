@@ -117,13 +117,27 @@ export default function ManualTagging() {
   const { setProgress } = useAdminProgress();
   useEffect(() => {
     if (combinedProgress) {
-      setProgress('phase012', { done: combinedProgress.done, total: combinedProgress.total, phase: combinedProgress.phase });
+      const isPhase0 = combinedProgress.phase === 'Phase0' || combinedProgress.phase?.startsWith('Phase0');
+      const isPhase12 = combinedProgress.phase === 'Phase1+2' || combinedProgress.phase?.includes('Phase1');
+      if (isPhase0) {
+        setProgress('phase0', { done: combinedProgress.done, total: combinedProgress.total });
+        setProgress('phase12', null);
+      } else if (isPhase12) {
+        setProgress('phase0', null);
+        setProgress('phase12', { done: combinedProgress.done, total: combinedProgress.total });
+      } else {
+        setProgress('phase0', { done: combinedProgress.done, total: combinedProgress.total });
+        setProgress('phase12', null);
+      }
     } else if (tagBatchProgress) {
-      setProgress('phase012', { done: tagBatchProgress.done, total: tagBatchProgress.total, phase: 'Phase0' });
+      setProgress('phase0', { done: tagBatchProgress.done, total: tagBatchProgress.total });
+      setProgress('phase12', null);
     } else if (batchProgress) {
-      setProgress('phase012', { done: batchProgress.done, total: batchProgress.total, phase: 'Phase1+2' });
+      setProgress('phase0', null);
+      setProgress('phase12', { done: batchProgress.done, total: batchProgress.total });
     } else {
-      setProgress('phase012', null);
+      setProgress('phase0', null);
+      setProgress('phase12', null);
     }
   }, [combinedProgress, tagBatchProgress, batchProgress, setProgress]);
 

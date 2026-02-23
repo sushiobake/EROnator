@@ -20,9 +20,10 @@ function playCompletionBeep() {
   }
 }
 
-const JOB_LABELS: Record<string, string> = {
-  import: '作品インポート',
-  phase012: 'Phase0+1+2',
+const JOB_LABELS: Record<JobType, string> = {
+  comment: 'コメント取得',
+  phase0: 'Phase0（タグ付け）',
+  phase12: 'Phase1+2（チェック）',
   simulate: 'シミュレーション',
 };
 
@@ -32,15 +33,15 @@ function ProgressRow({
   data,
   justCompleted,
 }: {
-  job: string;
+  job: JobType;
   label: string;
   data: { current?: number; done?: number; total: number; phase?: string; etaMin?: number; round?: number; roundTotal?: number } | null | undefined;
   justCompleted?: boolean;
 }) {
-  const current = data ? ('current' in data ? data.current : data.done ?? 0) : 0;
+  const current = data ? (data.current ?? data.done ?? 0) : 0;
   const total = data?.total ?? 0;
   const isActive = data && total > 0;
-  const roundInfo = data && 'round' in data && 'roundTotal' in data && data.round != null && data.roundTotal != null && data.roundTotal > 1
+  const roundInfo = data && data.round != null && data.roundTotal != null && data.roundTotal > 1
     ? ` (ラウンド ${data.round}/${data.roundTotal})`
     : '';
   return (
@@ -63,7 +64,6 @@ function ProgressRow({
       {isActive ? (
         <>
           <div>
-            {data.phase ? `${data.phase}: ` : ''}
             {current}/{total} 件{roundInfo}
             {data.etaMin != null && data.etaMin > 0 && (
               <span style={{ color: '#666', marginLeft: '0.5rem' }}>
@@ -81,7 +81,7 @@ function ProgressRow({
   );
 }
 
-const JOBS: JobType[] = ['import', 'phase012', 'simulate'];
+const JOBS: JobType[] = ['comment', 'phase0', 'phase12', 'simulate'];
 
 export default function ProgressPanel() {
   const { progress } = useAdminProgress();
@@ -110,8 +110,9 @@ export default function ProgressPanel() {
     }
   }, [justCompleted]);
   const hasAny = !!(
-    (progress.import && progress.import.total > 0) ||
-    (progress.phase012 && progress.phase012.total > 0) ||
+    (progress.comment && progress.comment.total > 0) ||
+    (progress.phase0 && progress.phase0.total > 0) ||
+    (progress.phase12 && progress.phase12.total > 0) ||
     (progress.simulate && progress.simulate.total > 0)
   );
 
@@ -121,8 +122,8 @@ export default function ProgressPanel() {
         position: 'fixed',
         bottom: 0,
         right: 0,
-        width: expanded ? 280 : 180,
-        maxHeight: expanded ? 320 : 48,
+        width: expanded ? 300 : 180,
+        maxHeight: expanded ? 420 : 48,
         minHeight: 48,
         backgroundColor: '#fff',
         border: '1px solid #ddd',
@@ -159,8 +160,9 @@ export default function ProgressPanel() {
       </button>
       {expanded && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          <ProgressRow job="import" label={JOB_LABELS.import} data={progress.import} justCompleted={justCompleted === 'import'} />
-          <ProgressRow job="phase012" label={JOB_LABELS.phase012} data={progress.phase012} justCompleted={justCompleted === 'phase012'} />
+          <ProgressRow job="comment" label={JOB_LABELS.comment} data={progress.comment} justCompleted={justCompleted === 'comment'} />
+          <ProgressRow job="phase0" label={JOB_LABELS.phase0} data={progress.phase0} justCompleted={justCompleted === 'phase0'} />
+          <ProgressRow job="phase12" label={JOB_LABELS.phase12} data={progress.phase12} justCompleted={justCompleted === 'phase12'} />
           <ProgressRow job="simulate" label={JOB_LABELS.simulate} data={progress.simulate} justCompleted={justCompleted === 'simulate'} />
         </div>
       )}

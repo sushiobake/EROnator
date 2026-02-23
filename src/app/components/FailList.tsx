@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
+import { useClickGuard } from './useClickGuard';
 import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 
 interface FailListCandidateItem {
@@ -34,13 +35,17 @@ interface FailListVerticalListProps {
 }
 
 export function FailListVerticalList({ candidates, onSelectWork }: FailListVerticalListProps) {
+  const interactionDisabled = useClickGuard([]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 0.5rem' }}>
       {candidates.map((work) => (
         <MobileWorkCardHorizontal
           key={work.workId}
           work={work}
-          onClick={() => onSelectWork(work.workId)}
+          onClick={() => {
+            if (interactionDisabled) return;
+            onSelectWork(work.workId);
+          }}
           showFanzaLink
         />
       ))}
@@ -56,7 +61,19 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
+  const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
+
+  const handleSelectWork = (workId: string) => {
+    if (interactionDisabled) return;
+    onSelectWork(workId);
+  };
+
+  const handleNotInList = () => {
+    if (interactionDisabled || !submittedText.trim()) return;
+    onNotInList(submittedText.trim());
+    setSubmittedNotInList(true);
+  };
 
   return (
     <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
@@ -70,9 +87,9 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
           <div
             key={work.workId}
             role="button"
-            tabIndex={0}
-            onClick={() => onSelectWork(work.workId)}
-            onKeyDown={(e) => e.key === 'Enter' && onSelectWork(work.workId)}
+            tabIndex={interactionDisabled ? -1 : 0}
+            onClick={() => handleSelectWork(work.workId)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSelectWork(work.workId)}
             style={{
               minWidth: CARD_MIN_WIDTH,
               width: CARD_MIN_WIDTH,
@@ -81,7 +98,8 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
               border: '1px solid #e5e7eb',
               borderRadius: 10,
               boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              cursor: 'pointer',
+              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+              opacity: interactionDisabled ? 0.7 : 1,
               flexShrink: 0,
             }}
           >
@@ -131,17 +149,14 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
             placeholder="作品名"
           />
           <button
-            onClick={() => {
-              if (submittedText.trim()) {
-                onNotInList(submittedText.trim());
-                setSubmittedNotInList(true);
-              }
-            }}
+            onClick={handleNotInList}
+            disabled={interactionDisabled}
             style={{
               padding: isMobile ? '10px 20px' : '12px 24px',
               minHeight: 48,
               fontSize: isMobile ? 17 : 16,
-              cursor: 'pointer',
+              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+              opacity: interactionDisabled ? 0.7 : 1,
             }}
           >
             送信

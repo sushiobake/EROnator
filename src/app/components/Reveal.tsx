@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useMediaQuery } from './useMediaQuery';
+import { useClickGuard } from './useClickGuard';
 
 interface RevealProps {
   work: {
@@ -21,7 +22,13 @@ interface RevealProps {
 
 export function Reveal({ work, onAnswer }: RevealProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
+
+  const handleAnswer = (choice: 'YES' | 'NO') => {
+    if (interactionDisabled) return;
+    onAnswer(choice);
+  };
 
   return (
     <>
@@ -72,9 +79,10 @@ export function Reveal({ work, onAnswer }: RevealProps) {
           return (
             <button
               key={choice}
-              onClick={() => onAnswer(choice)}
+              onClick={() => handleAnswer(choice)}
               onMouseEnter={() => setHoveredChoice(choice)}
               onMouseLeave={() => setHoveredChoice(null)}
+              disabled={interactionDisabled}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -83,12 +91,13 @@ export function Reveal({ work, onAnswer }: RevealProps) {
                 textAlign: 'center',
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
-                cursor: 'pointer',
-                backgroundColor: hoveredChoice === choice ? '#dbeafe' : 'var(--color-surface)',
-                color: hoveredChoice === choice ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+                opacity: interactionDisabled ? 0.7 : 1,
+                backgroundColor: hoveredChoice === choice && !interactionDisabled ? '#dbeafe' : 'var(--color-surface)',
+                color: hoveredChoice === choice && !interactionDisabled ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
-                boxShadow: hoveredChoice === choice ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
+                boxShadow: hoveredChoice === choice && !interactionDisabled ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
                 transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
               }}
             >

@@ -27,7 +27,8 @@ function getOrigin(request: NextRequest): string {
 
 async function fetchCommentsForWorkIds(
   workIds: string[],
-  prismaClient: typeof prisma
+  prismaClient: typeof prisma,
+  onProgress?: (done: number, total: number) => void
 ): Promise<{ success: number; failed: number }> {
   const { scrapeWorkComment } = await import('@/server/scraping/fanzaScraper');
 
@@ -75,9 +76,11 @@ async function fetchCommentsForWorkIds(
       } else {
         failed++;
       }
+      onProgress?.(success + failed, workIds.length);
       await new Promise((r) => setTimeout(r, 2000));
     } catch {
       failed++;
+      onProgress?.(success + failed, workIds.length);
     }
   }
 
@@ -166,18 +169,20 @@ export async function POST(request: NextRequest) {
             if (round === 1) {
               send({
                 type: 'progress',
-                phase: 'コメント取得',
+                job: 'comment',
                 done: 0,
-                total: count,
+                total: ROUND_SIZE,
                 round,
                 roundTotal: totalRounds,
               });
-              const { success: fetched, failed } = await fetchCommentsForWorkIds(workIds, prisma);
+              const { success: fetched, failed } = await fetchCommentsForWorkIds(workIds, prisma, (done, total) => {
+                send({ type: 'progress', job: 'comment', done, total: ROUND_SIZE, round, roundTotal: totalRounds });
+              });
               send({
                 type: 'progress',
-                phase: 'コメント取得',
+                job: 'comment',
                 done: fetched,
-                total: count,
+                total: ROUND_SIZE,
                 round,
                 roundTotal: totalRounds,
                 detail: `ラウンド${round}: ${fetched}件取得`,
@@ -190,7 +195,7 @@ export async function POST(request: NextRequest) {
 
             send({
               type: 'progress',
-              phase: 'Phase0+1+2',
+              job: 'phase0',
               done: (round - 1) * ROUND_SIZE,
               total: count,
               round,
@@ -222,7 +227,7 @@ export async function POST(request: NextRequest) {
               let phase0Count = 0;
               await consumeStream(phase0Res.body.getReader(), (obj: unknown) => {
                 const o = obj as { type?: string; done?: number; total?: number; count?: number; error?: string };
-                if (o.type === 'progress') send({ ...o, phase: 'Phase0+1+2', round, roundTotal: totalRounds });
+                if (o.type === 'progress') send({ ...o, job: 'phase0', round, roundTotal: totalRounds });
                 if (o.type === 'done') phase0Count = o.count ?? 0;
                 if (o.type === 'error') throw new Error(o.error);
               });
@@ -244,8 +249,17 @@ export async function POST(request: NextRequest) {
 
             send({
               type: 'progress',
-              phase: 'Phase0+1+2',
+              job: 'phase0',
               done: (round - 1) * ROUND_SIZE + phase0Count,
+              total: count,
+              round,
+              roundTotal: totalRounds,
+            });
+
+            send({
+              type: 'progress',
+              job: 'phase12',
+              done: (round - 1) * ROUND_SIZE,
               total: count,
               round,
               roundTotal: totalRounds,
@@ -263,13 +277,13 @@ export async function POST(request: NextRequest) {
 
             await consumeStream(phase12Res.body.getReader(), (obj: unknown) => {
               const o = obj as { type?: string; done?: number; total?: number; error?: string };
-              if (o.type === 'progress') send({ ...o, phase: 'Phase0+1+2', round, roundTotal: totalRounds });
+              if (o.type === 'progress') send({ ...o, job: 'phase12', round, roundTotal: totalRounds });
               if (o.type === 'error') throw new Error(o.error);
             });
 
             send({
               type: 'progress',
-              phase: 'Phase0+1+2',
+              job: 'phase12',
               done: (round - 1) * ROUND_SIZE + ROUND_SIZE,
               total: count,
               round,

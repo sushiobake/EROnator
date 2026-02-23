@@ -5,11 +5,9 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useMediaQuery } from './useMediaQuery';
-
-/** 選択肢表示直後の連打防止。この秒数以内のクリックは無視 */
-const CLICK_GUARD_MS = 200;
+import { useClickGuard } from './useClickGuard';
 
 interface QuizProps {
   question: {
@@ -33,14 +31,8 @@ const ANSWER_CHOICES = [
 
 export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: QuizProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
-  const [interactionDisabled, setInteractionDisabled] = useState(true);
+  const interactionDisabled = useClickGuard([questionCount]);
   const isMobile = useMediaQuery(768);
-
-  useEffect(() => {
-    setInteractionDisabled(true);
-    const t = setTimeout(() => setInteractionDisabled(false), CLICK_GUARD_MS);
-    return () => clearTimeout(t);
-  }, [questionCount]);
 
   const handleAnswer = (choice: string) => {
     if (interactionDisabled) return;

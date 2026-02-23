@@ -183,8 +183,15 @@ export async function POST(request: NextRequest) {
         sort,
         output: 'json',
       });
-      if (gte_date) params.append('gte_date', String(gte_date).trim());
-      if (lte_date) params.append('lte_date', String(lte_date).trim());
+      // DMM APIは日付形式 YYYY-MM-DDTHH:mm:ss を要求。YYYY-MM-DD の場合は補完する
+      if (gte_date) {
+        const v = String(gte_date).trim();
+        params.append('gte_date', /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00` : v);
+      }
+      if (lte_date) {
+        const v = String(lte_date).trim();
+        params.append('lte_date', /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T23:59:59` : v);
+      }
 
       const apiUrl = `https://api.dmm.com/affiliate/v3/ItemList?${params.toString()}`;
       console.log(`[DMM Import API] Round ${r + 1}/${rounds} offset=${currentOffset}...`);

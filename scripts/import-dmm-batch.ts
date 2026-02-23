@@ -211,8 +211,15 @@ async function fetchItemList(
     output: 'json',
   });
 
-  if (options.gte_date) params.append('gte_date', options.gte_date);
-  if (options.lte_date) params.append('lte_date', options.lte_date);
+  // DMM APIは日付形式 YYYY-MM-DDTHH:mm:ss を要求。YYYY-MM-DD の場合は補完する
+  if (options.gte_date) {
+    const v = options.gte_date.trim();
+    params.append('gte_date', /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00` : v);
+  }
+  if (options.lte_date) {
+    const v = options.lte_date.trim();
+    params.append('lte_date', /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T23:59:59` : v);
+  }
 
   const url = `https://api.dmm.com/affiliate/v3/ItemList?${params.toString()}`;
   console.log(`[API] Requesting item list...`);

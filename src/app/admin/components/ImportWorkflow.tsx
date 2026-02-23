@@ -257,8 +257,8 @@ export default function ImportWorkflow() {
           offset: apiOffset,
           rounds: Math.max(1, Math.min(20, apiRounds)),
           ...(apiYearFilter && {
-            gte_date: `${apiYearFilter}-01-01`,
-            lte_date: `${apiYearFilter}-12-31`,
+            gte_date: `${apiYearFilter}-01-01T00:00:00`,
+            lte_date: `${apiYearFilter}-12-31T23:59:59`,
           }),
         }),
       });
@@ -481,8 +481,8 @@ export default function ImportWorkflow() {
           offset: apiOffset,
           rounds: Math.max(1, Math.min(20, apiBulkRounds)),
           ...(apiYearFilter && {
-            gte_date: `${apiYearFilter}-01-01`,
-            lte_date: `${apiYearFilter}-12-31`,
+            gte_date: `${apiYearFilter}-01-01T00:00:00`,
+            lte_date: `${apiYearFilter}-12-31T23:59:59`,
           }),
         }),
       });
@@ -614,23 +614,29 @@ export default function ImportWorkflow() {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const obj = JSON.parse(line) as { type?: string; phase?: string; done?: number; total?: number; round?: number; roundTotal?: number; error?: string };
+            const obj = JSON.parse(line) as { type?: string; job?: 'comment' | 'phase0' | 'phase12'; phase?: string; done?: number; total?: number; round?: number; roundTotal?: number; error?: string };
             if (obj.type === 'progress') {
               if (startTime == null) startTime = Date.now();
-              setProgress('phase012', {
-                done: obj.done ?? 0,
-                total: obj.total ?? count,
-                phase: obj.phase,
-                round: obj.round,
-                roundTotal: obj.roundTotal,
-                startTime,
-              });
+              const job = obj.job ?? (obj.phase === 'コメント取得' ? 'comment' : 'phase0');
+              if (job === 'comment' || job === 'phase0' || job === 'phase12') {
+                setProgress(job, {
+                  done: obj.done ?? 0,
+                  total: obj.total ?? count,
+                  round: obj.round,
+                  roundTotal: obj.roundTotal,
+                  startTime,
+                });
+              }
             } else if (obj.type === 'done') {
-              setProgress('phase012', null);
+              setProgress('comment', null);
+              setProgress('phase0', null);
+              setProgress('phase12', null);
               fetchStats();
               fetchWorkList(workListFilter);
             } else if (obj.type === 'error') {
-              setProgress('phase012', null);
+              setProgress('comment', null);
+              setProgress('phase0', null);
+              setProgress('phase12', null);
               alert(obj.error || 'エラーが発生しました');
             }
           } catch {
@@ -642,11 +648,15 @@ export default function ImportWorkflow() {
         try {
           const obj = JSON.parse(buffer) as { type?: string; error?: string };
           if (obj.type === 'done') {
-            setProgress('phase012', null);
+            setProgress('comment', null);
+            setProgress('phase0', null);
+            setProgress('phase12', null);
             fetchStats();
             fetchWorkList(workListFilter);
           } else if (obj.type === 'error') {
-            setProgress('phase012', null);
+            setProgress('comment', null);
+            setProgress('phase0', null);
+            setProgress('phase12', null);
             alert(obj.error || 'エラーが発生しました');
           }
         } catch {
@@ -654,7 +664,9 @@ export default function ImportWorkflow() {
         }
       }
     } catch (e) {
-      setProgress('phase012', null);
+      setProgress('comment', null);
+      setProgress('phase0', null);
+      setProgress('phase12', null);
       alert(e instanceof Error ? e.message : '一括実行に失敗しました');
     } finally {
       setBulkCommentPhase012Running(false);

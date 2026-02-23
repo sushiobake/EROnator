@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useMediaQuery } from './useMediaQuery';
+import { useClickGuard } from './useClickGuard';
 
 const AI_GATE_OPTIONS: { value: 'NO' | 'YES' | 'DONT_CARE'; label: string }[] = [
   { value: 'NO', label: 'AI生成作品ではない' },
@@ -20,7 +21,13 @@ interface AiGateProps {
 
 export function AiGate({ onSelect }: AiGateProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
+  const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
+
+  const handleSelect = (value: 'YES' | 'NO' | 'DONT_CARE') => {
+    if (interactionDisabled) return;
+    onSelect(value);
+  };
 
   return (
     <>
@@ -38,9 +45,10 @@ export function AiGate({ onSelect }: AiGateProps) {
           {AI_GATE_OPTIONS.map(({ value, label }, index) => (
             <button
               key={value}
-              onClick={() => onSelect(value)}
+              onClick={() => handleSelect(value)}
               onMouseEnter={() => setHoveredChoice(value)}
               onMouseLeave={() => setHoveredChoice(null)}
+              disabled={interactionDisabled}
               style={{
                 position: 'relative',
                 width: '100%',
@@ -49,12 +57,13 @@ export function AiGate({ onSelect }: AiGateProps) {
                 textAlign: 'center',
                 fontSize: isMobile ? 17 : 16,
                 fontWeight: 500,
-                cursor: 'pointer',
-                backgroundColor: hoveredChoice === value ? '#dbeafe' : 'var(--color-surface)',
-                color: hoveredChoice === value ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+                opacity: interactionDisabled ? 0.7 : 1,
+                backgroundColor: hoveredChoice === value && !interactionDisabled ? '#dbeafe' : 'var(--color-surface)',
+                color: hoveredChoice === value && !interactionDisabled ? 'var(--color-primary)' : 'var(--color-text-muted)',
                 border: 'none',
                 borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
-                boxShadow: hoveredChoice === value ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
+                boxShadow: hoveredChoice === value && !interactionDisabled ? 'inset 0 0 0 2px var(--color-primary)' : 'none',
                 transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
               }}
             >
