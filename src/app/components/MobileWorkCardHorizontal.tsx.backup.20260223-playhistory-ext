@@ -24,8 +24,6 @@ interface MobileWorkCardHorizontalProps {
   showFanzaLink?: boolean;
   /** おすすめ用：似てる度 */
   matchRate?: number;
-  /** FANZAクリック記録用 */
-  sessionId?: string | null;
 }
 
 export function MobileWorkCardHorizontal({
@@ -33,7 +31,6 @@ export function MobileWorkCardHorizontal({
   onClick,
   showFanzaLink = true,
   matchRate,
-  sessionId,
 }: MobileWorkCardHorizontalProps) {
   return (
     <div
@@ -84,7 +81,7 @@ export function MobileWorkCardHorizontal({
         <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         {showFanzaLink && (
           <div style={{ marginTop: 4, fontSize: 10 }}>
-            <ExternalLink href={work.productUrl} linkText={LINK_TEXT} compact sessionId={sessionId}>
+            <ExternalLink href={work.productUrl} linkText={LINK_TEXT} compact>
               {LINK_TEXT}
             </ExternalLink>
           </div>

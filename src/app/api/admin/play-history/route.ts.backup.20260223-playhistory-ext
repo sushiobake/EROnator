@@ -19,8 +19,6 @@ export interface PlayHistoryListResponse {
     resultWorkId: string | null;
     resultWorkTitle: string | null;
     submittedTitleText: string | null;
-    sessionStartedAt: string | null;
-    clickedFanza: boolean;
     createdAt: string;
   }>;
   total?: number;
@@ -81,8 +79,6 @@ export async function GET(request: NextRequest) {
         resultWorkId: row.resultWorkId,
         resultWorkTitle: row.resultWorkId ? (titleByWorkId[row.resultWorkId] ?? null) : null,
         submittedTitleText: row.submittedTitleText,
-        sessionStartedAt: row.sessionStartedAt?.toISOString() ?? null,
-        clickedFanza: row.clickedFanza ?? false,
         createdAt: row.createdAt.toISOString(),
       })),
       total,

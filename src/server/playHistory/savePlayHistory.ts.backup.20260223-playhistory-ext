@@ -16,12 +16,6 @@ export async function createPlayHistory(
   outcome: 'SUCCESS' | 'FAIL_LIST',
   resultWorkId?: string | null
 ): Promise<void> {
-  const sessionRow = await prisma.session.findUnique({
-    where: { sessionId: session.sessionId },
-    select: { createdAt: true },
-  });
-  const sessionStartedAt = sessionRow?.createdAt ?? null;
-
   await prisma.playHistory.create({
     data: {
       sessionId: session.sessionId,
@@ -31,7 +25,6 @@ export async function createPlayHistory(
       aiGateChoice: session.aiGateChoice ?? null,
       resultWorkId: resultWorkId ?? null,
       submittedTitleText: null,
-      sessionStartedAt,
     },
   });
 }
@@ -65,15 +58,5 @@ export async function updatePlayHistoryAlmostSuccess(
       outcome: 'ALMOST_SUCCESS',
       resultWorkId,
     },
-  });
-}
-
-/**
- * FANZAで見るリンクをクリックしたときに更新
- */
-export async function updatePlayHistoryClickedFanza(sessionId: string): Promise<void> {
-  await prisma.playHistory.update({
-    where: { sessionId },
-    data: { clickedFanza: true },
   });
 }

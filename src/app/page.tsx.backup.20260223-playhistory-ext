@@ -637,7 +637,7 @@ export default function Home() {
             </p>
           }
           mobileBelowCanvas={isMobile && successRecommendedWorks.length > 0 ? (
-            <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} sessionId={sessionId} />
+            <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} />
           ) : undefined}
         >
           <Success
@@ -645,7 +645,6 @@ export default function Home() {
             recommendedWorks={successRecommendedWorks}
             onRestart={handleRestart}
             mobileListBelow={isMobile}
-            sessionId={sessionId}
           />
         </Stage>
       </>
@@ -674,7 +673,6 @@ export default function Home() {
             <SuccessRecommendationsVertical
               recommendedWorks={almostSuccessRecommendedWorks}
               recommendTitle="そんなあなたには…おすすめもあるわ！"
-              sessionId={sessionId}
             />
           ) : undefined}
         >
@@ -685,7 +683,6 @@ export default function Home() {
             successTitle="それか～～～！次回は当てるからね！"
             recommendTitle="そんなあなたには…おすすめもあるわ！"
             mobileListBelow={isMobile}
-            sessionId={sessionId}
           />
         </Stage>
       </>

@@ -255,8 +255,6 @@ export default function AdminTagsPage() {
     resultWorkId: string | null;
     resultWorkTitle?: string | null;
     submittedTitleText: string | null;
-    sessionStartedAt?: string | null;
-    clickedFanza?: boolean;
     createdAt: string;
   }>>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -4422,7 +4420,7 @@ export default function AdminTagsPage() {
         <section style={{ marginTop: '1rem' }}>
           <h2 style={{ marginBottom: '1rem' }}>サービスプレイ履歴</h2>
           <p style={{ color: '#666', marginBottom: '1rem' }}>
-            1プレイ＝1レコード。質問列・回答・結果・時刻を保存。滞在時間・FANZAクリックを表示するには本番へデプロイが必要です。
+            1プレイ＝1レコード。質問列・回答・結果・時刻は本番で保存されています。離脱・失敗分析やタグ修正の参照用です。
           </p>
           <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0f4ff', borderRadius: '8px', border: '1px solid #c5d4f0' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
@@ -4538,8 +4536,7 @@ export default function AdminTagsPage() {
                     <th style={{ padding: '0.5rem', textAlign: 'right', width: '1%' }}>質問数</th>
                     <th style={{ padding: '0.5rem', textAlign: 'left' }}>作品</th>
                     <th style={{ padding: '0.5rem', textAlign: 'left', whiteSpace: 'nowrap', width: '1%' }}>日時</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="総合滞在時間">滞在</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="FANZAで見るクリック">FANZA</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="おすすめから購入">★購入</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="リピート">★リピ</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="SNS投稿">★SNS</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>詳細</th>
@@ -4575,22 +4572,7 @@ export default function AdminTagsPage() {
                       <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
                         {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                        {row.sessionStartedAt && row.createdAt
-                          ? (() => {
-                              const start = new Date(row.sessionStartedAt).getTime();
-                              const end = new Date(row.createdAt).getTime();
-                              const sec = Math.round((end - start) / 1000);
-                              if (sec < 60) return `${sec}秒`;
-                              const m = Math.floor(sec / 60);
-                              const s = sec % 60;
-                              return s > 0 ? `${m}分${s}秒` : `${m}分`;
-                            })()
-                          : '—'}
-                      </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center' }} title={row.clickedFanza ? 'FANZAで見るをクリック済み' : ''}>
-                        {row.clickedFanza ? '◎' : 'ー'}
-                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>

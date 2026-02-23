@@ -10,28 +10,14 @@ interface ExternalLinkProps {
   children: React.ReactNode;
   linkText?: string; // 固定テンプレート（自動生成しない）
   compact?: boolean; // 余白を小さく（カード内用）
-  /** FANZAで見るリンク用：指定時はクリックを記録してから遷移 */
-  sessionId?: string | null;
 }
 
-export function ExternalLink({ href, children, linkText, compact, sessionId }: ExternalLinkProps) {
+export function ExternalLink({ href, children, linkText, compact }: ExternalLinkProps) {
   // AFFILIATE_IDは環境変数で分離（本番のみ本番ID）
   const affiliateId = process.env.NEXT_PUBLIC_AFFILIATE_ID || '';
   
   // アフィリエイトIDがある場合はURLに付与
   const url = affiliateId ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}` : href;
-
-  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (sessionId) {
-      e.preventDefault();
-      fetch('/api/track-fanza-click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-      }).catch(() => {});
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
 
   return (
     <div style={{ margin: compact ? '0' : '8px 0' }}>
@@ -39,7 +25,6 @@ export function ExternalLink({ href, children, linkText, compact, sessionId }: E
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={sessionId ? handleClick : undefined}
         style={{ color: '#0066cc', textDecoration: 'underline', fontSize: compact ? 'inherit' : undefined }}
       >
         {linkText || children}

@@ -2,7 +2,7 @@
 
 いつでも取り出して参照できるようにまとめたドキュメント。
 
-**更新日: 2026-02-22**
+**更新日: 2026-02-23**
 
 ---
 
@@ -11,6 +11,23 @@
 - **必須機能の文書化**: [docs/admin-critical-features.md](./admin-critical-features.md) に Phase1+2、進行パネル、問題ありタブなど必須機能を明文化。
 - **再発防止**: 管理画面を変更する前に `npm run backup:project` を実行。バックアップ後に自動で `npm run verify:admin` が実行され、必須機能の欠落があれば警告。
 - **事故履歴**: 2026-02-22 に Phase1+2 等が欠落する事故が発生。`.backup/progress-and-streaming-20260220/` から復元済み。
+
+---
+
+## 2026-02-23 進捗メモ
+
+### 実施済み
+
+- **クリックガード全画面統一**: thinking に戻るバグ対策。Quiz / Reveal / AiGate / FailList に 350ms ガード。`useClickGuard` フック作成。
+- **DMM API 発売年フィルタ修正**: `gte_date` / `lte_date` を `YYYY-MM-DDTHH:mm:ss` 形式に変更。ImportWorkflow・API route・import-dmm-batch を修正。
+- **進行パネル改善**: 作品インポートを廃止し、コメント取得・Phase0・Phase1+2・シミュレーションの 4 行に分解。各フェーズの進捗を個別表示。バックアップ: `.backup/progress-panel-20260223/`。
+- **トップ画面**: 更新履歴の縦幅を 200px → 120px に縮小。
+- **プレビューデプロイ**: 2026-02-23 実施。
+
+### 未実施・後回し
+
+- **Phase0/Phase1+2 指示書**: 現状「10件」と記載。実装は 8 件（`BATCH_SIZE=8`、10件だと empty content のため）。指示書を「8件」に修正予定。
+- **ローカルとプレビューの作品数差**: DB が別のため。`npm run sync:supabase` で同期可能。
 
 ---
 

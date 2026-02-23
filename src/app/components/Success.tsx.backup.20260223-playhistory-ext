@@ -33,8 +33,6 @@ interface SuccessProps {
   recommendTitle?: string;
   /** スマホ：おすすめはキャンバス下に表示、白板には正解作品のみ */
   mobileListBelow?: boolean;
-  /** FANZAで見るクリック記録用 */
-  sessionId?: string | null;
 }
 
 /** 正解作品より小さく。PC・スマホとも横スクロール */
@@ -48,7 +46,6 @@ export function Success({
   successTitle = '正解！？やっぱりね！',
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
   mobileListBelow,
-  sessionId,
 }: SuccessProps) {
   const linkText = 'FANZAで見る';
   const isMobile = useMediaQuery(768);
@@ -87,7 +84,7 @@ export function Success({
           </h2>
           <p style={{ fontSize: isMobile ? 15 : 14, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>{work.authorName}</p>
           <div style={{ fontSize: isMobile ? 14 : 12, color: 'var(--color-text-muted)', fontWeight: 500 }}>
-            <ExternalLink href={work.productUrl} linkText={linkText} sessionId={sessionId}>
+            <ExternalLink href={work.productUrl} linkText={linkText}>
               {linkText}
             </ExternalLink>
           </div>
@@ -149,7 +146,7 @@ export function Success({
                   </p>
                   <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
                   <div style={{ fontSize: isMobile ? 9 : 12, color: 'var(--color-text-muted)' }}>
-                    <ExternalLink href={rec.productUrl} linkText={linkText} sessionId={sessionId}>
+                    <ExternalLink href={rec.productUrl} linkText={linkText}>
                       {linkText}
                     </ExternalLink>
                   </div>
@@ -211,11 +208,9 @@ export function Success({
 export function SuccessRecommendationsVertical({
   recommendedWorks,
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
-  sessionId,
 }: {
   recommendedWorks: RecommendedWorkItem[];
   recommendTitle?: string;
-  sessionId?: string | null;
 }) {
   if (recommendedWorks.length === 0) return null;
   return (
@@ -242,7 +237,6 @@ export function SuccessRecommendationsVertical({
             work={rec}
             showFanzaLink={true}
             matchRate={rec.matchRate}
-            sessionId={sessionId}
           />
         ))}
       </div>
