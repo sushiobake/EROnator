@@ -30,8 +30,8 @@ const CHARACTER_VARIANTS: Record<string, string> = {
 const DEFAULT_CHARACTER_URL = CHARACTER_VARIANTS.usually;
 const LOGO_URL = '/ilust/eronator_logo.jpg';
 
-/** キャラ画像切り替えのクロスフェード。false で従来の単一表示に戻せる（thinking→次画像の切り替え遅延対策） */
-const USE_CHARACTER_CROSSFADE = false;
+/** キャラ画像切り替えのクロスフェード。false で従来の単一表示に戻せる */
+const USE_CHARACTER_CROSSFADE = true;
 /** ノベルゲーム風のスムーズさ（300ms, ease-out） */
 const CROSSFADE_DURATION_MS = 300;
 
@@ -302,11 +302,10 @@ function MobileStageInner({
           zIndex: 1,
         }}
       >
-        {/* 左半分：キャラ（1.2倍、はみ出しOK・左寄せ）。flexShrink:0 で白板の内容量に依存せず固定（実機Safariで縮む不具合対策） */}
+        {/* 左半分：キャラ（1.2倍、はみ出しOK・左寄せ） */}
         <div
           style={{
             width: '50%',
-            flexShrink: 0,
             display: 'flex',
             alignItems: 'flex-end',
             justifyContent: 'flex-start',

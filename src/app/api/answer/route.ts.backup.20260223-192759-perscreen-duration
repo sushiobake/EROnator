@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     console.log(`[perf] /api/answer ensurePrismaConnected: ${Date.now() - t0}ms`);
 
     const body = await request.json();
-    const { sessionId, choice, questionShownAt } = body;
+    const { sessionId, choice } = body;
 
     if (!sessionId || !choice) {
       throw new ApiError(
@@ -127,15 +127,9 @@ export async function POST(request: NextRequest) {
     const newQuestionCount = session.questionCount + 1;
     
     // 直近の質問に回答を付与（表示・リプレイ用に choice をそのまま保存。YES/NO/PROBABLY_YES 等）
-    const durationSeconds =
-      typeof questionShownAt === 'string' && questionShownAt
-        ? Math.max(0, Math.round((Date.now() - new Date(questionShownAt).getTime()) / 1000))
-        : undefined;
     const historyWithAnswer = session.questionHistory.length > 0 && choice != null
       ? session.questionHistory.map((entry, i) =>
-          i === session.questionHistory.length - 1
-            ? { ...entry, answer: choice as string, ...(durationSeconds != null && { durationSeconds }) }
-            : entry
+          i === session.questionHistory.length - 1 ? { ...entry, answer: choice as string } : entry
         )
       : session.questionHistory;
     

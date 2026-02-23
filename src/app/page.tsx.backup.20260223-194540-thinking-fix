@@ -145,10 +145,10 @@ export default function Home() {
   const [isThinking, setIsThinking] = useState(false);
   const questionShownAtRef = useRef<number>(0);
 
-  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 400ms（切り替え安定化） */
+  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 0ms */
   const MIN_THINKING_MS =
     (typeof process.env.NEXT_PUBLIC_MIN_THINKING_MS !== 'undefined' && Number(process.env.NEXT_PUBLIC_MIN_THINKING_MS)) ||
-    (process.env.NODE_ENV === 'development' ? 1500 : 400);
+    (process.env.NODE_ENV === 'development' ? 1500 : 0);
 
   useEffect(() => {
     setIsClient(true);
@@ -210,13 +210,6 @@ export default function Home() {
     if (!isClient) return;
     localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
   }, [isClient, debugPanelOpen]);
-
-  /** 実機Safariでthinking画像が遅延表示される不具合対策：ゲーム画面表示前にプリロード */
-  useEffect(() => {
-    if (!isClient) return;
-    const img = new Image();
-    img.src = '/ilust/inari_thinking.png';
-  }, [isClient]);
 
   const debugUIEnabled = isDebugUIEnabled();
 

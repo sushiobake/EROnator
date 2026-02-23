@@ -4,7 +4,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { TopScreen } from './components/TopScreen';
 import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
@@ -143,12 +143,11 @@ export default function Home() {
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [questionCharacterVariant, setQuestionCharacterVariant] = useState<CharacterVariant>('usually');
   const [isThinking, setIsThinking] = useState(false);
-  const questionShownAtRef = useRef<number>(0);
 
-  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 400ms（切り替え安定化） */
+  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 0ms */
   const MIN_THINKING_MS =
     (typeof process.env.NEXT_PUBLIC_MIN_THINKING_MS !== 'undefined' && Number(process.env.NEXT_PUBLIC_MIN_THINKING_MS)) ||
-    (process.env.NODE_ENV === 'development' ? 1500 : 400);
+    (process.env.NODE_ENV === 'development' ? 1500 : 0);
 
   useEffect(() => {
     setIsClient(true);
@@ -211,13 +210,6 @@ export default function Home() {
     localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
   }, [isClient, debugPanelOpen]);
 
-  /** 実機Safariでthinking画像が遅延表示される不具合対策：ゲーム画面表示前にプリロード */
-  useEffect(() => {
-    if (!isClient) return;
-    const img = new Image();
-    img.src = '/ilust/inari_thinking.png';
-  }, [isClient]);
-
   const debugUIEnabled = isDebugUIEnabled();
 
   // デバッグ情報をコンソールに出力（開発用）
@@ -276,7 +268,6 @@ export default function Home() {
       const data = await response.json();
       setSessionId(data.sessionId);
       localStorage.setItem('eronator_sessionId', data.sessionId);
-      questionShownAtRef.current = Date.now();
       setQuestion(data.question);
       setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
       setQuestionCount(data.sessionState.questionCount);
@@ -306,11 +297,7 @@ export default function Home() {
         fetch('/api/answer', {
           method: 'POST',
           headers,
-          body: JSON.stringify({
-            sessionId,
-            choice,
-            questionShownAt: questionShownAtRef.current ? new Date(questionShownAtRef.current).toISOString() : undefined,
-          }),
+          body: JSON.stringify({ sessionId, choice }),
         }),
         minDelay,
       ]);
@@ -328,7 +315,6 @@ export default function Home() {
       } else if (data.state === 'FAIL_LIST') {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
-        questionShownAtRef.current = Date.now();
         setQuestion(data.question);
         setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
         setQuestionCount(data.sessionState.questionCount);
@@ -371,7 +357,6 @@ export default function Home() {
       }
 
       // 前の質問に戻る場合
-      questionShownAtRef.current = Date.now();
       setQuestion(data.question);
       setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
       setQuestionCount(data.sessionState.questionCount);
@@ -428,7 +413,6 @@ export default function Home() {
       } else if (data.state === 'FAIL_LIST') {
         await loadFailList();
       } else if (data.state === 'QUIZ') {
-        questionShownAtRef.current = Date.now();
         setQuestion(data.question);
         setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
         setQuestionCount(data.sessionState.questionCount);

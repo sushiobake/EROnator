@@ -71,8 +71,6 @@ export interface QuestionHistoryEntry {
   summaryDisplayNames?: string[];
   /** 回答（YES / NO / PROBABLY_YES / PROBABLY_NO / UNKNOWN / DONT_CARE。表示・リプレイ用にそのまま保存） */
   answer?: string;
-  /** この質問画面での滞在秒数（表示〜回答まで） */
-  durationSeconds?: number;
   /** EXPLORE_TAG の出所（まとめ/エロ/抽象/通常）。表示は変えずタグ・バッジ用 */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
 }

@@ -25,6 +25,8 @@ export interface ReplayStep {
   confidenceBefore?: number;
   confidenceAfter?: number;
   wasNoisy: boolean;
+  /** この質問画面での滞在秒数 */
+  durationSeconds?: number;
   /** SUCCESS 時のみ: 正解と逆の回答だったか。clear=明確な逆(はい⇔いいえ), weak=たぶんの逆 */
   missType?: 'clear' | 'weak';
   /** REVEAL 時のみ */
@@ -218,6 +220,7 @@ export async function POST(request: NextRequest) {
         confidenceBefore,
         confidenceAfter,
         wasNoisy: false,
+        ...(entry.durationSeconds != null && { durationSeconds: entry.durationSeconds }),
         ...(missType && { missType }),
       });
     }

@@ -4618,7 +4618,7 @@ export default function AdminTagsPage() {
             {historyDetailRowId != null && (() => {
               const row = historyItems.find((r) => r.id === historyDetailRowId);
               const replayed = row ? historyReplayCache[row.id] : undefined;
-              const steps = replayed ?? (Array.isArray(row?.questionHistory) ? row!.questionHistory as Array<{ qIndex?: number; kind?: string; displayText?: string; answer?: string; exploreTagKind?: string; wasNoisy?: boolean; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number; durationSeconds?: number }> : []);
+              const steps = replayed ?? (Array.isArray(row?.questionHistory) ? row!.questionHistory as Array<{ qIndex?: number; kind?: string; displayText?: string; answer?: string; exploreTagKind?: string; wasNoisy?: boolean; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number }> : []);
               const hasReplay = replayed != null;
               return (
                 <div
@@ -4670,7 +4670,6 @@ export default function AdminTagsPage() {
                               <th style={{ padding: '0.6rem', textAlign: 'left' }}>Q#</th>
                               <th style={{ padding: '0.6rem', textAlign: 'left' }}>質問</th>
                               <th style={{ padding: '0.6rem', textAlign: 'center' }}>回答</th>
-                              <th style={{ padding: '0.6rem', textAlign: 'center', whiteSpace: 'nowrap' }}>滞在</th>
                               <th style={{ padding: '0.6rem', textAlign: 'center' }}>ミス</th>
                               <th style={{ padding: '0.6rem', textAlign: 'right' }}>p値</th>
                               <th style={{ padding: '0.6rem', textAlign: 'right' }}>確度</th>
@@ -4720,11 +4719,6 @@ export default function AdminTagsPage() {
                                   }}>
                                     {historyAnswerSymbol(step.answer)}
                                   </span>
-                                </td>
-                                <td style={{ padding: '0.6rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                  {(step as { durationSeconds?: number }).durationSeconds != null
-                                    ? `${(step as { durationSeconds: number }).durationSeconds}秒`
-                                    : '—'}
                                 </td>
                                 <td style={{ padding: '0.6rem', textAlign: 'center' }}>
                                   {(step as { missType?: 'clear' | 'weak' }).missType === 'clear' ? (
