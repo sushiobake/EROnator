@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Works: 作品データ

@@ -6,6 +6,7 @@
  * 使い方:
  *   1. .env.supabase を用意（.env.supabase.example をコピーして値を入れる）
  *   2. npm run sync:supabase
+ *   3. 2回目以降は差分同期（変更分のみ）。全件同期: npm run sync:supabase -- --full
  *
  * 初回だけ実行すればよい。2回目以降のデプロイテストでは不要。
  */
@@ -79,7 +80,8 @@ function main() {
     run('npx', ['prisma', 'generate']);
 
     console.log('3/4 Supabase へ同期実行...');
-    const sync = spawnSync('npx', ['tsx', 'scripts/sync-sqlite-to-supabase.ts'], {
+    const syncArgs = ['tsx', 'scripts/sync-sqlite-to-supabase.ts', ...process.argv.slice(2)];
+    const sync = spawnSync('npx', syncArgs, {
       stdio: 'inherit',
       cwd: ROOT,
       shell: true,

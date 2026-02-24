@@ -78,8 +78,10 @@ async function fetchCommentsForWorkIds(
       }
       onProgress?.(success + failed, workIds.length);
       await new Promise((r) => setTimeout(r, 2000));
-    } catch {
+    } catch (err) {
       failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[bulk-comment-phase012] コメント取得失敗 workId=${work.workId}:`, msg);
       onProgress?.(success + failed, workIds.length);
     }
   }
@@ -236,16 +238,49 @@ export async function POST(request: NextRequest) {
 
             let phase0Count: number;
             if (hasNext && nextWorkIds.length > 0) {
-              const [cnt] = await Promise.all([
+              const [cnt, parallelResult] = await Promise.all([
                 runPhase0(),
                 fetchCommentsForWorkIds(nextWorkIds, prisma),
               ]);
               phase0Count = cnt;
+              if (parallelResult.success === 0 && parallelResult.failed > 0) {
+                console.warn(`[bulk-comment-phase012] ラウンド${round}: 並列コメント取得が全て失敗(成功0/失敗${parallelResult.failed})。次ラウンドでフォールバック取得します。`);
+              }
             } else {
               phase0Count = await runPhase0();
             }
 
-            if (phase0Count === 0) throw new Error('Phase0 が0件でした');
+            // 並列取得失敗時: Phase0が0件なら、コメント未取得をフォールバック取得してからPhase0を再実行
+            if (phase0Count === 0 && round < totalRounds) {
+              const fallbackRows = await prisma.work.findMany({
+                where: { commentText: null },
+                select: { workId: true },
+                orderBy: { createdAt: 'desc' },
+                take: ROUND_SIZE,
+                skip: 0,
+              });
+              const fallbackIds = fallbackRows.map((r) => r.workId);
+              if (fallbackIds.length > 0) {
+                send({
+                  type: 'progress',
+                  job: 'comment',
+                  done: 0,
+                  total: ROUND_SIZE,
+                  round,
+                  roundTotal: totalRounds,
+                  detail: `ラウンド${round}: 並列取得失敗のためフォールバック取得`,
+                });
+                const fallbackResult = await fetchCommentsForWorkIds(fallbackIds, prisma, (done, total) => {
+                  send({ type: 'progress', job: 'comment', done, total: ROUND_SIZE, round, roundTotal: totalRounds });
+                });
+                console.log(`[bulk-comment-phase012] フォールバック取得 完了: 成功=${fallbackResult.success}, 失敗=${fallbackResult.failed}`);
+                if (fallbackResult.success > 0) {
+                  phase0Count = await runPhase0();
+                }
+              }
+            }
+
+            if (phase0Count === 0) throw new Error('Phase0 が0件でした（コメント取得済み・未タグの作品がありません）');
 
             send({
               type: 'progress',
