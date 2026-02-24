@@ -4,7 +4,7 @@
  *
  * 前提: gameRegistered=true, needsReview=false の Work とその WorkTag を対象とする。
  * 実行: npm run generate:worktag-matrix
- * 運用: sync:supabase の後に実行し、生成ファイルをコミットする。
+ * 運用: npm run sync:supabase 実行時に自動で再生成される。手動実行も可能。
  */
 
 const fs = require('fs');

@@ -46,6 +46,14 @@ function main() {
   try {
     const cwd = path.join(__dirname, '..');
 
+    log('同期結果を検証...');
+    const verify = execSync('npm run verify:sync', {
+      encoding: 'utf-8',
+      cwd,
+    });
+    console.log(verify);
+    log('検証OK');
+
     const branch = execSync('git branch --show-current', { encoding: 'utf-8', cwd }).trim();
     if (branch !== 'develop') {
       console.error('❌ develop ブランチで実行してください。現在: ' + branch);

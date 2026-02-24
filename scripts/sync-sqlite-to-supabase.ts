@@ -256,6 +256,26 @@ async function main() {
     }
     console.log(`   ✅ WorkTag: ${workTagRows.length} 件`);
 
+    // 全件同期時: SQLite に存在しない Work を Supabase から削除（差分同期では削除しない）
+    if (forceFull) {
+      const supabaseWorkIds = await prisma.work
+        .findMany({
+          where: { gameRegistered: true },
+          select: { workId: true },
+        })
+        .then((rows) => rows.map((r) => r.workId));
+      const sqliteIdSet = new Set(workIds);
+      const toDelete = supabaseWorkIds.filter((id) => !sqliteIdSet.has(id));
+      if (toDelete.length > 0) {
+        console.log(`   🗑️  Supabase から削除: ${toDelete.length} 件（SQLite に存在しない Work）`);
+        for (let i = 0; i < toDelete.length; i += WORK_BATCH_SIZE) {
+          const batch = toDelete.slice(i, i + WORK_BATCH_SIZE);
+          await prisma.workTag.deleteMany({ where: { workId: { in: batch } } });
+          await prisma.work.deleteMany({ where: { workId: { in: batch } } });
+        }
+      }
+    }
+
     saveLastSyncAt();
     console.log('\n🎉 Supabase への投入が完了しました。');
   } finally {

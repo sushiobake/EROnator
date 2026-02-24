@@ -73,13 +73,13 @@ function main() {
   const envForSync = { ...process.env, ...supabaseEnv };
 
   try {
-    console.log('1/4 スキーマを Postgres に切り替え...');
+    console.log('1/6 スキーマを Postgres に切り替え...');
     fs.copyFileSync(SCHEMA_POSTGRES, SCHEMA_FILE);
 
-    console.log('2/4 Prisma クライアント生成...');
+    console.log('2/6 Prisma クライアント生成...');
     run('npx', ['prisma', 'generate']);
 
-    console.log('3/4 Supabase へ同期実行...');
+    console.log('3/6 Supabase へ同期実行...');
     const syncArgs = ['tsx', 'scripts/sync-sqlite-to-supabase.ts', ...process.argv.slice(2)];
     const sync = spawnSync('npx', syncArgs, {
       stdio: 'inherit',
@@ -94,7 +94,24 @@ function main() {
       process.exit(sync.status ?? 1);
     }
 
-    console.log('4/4 スキーマを SQLite に戻して Prisma 再生成...');
+    console.log('4/6 WorkTag 行列を再生成...');
+    run('npm', ['run', 'generate:worktag-matrix']);
+
+    console.log('5/6 同期結果を検証...');
+    const verify = spawnSync('node', ['scripts/verify-sync-result.js'], {
+      stdio: 'inherit',
+      cwd: ROOT,
+      shell: true,
+      env: { ...process.env, ...supabaseEnv },
+    });
+    if (verify.status !== 0) {
+      console.error('\n⚠️ 検証に失敗しました。workTagMatrix.json を確認し、必要なら sync:supabase を再実行してください。');
+      fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true });
+      process.exit(1);
+    }
+
+    console.log('6/6 スキーマを SQLite に戻して Prisma 再生成...');
     fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
     run('npx', ['prisma', 'generate']);
 

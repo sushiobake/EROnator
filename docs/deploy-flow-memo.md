@@ -16,7 +16,8 @@
    タグを DB 一本化した際に `questionTemplate` → `questionText` にリネームしたが、Supabase 側は未対応のため。
 
 2. **（DB の中身を最新にしたいときだけ）**  
-   `npm run dev:clean` を止めてから `npm run sync:supabase` を実行。終わったらまた `npm run dev:clean` でよい。
+   `npm run dev:clean` を止めてから `npm run sync:supabase` を実行。終わったらまた `npm run dev:clean` でよい。  
+   同期時に WorkTag 行列も自動再生成される。**本番に反映するには** `data/workTagMatrix.json` をコミットしてデプロイすること。
 
 3. **プレビューへ push**  
    ターミナルで: `git push origin develop`
@@ -55,8 +56,11 @@
 3. **同期実行**
    - `npm run sync:supabase`
    - 終わったら手元は SQLite のまま（スキーマも自動で戻る）
+   - **WorkTag 行列**（`data/workTagMatrix.json`）も同期完了後に自動で再生成される
 
 **同期の仕方**: 現状は **一括のみ**（ゲーム登録済みの全 Work を upsert）。Work は 1 件ずつ、WorkTag は 500 件ずつバッチで送っている。件数制限や「差分だけ」のオプションはない。必要ならスクリプトに `--limit` などを追加する対応は可能。
+
+**WorkTag 行列と本番**: `workTagMatrix.json` は静的ファイル。同期で自動生成されるが、**デプロイしないと本番に反映されない**。同期後に `git add data/workTagMatrix.json` してコミット・push し、デプロイする必要がある。
 
 ---
 

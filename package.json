@@ -27,6 +27,7 @@
     "backup:admin-tags": "node scripts/auto-backup-admin-tags.js",
     "backup:project": "node scripts/backup-project.js",
     "verify:admin": "node scripts/verify-admin-critical.js",
+    "verify:sync": "node scripts/verify-sync-result.js",
     "setup:git-hooks": "node scripts/setup-git-hooks.js",
     "fix:prisma": "node tools/fix-prisma-db.js",
     "fix:tagged-at": "tsx scripts/fix-tagged-at-format.ts",
