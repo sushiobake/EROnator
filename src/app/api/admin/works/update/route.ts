@@ -139,7 +139,6 @@ export async function POST(request: Request) {
             questionText: `${trimmedName}が関係している？`,
           }
         });
-        console.log(`[ManualTag] Created new tag: ${trimmedName} (${tag.tagKey})`);
       } else {
         tagKey = tag.tagKey;
       }
@@ -163,8 +162,6 @@ export async function POST(request: Request) {
         }
       });
 
-      console.log(`[ManualTag] Added tag "${trimmedName}" to work ${workId}`);
-
       return NextResponse.json({ 
         success: true, 
         tag: { displayName: tag.displayName, tagKey: tag.tagKey }
@@ -183,7 +180,6 @@ export async function POST(request: Request) {
         where: { workId_tagKey: { workId, tagKey } }
       });
 
-      console.log(`[ManualTag] Removed tag ${tagKey} from work ${workId}`);
 
       return NextResponse.json({ success: true });
     }

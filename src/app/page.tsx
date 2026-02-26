@@ -35,7 +35,7 @@ function getQuestionCharacterVariant(question: { exploreTagKind?: string; kind?:
 }
 
 interface Question {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   displayText: string;
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
 }
@@ -220,22 +220,7 @@ export default function Home() {
 
   const debugUIEnabled = isDebugUIEnabled();
 
-  // デバッグ情報をコンソールに出力（開発用）
-  useEffect(() => {
-    if (isClient && process.env.NODE_ENV === 'development') {
-      console.log('[Debug Panel] debugUIEnabled:', debugUIEnabled);
-      console.log('[Debug Panel] debugEnabled:', debugEnabled);
-      console.log('[Debug Panel] debugData:', debugData ? 'exists' : 'null');
-      console.log('[Debug Panel] NEXT_PUBLIC_DEBUG_TOKEN:', process.env.NEXT_PUBLIC_DEBUG_TOKEN ? 'set' : 'not set');
-      console.log('[Debug Panel] Should show panel:', debugUIEnabled && debugEnabled);
-      if (!debugUIEnabled) {
-        console.warn('[Debug Panel] debugUIEnabled is false. Check NEXT_PUBLIC_DEBUG_TOKEN in .env.local');
-      }
-      if (!debugEnabled) {
-        console.warn('[Debug Panel] debugEnabled is false. Enable it in /admin/tags config tab');
-      }
-    }
-  }, [isClient, debugUIEnabled, debugEnabled, debugData]);
+  // デバッグ情報のターミナル出力は無効化
 
   // sessionIdをLocalStorageで保持
   useEffect(() => {

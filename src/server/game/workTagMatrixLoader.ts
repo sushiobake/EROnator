@@ -27,13 +27,9 @@ export function getWorkTagMatrix(): WorkTagMatrix | null {
   if (cachedMatrix) return cachedMatrix;
   try {
     const p = path.join(process.cwd(), 'data', 'workTagMatrix.json');
-    if (!fs.existsSync(p)) {
-      console.log('[WorkTag] Matrix NOT found:', p, 'cwd:', process.cwd());
-      return null;
-    }
+    if (!fs.existsSync(p)) return null;
     const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as WorkTagMatrix;
     cachedMatrix = raw;
-    console.log('[WorkTag] Matrix loaded, works:', raw.workCount ?? '?');
     return cachedMatrix;
   } catch (err) {
     console.error('[WorkTag] Matrix load failed:', err);
@@ -44,6 +40,7 @@ export function getWorkTagMatrix(): WorkTagMatrix | null {
 /**
  * 行列から workId リストに対する WorkTag 配列を取得。
  * 形式は prisma.workTag.findMany の select { workId, tagKey, derivedConfidence } と同等。
+ * 5386 works × 12 tags のループを高速化（プリロード＋事前確保でアロケーション削減）。
  */
 export function getWorkTagsFromMatrix(
   workIds: string[],
@@ -51,19 +48,26 @@ export function getWorkTagsFromMatrix(
 ): WorkTagEntry[] {
   const matrix = getWorkTagMatrix();
   if (!matrix?.workTagMap) return [];
-  const results: WorkTagEntry[] = [];
-  for (const workId of workIds) {
-    const list = matrix.workTagMap[workId] ?? [];
-    for (const e of list) {
-      if (options?.tagKeys && options.tagKeys.length > 0 && !options.tagKeys.includes(e.tagKey)) {
-        continue;
-      }
-      results.push({
+  const map = matrix.workTagMap;
+  const filterTagKeys = options?.tagKeys?.length ? options.tagKeys : null;
+  const n = workIds.length;
+  const estimated = n * 14; // 1 work あたり平均 12 タグ程度、余裕を持って 14
+  const results: WorkTagEntry[] = new Array(estimated);
+  let idx = 0;
+  for (let i = 0; i < n; i++) {
+    const workId = workIds[i];
+    const list = map[workId];
+    if (!list) continue;
+    for (let j = 0; j < list.length; j++) {
+      const e = list[j];
+      if (filterTagKeys && !filterTagKeys.includes(e.tagKey)) continue;
+      results[idx++] = {
         workId,
         tagKey: e.tagKey,
         derivedConfidence: e.derivedConfidence ?? null,
-      });
+      };
     }
   }
+  results.length = idx;
   return results;
 }

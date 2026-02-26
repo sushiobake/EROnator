@@ -210,9 +210,6 @@ export default function AdminTagsPage() {
       return;
     }
 
-    console.log('[UI] Starting AI analysis...');
-    console.log('[UI] Selected works:', selectedWorks.size);
-    
     setAnalyzing(true);
     setAnalysisResults({});
 
@@ -226,10 +223,6 @@ export default function AdminTagsPage() {
           commentText: w.commentText,
         }));
 
-      console.log('[UI] Sending request to /api/admin/tags/analyze');
-      console.log('[UI] Works to analyze:', worksToAnalyze.length);
-      console.log('[UI] Sample work:', worksToAnalyze[0]?.workId, worksToAnalyze[0]?.title);
-
       const response = await fetch('/api/admin/tags/analyze', {
         method: 'POST',
         headers: {
@@ -239,8 +232,6 @@ export default function AdminTagsPage() {
         body: JSON.stringify({ works: worksToAnalyze }),
       });
 
-      console.log('[UI] Response status:', response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[UI] API error:', response.status, errorText);
@@ -249,10 +240,8 @@ export default function AdminTagsPage() {
       }
 
       const data = await response.json();
-      console.log('[UI] Response data:', data);
 
       if (data.success && data.results) {
-        console.log('[UI] Analysis results received:', data.results.length);
         
         // 結果をworkIdをキーにしたオブジェクに変換
         const resultsMap: Record<string, typeof data.results[0]> = {};
@@ -262,13 +251,9 @@ export default function AdminTagsPage() {
             characterTags: result.characterTags,
           };
         }
-        
-        console.log('[UI] Setting analysis results:', Object.keys(resultsMap).length);
         setAnalysisResults(resultsMap);
-        
+
         const totalTags = data.results.reduce((sum: number, r: any) => sum + r.derivedTags.length + r.characterTags.length, 0);
-        console.log('[UI] Total tags extracted:', totalTags);
-        
         if (totalTags === 0) {
           console.warn('[UI] No tags extracted from any work');
         }
@@ -408,10 +393,8 @@ export default function AdminTagsPage() {
       }
 
       const data = await response.json();
-      console.log('Load from DB response:', data);
-      
+
       if (data.success && Array.isArray(data.works)) {
-        console.log(`Loaded ${data.works.length} works from DB`);
         
         if (data.works.length === 0) {
           alert('DBに作品が登録されていません。\nまずファイルから作品をインポートしてください。');
@@ -448,7 +431,6 @@ export default function AdminTagsPage() {
         setAnalysisResults(existingResults);
         setDbLoaded(true);
         
-        console.log('Parse result set, analysis results set');
       } else {
         console.error('Invalid response:', data);
         alert(data.error || `DBからの読み込みに失敗しました: success=${data.success}, works=${data.works ? data.works.length : 'undefined'}`);

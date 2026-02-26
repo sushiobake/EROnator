@@ -47,6 +47,32 @@ const L_YES_HAS = 0.9;
 const L_NO_HAS = 0.1;
 
 /**
+ * 案3: IG計算前にp値で候補を絞る（selectExploreTagByIG と同じ pValueBand 条件）。
+ * 同じ pValueBand なら結果は同じだが、候補数が減り IG 計算が軽くなる。
+ */
+export function filterTagsByPValueBandForIG(
+  availableTags: TagInfo[],
+  probabilities: WorkProbability[],
+  workHasTag: (workId: string, tagKey: string) => boolean,
+  pValueBand: ExplorePValueBand
+): TagInfo[] {
+  if (availableTags.length === 0) return [];
+  const filtered: TagInfo[] = [];
+  for (const tag of availableTags) {
+    let pYes = 0;
+    for (const prob of probabilities) {
+      const hasTag = workHasTag(prob.workId, tag.tagKey);
+      const likeYes = hasTag ? L_YES_HAS : L_NO_HAS;
+      pYes += prob.probability * likeYes;
+    }
+    if (pYes >= pValueBand.pValueMin && pYes <= pValueBand.pValueMax) {
+      filtered.push(tag);
+    }
+  }
+  return filtered;
+}
+
+/**
  * EXPLORE_TAG選択（情報利得 IG = 期待事後エントロピー最小）
  * 各候補タグについて E[H'] = P(YES|q)*H(事後|YES) + P(NO|q)*H(事後|NO) を計算し、最小のタグを返す。
  * pValueBand 指定時はその範囲内の候補のみ。preferHighP は呼び出し元で分岐するため未使用。
@@ -60,19 +86,18 @@ export function selectExploreTagByIG(
   if (availableTags.length === 0) return null;
 
   const candidates = availableTags.map(tag => {
-    const pYes = probabilities.reduce((sum, prob) => {
-      const likeYes = workHasTag(prob.workId, tag.tagKey) ? L_YES_HAS : L_NO_HAS;
-      return sum + prob.probability * likeYes;
-    }, 0);
+    let pYes = 0;
+    const postYes: number[] = [];
+    const postNo: number[] = [];
+    for (const prob of probabilities) {
+      const hasTag = workHasTag(prob.workId, tag.tagKey);
+      const likeYes = hasTag ? L_YES_HAS : L_NO_HAS;
+      const likeNo = hasTag ? L_NO_HAS : L_YES_HAS;
+      pYes += prob.probability * likeYes;
+      postYes.push(prob.probability * likeYes);
+      postNo.push(prob.probability * likeNo);
+    }
     const pNo = 1 - pYes;
-    const postYes = probabilities.map(prob => {
-      const likeYes = workHasTag(prob.workId, tag.tagKey) ? L_YES_HAS : L_NO_HAS;
-      return prob.probability * likeYes;
-    });
-    const postNo = probabilities.map(prob => {
-      const likeNo = workHasTag(prob.workId, tag.tagKey) ? L_NO_HAS : L_YES_HAS;
-      return prob.probability * likeNo;
-    });
     const sumYes = postYes.reduce((a, b) => a + b, 0);
     const sumNo = postNo.reduce((a, b) => a + b, 0);
     const normYes = sumYes > 0 ? postYes.map(p => p / sumYes) : postYes;
@@ -89,12 +114,7 @@ export function selectExploreTagByIG(
     filtered = candidates.filter(
       c => c.p >= pValueBand.pValueMin && c.p <= pValueBand.pValueMax
     );
-    if (filtered.length === 0) {
-      console.log(
-        `[selectExploreTagByIG] p値が [${pValueBand.pValueMin}, ${pValueBand.pValueMax}] 内のタグが0件のため null`
-      );
-      return null;
-    }
+    if (filtered.length === 0) return null;
   }
 
   filtered.sort((a, b) => {
@@ -102,9 +122,6 @@ export function selectExploreTagByIG(
     return a.tagKey.localeCompare(b.tagKey);
   });
   const selected = filtered[0];
-  console.log(
-    `[selectExploreTagByIG] ${selected.tagKey} (expectedEntropy: ${selected.expectedEntropy.toFixed(3)}, pYes: ${selected.pYes.toFixed(2)})`
-  );
   return selected.tagKey;
 }
 
@@ -148,12 +165,7 @@ export function selectExploreTag(
     filtered = candidates.filter(
       c => c.coverage >= pValueBand.pValueMin && c.coverage <= pValueBand.pValueMax
     );
-    if (filtered.length === 0) {
-      console.log(
-        `[selectExploreTag] p値が [${pValueBand.pValueMin}, ${pValueBand.pValueMax}] 内のタグが0件のため null（HARD_CONFIRM等にフォールバック）`
-      );
-      return null;
-    }
+    if (filtered.length === 0) return null;
   }
   
   // 通常: 0.5に最も近いものを選ぶ / 連続NO時: p が高いものを選ぶ（当たり狙い）
@@ -169,7 +181,6 @@ export function selectExploreTag(
   });
   
   const selected = filtered[0];
-  console.log(`[selectExploreTag] ${preferHighP ? '当たり狙い' : 'シンプル'}: ${selected.tagKey} (p: ${selected.coverage.toFixed(2)})`);
   return selected.tagKey;
 }
 
@@ -229,10 +240,7 @@ export function selectConfirmType(
     return 'SOFT_CONFIRM';
   }
   
-  // Fallback: 単調にならないよう、SOFT のデータがあるときは 50% で SOFT / 50% で HARD にする
-  if (hasSoftConfirmData) {
-    return Math.random() < 0.5 ? 'SOFT_CONFIRM' : 'HARD_CONFIRM';
-  }
+  // Fallback: confidence < softConfidenceMin 時は HARD固定（低信頼時のSOFT無駄打ち防止）
   return 'HARD_CONFIRM';
 }
 

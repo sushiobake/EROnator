@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { prisma } from '@/server/db/client';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -13,6 +13,7 @@ const TAG_CATEGORIES_PATH = 'config/tagCategories.json';
 
 export async function GET() {
   try {
+    await ensurePrismaConnected();
     const [officialTags, derivedTags] = await Promise.all([
       prisma.tag.findMany({
         where: { tagType: 'OFFICIAL' },

@@ -4,6 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { SessionConflictError } from '@/server/session/manager';
 
 /**
  * APIエラークラス
@@ -23,6 +24,17 @@ export class ApiError extends Error {
  * エラーをNextResponseに変換
  */
 export function handleApiError(error: unknown): NextResponse {
+  // 楽観的ロック競合（409）
+  if (error instanceof SessionConflictError) {
+    return NextResponse.json(
+      {
+        error: '同時に操作が行われました。もう一度お試しください。',
+        code: 'SESSION_CONFLICT',
+      },
+      { status: 409 }
+    );
+  }
+
   // ApiErrorの場合はそのまま返す
   if (error instanceof ApiError) {
     return NextResponse.json(

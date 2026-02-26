@@ -31,12 +31,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[/api/back] Current session state:', {
-      questionHistoryLength: session.questionHistory.length,
-      weightsHistoryLength: session.weightsHistory.length,
-      questionCount: session.questionCount,
-    });
-
     // 質問履歴が空の場合は戻れない
     if (session.questionHistory.length === 0) {
       return NextResponse.json(
@@ -48,21 +42,16 @@ export async function POST(request: NextRequest) {
     // 現在の質問番号（最後の質問＝今表示している質問）
     const currentQIndex = session.questionHistory[session.questionHistory.length - 1]?.qIndex ?? 1;
     const previousQIndex = currentQIndex - 1;
-    console.log('[/api/back] Current qIndex:', currentQIndex, 'previousQIndex:', previousQIndex);
 
     // 戻り先が「1問目より前」のときだけAIゲートへ（2問目で戻る→1問目に戻すのでAI_GATEにしない）
     if (previousQIndex < 1) {
-      console.log('[/api/back] Returning to AI_GATE (no previous question)');
       return NextResponse.json({
         state: 'AI_GATE',
       });
     }
 
-    console.log('[/api/back] Rolling back to qIndex:', previousQIndex);
-
     // ロールバック実行
     const result = await SessionManager.rollbackToQuestion(sessionId, previousQIndex);
-    console.log('[/api/back] Rollback result:', { success: result.success, hasQuestion: !!result.question });
 
     if (!result.success || !result.question) {
       console.error('[/api/back] Rollback failed - no snapshot found for qIndex:', previousQIndex);

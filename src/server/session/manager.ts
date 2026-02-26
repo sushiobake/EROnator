@@ -48,6 +48,16 @@ export interface SessionState {
   weights: Record<string, number>; // { workId: weight }
   weightsHistory: WeightsHistoryEntry[]; // 修正機能用
   questionHistory: QuestionHistoryEntry[];
+  /** 楽観的ロック用。getSessionで取得、updateSessionで検証 */
+  version?: number;
+}
+
+/** 楽観的ロック競合時（他リクエストが先に更新済み） */
+export class SessionConflictError extends Error {
+  constructor() {
+    super('SESSION_CONFLICT');
+    this.name = 'SessionConflictError';
+  }
 }
 
 export interface WeightsHistoryEntry {
@@ -57,10 +67,16 @@ export interface WeightsHistoryEntry {
 
 export interface QuestionHistoryEntry {
   qIndex: number;
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
   hardConfirmValue?: string;
+  /** SPECIAL_QUESTION の種別 */
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  /** SPECIAL_QUESTION SERIES の判定用タグキー */
+  seriesTagKeys?: string[];
+  /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
+  titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
   /** 表示用文言（修正するで戻ったときに同じ文言を出すため） */
   displayText?: string;
   /** まとめ質問のとき true。回答時の strength を ±0.6 に固定する */
@@ -128,6 +144,7 @@ export class SessionManager {
       weights: weightsFromStored(JSON.parse(session.weights || '{}')),
       weightsHistory,
       questionHistory: JSON.parse(session.questionHistory || '[]'),
+      version: (session as { version?: number }).version ?? 0,
     };
   }
 
@@ -145,6 +162,8 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
+    const currentVersion = current.version ?? 0;
+
     const updated: SessionState = {
       ...current,
       ...updates,
@@ -155,8 +174,9 @@ export class SessionManager {
       weights: weightsToStored(e.weights),
     }));
 
-    await prisma.session.update({
-      where: { sessionId },
+    // 楽観的ロック: version が一致する場合のみ更新。競合時は 0 件で SessionConflictError
+    const result = await prisma.session.updateMany({
+      where: { sessionId, version: currentVersion },
       data: {
         aiGateChoice: updated.aiGateChoice || null,
         questionCount: updated.questionCount,
@@ -165,8 +185,13 @@ export class SessionManager {
         weights: JSON.stringify(weightsToStored(updated.weights)),
         weightsHistory: JSON.stringify(weightsHistoryToStore),
         questionHistory: JSON.stringify(updated.questionHistory),
-      } as any, // 一時的な回避策: Prisma Client再生成前の型エラー回避
+        version: currentVersion + 1,
+      } as any,
     });
+
+    if (result.count === 0) {
+      throw new SessionConflictError();
+    }
   }
 
   /**
@@ -281,10 +306,6 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    console.log('[rollbackToQuestion] Target qIndex:', targetQIndex);
-    console.log('[rollbackToQuestion] questionHistory:', current.questionHistory.map(q => q.qIndex));
-    console.log('[rollbackToQuestion] weightsHistory:', current.weightsHistory.map(w => w.qIndex));
-
     // 表示する質問履歴: 指定質問番号以下
     const filteredHistory = current.questionHistory.filter(q => q.qIndex <= targetQIndex);
     if (filteredHistory.length === 0) {
@@ -299,7 +320,6 @@ export class SessionManager {
       const below = current.weightsHistory.filter(w => w.qIndex < targetQIndex);
       if (below.length > 0) {
         targetSnapshot = below.reduce((a, b) => (a.qIndex > b.qIndex ? a : b));
-        console.log('[rollbackToQuestion] Using snapshot before target:', targetSnapshot.qIndex);
       }
     }
     if (!targetSnapshot) {
@@ -324,8 +344,6 @@ export class SessionManager {
       weights: targetSnapshot.weights,
       questionCount: targetQIndex - 1,
     });
-
-    console.log('[rollbackToQuestion] Rolled back to qIndex:', targetQIndex);
     return { success: true, question: targetQuestion };
   }
 

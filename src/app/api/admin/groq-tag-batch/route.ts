@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
 import { callCheckApi } from '@/server/checkAiClient';
 import { resolveTagKeyForDisplayName } from '@/server/admin/resolveTagByDisplayName';
+import { getTitleReadingInitialFromTitle } from '@/server/utils/titleCharType';
 import * as fs from 'fs';
 import * as path from 'path';
 import crypto from 'crypto';
@@ -46,6 +47,7 @@ type Phase0Item = {
   aTags: string[];
   bTags: string[];
   characterName: string | null;
+  titleReadingInitial?: string | null;
   taggingReasoning?: Record<string, string>;
 };
 
@@ -122,10 +124,14 @@ export async function POST(request: NextRequest) {
           const isPostgresEnsure = (process.env.DATABASE_URL ?? '').startsWith('postgres');
           if (isPostgresEnsure) {
             await prisma.$executeRawUnsafe('ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "lastTaggingReasoning" TEXT');
+            await prisma.$executeRawUnsafe('ALTER TABLE "Work" ADD COLUMN IF NOT EXISTS "titleReadingInitial" TEXT');
           } else {
             const tableInfo = await prisma.$queryRawUnsafe<Array<{ name: string }>>('PRAGMA table_info(Work)');
-            if (!tableInfo.some((c) => c.name === 'lastTaggingReasoning')) {
+            if (!tableInfo.some((col) => col.name === 'lastTaggingReasoning')) {
               await prisma.$executeRawUnsafe('ALTER TABLE Work ADD COLUMN lastTaggingReasoning TEXT');
+            }
+            if (!tableInfo.some((col) => col.name === 'titleReadingInitial')) {
+              await prisma.$executeRawUnsafe('ALTER TABLE Work ADD COLUMN titleReadingInitial TEXT');
             }
           }
 
@@ -193,6 +199,16 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
                 typeof item.characterName === 'string' && item.characterName.trim()
                   ? item.characterName.trim()
                   : null;
+
+              // titleReadingInitial: AI結果を優先。ひらがな/カタカナ始まりは機械的に上書き可能
+              let titleReadingInitial: string | null = null;
+              if (typeof item.titleReadingInitial === 'string' && item.titleReadingInitial.trim().length === 1) {
+                titleReadingInitial = item.titleReadingInitial.trim();
+              }
+              const mechanicalInitial = getTitleReadingInitialFromTitle(work.title ?? '');
+              if (mechanicalInitial) {
+                titleReadingInitial = mechanicalInitial; // ひらがな/カタカナは機械設定で確定
+              }
 
               const workId = item.workId || work.workId;
 
@@ -296,18 +312,20 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
                     : null;
                 if (isPostgres) {
                   await tx.$executeRawUnsafe(
-                    'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = NOW(), "aiAnalyzed" = true, "checkQueueAt" = $2, "lastTaggingReasoning" = $3 WHERE "workId" = $4',
+                    'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = NOW(), "aiAnalyzed" = true, "checkQueueAt" = $2, "lastTaggingReasoning" = $3, "titleReadingInitial" = $4 WHERE "workId" = $5',
                     'pending',
                     nowIso,
                     taggingReasoningJson,
+                    titleReadingInitial,
                     workId
                   );
                 } else {
                   await tx.$executeRawUnsafe(
-                    'UPDATE Work SET manualTaggingFolder = ?, updatedAt = datetime(\'now\'), aiAnalyzed = 1, checkQueueAt = ?, lastTaggingReasoning = ? WHERE workId = ?',
+                    'UPDATE Work SET manualTaggingFolder = ?, updatedAt = datetime(\'now\'), aiAnalyzed = 1, checkQueueAt = ?, lastTaggingReasoning = ?, titleReadingInitial = ? WHERE workId = ?',
                     'pending',
                     nowIso,
                     taggingReasoningJson,
+                    titleReadingInitial,
                     workId
                   );
                 }
@@ -320,6 +338,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
                 aTags: aList,
                 bTags: bList,
                 characterName: charName,
+                titleReadingInitial,
                 taggingReasoning: item.taggingReasoning,
               });
               send({
@@ -343,6 +362,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
               aTags: r.aTags.length,
               bTags: r.bTags.length,
               characterName: r.characterName ? 1 : 0,
+              titleReadingInitial: r.titleReadingInitial ? 1 : 0,
             })),
           });
         } catch (err) {

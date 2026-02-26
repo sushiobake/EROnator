@@ -10,6 +10,7 @@ import { getMvpConfig } from '@/server/config/loader';
 import { filterWorksByAiGate, initializeWeights, processAnswer } from '@/server/game/engine';
 import { normalizeWeights } from '@/server/algo/scoring';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
+import { getTitleCharType } from '@/server/utils/titleCharType';
 import type { WorkWeight } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import type { QuestionData } from '@/server/game/engine';
@@ -21,6 +22,7 @@ export interface ReplayStep {
   displayText?: string;
   answer?: string;
   exploreTagKind?: string;
+  specialQuestionType?: string;
   tagCoverage?: number;
   confidenceBefore?: number;
   confidenceAfter?: number;
@@ -64,6 +66,16 @@ function getCorrectAnswerForEntry(
     }
     return (targetWork.authorName ?? '') === entry.hardConfirmValue ? 'YES' : 'NO';
   }
+  if (entry.kind === 'SPECIAL_QUESTION' && entry.specialQuestionType === 'SERIES') {
+    const seriesTagKeys = entry.seriesTagKeys ?? ['off_e1f6b6c9ce', 'off_ad42c1ba79'];
+    const hasSeries = seriesTagKeys.some((tk) => targetTagKeys.has(tk));
+    return hasSeries ? 'YES' : 'NO';
+  }
+  if (entry.kind === 'SPECIAL_QUESTION' && entry.specialQuestionType === 'TITLE_CHAR_TYPE') {
+    const targetCharType = getTitleCharType(targetWork.title ?? '');
+    const expectedCharType = entry.titleCharType ?? 'KANJI';
+    return targetCharType === expectedCharType ? 'YES' : 'NO';
+  }
   return null;
 }
 
@@ -95,6 +107,9 @@ function historyEntryToQuestionData(entry: QuestionHistoryEntry): QuestionData {
     summaryQuestionId: entry.summaryQuestionId,
     summaryDisplayNames: entry.summaryDisplayNames,
     exploreTagKind: entry.exploreTagKind,
+    specialQuestionType: entry.specialQuestionType,
+    seriesTagKeys: entry.seriesTagKeys,
+    titleCharType: entry.titleCharType,
   };
 }
 
@@ -202,7 +217,7 @@ export async function POST(request: NextRequest) {
       const confidenceAfter = newSorted[0]?.probability ?? 0;
 
       let missType: 'clear' | 'weak' | undefined;
-      if (correctWorkForMiss && (entry.kind === 'EXPLORE_TAG' || entry.kind === 'SOFT_CONFIRM' || entry.kind === 'HARD_CONFIRM')) {
+      if (correctWorkForMiss && (entry.kind === 'EXPLORE_TAG' || entry.kind === 'SOFT_CONFIRM' || entry.kind === 'HARD_CONFIRM' || entry.kind === 'SPECIAL_QUESTION')) {
         const correctAnswer = getCorrectAnswerForEntry(entry, correctWorkForMiss, correctTagKeys, correctWorkTagDisplayNames);
         if (correctAnswer) {
           const mt = getMissType(entry.answer, correctAnswer);
@@ -216,6 +231,7 @@ export async function POST(request: NextRequest) {
         displayText: entry.displayText,
         answer: entry.answer,
         exploreTagKind: entry.exploreTagKind,
+        specialQuestionType: entry.specialQuestionType,
         tagCoverage,
         confidenceBefore,
         confidenceAfter,

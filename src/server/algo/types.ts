@@ -37,9 +37,17 @@ export type AiGateChoice = 'YES' | 'NO' | 'DONT_CARE';
 /**
  * 質問種別
  */
-export type QuestionKind = 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+export type QuestionKind = 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
 
 /**
  * HardConfirm種別
  */
 export type HardConfirmType = 'TITLE_INITIAL' | 'AUTHOR';
+
+/**
+ * Special Question 種別（特別質問）
+ */
+export type SpecialQuestionType = 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+
+/** シリーズもの/総集編の判定用タグキー */
+export const SERIES_TAG_KEYS = ['off_e1f6b6c9ce', 'off_ad42c1ba79'] as const;

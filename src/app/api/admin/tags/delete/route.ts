@@ -30,7 +30,6 @@ function removeFromTagRanks(displayNames: string[]) {
       data.ranks = ranks;
       data.updatedAt = new Date().toISOString();
       fs.writeFileSync(ranksPath, JSON.stringify(data, null, 2), 'utf-8');
-      console.log(`[TagDelete] Removed ${removed} tags from tagRanks.json`);
     }
   } catch (e) {
     console.warn('[TagDelete] Failed to update tagRanks.json:', e);

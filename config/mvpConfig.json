@@ -7,12 +7,10 @@
       0.7
     ],
     "qForcedIndices": [
-      6,
-      10,
-      17
+      10
     ],
     "softConfidenceMin": 0.25,
-    "hardConfidenceMin": 0.5
+    "hardConfidenceMin": 0.45
   },
   "algo": {
     "beta": 1.2,
@@ -37,7 +35,7 @@
     "effectiveConfirmThresholdParams": {
       "min": 5,
       "max": 300,
-      "divisor": 100
+      "divisor": 180
     },
     "consecutiveNoForAtari": 5,
     "summaryPreferRatio": 0.2,

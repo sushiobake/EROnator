@@ -11,7 +11,7 @@ import { useClickGuard } from './useClickGuard';
 
 interface QuizProps {
   question: {
-    kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+    kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
     displayText: string;
   };
   questionCount: number;

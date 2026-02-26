@@ -14,6 +14,7 @@ import {
 import {
   selectExploreTag,
   selectExploreTagByIG,
+  filterTagsByPValueBandForIG,
   shouldInsertConfirm,
   selectConfirmType,
   getNextHardConfirmType,
@@ -22,12 +23,25 @@ import {
 import { passesCoverageGate } from '@/server/algo/coverage';
 import { hasDerivedFeature, updateWeightsForTagQuestion, updateWeightsForTagQuestionBayesian } from '@/server/algo/weightUpdate';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
+import { selectSpecialQuestion, type SpecialQuestionType } from '@/server/algo/specialQuestionSelection';
+import { getTitleCharType } from '@/server/utils/titleCharType';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import { isTagBanned } from '@/server/admin/bannedTags';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
+import {
+  ensureTagCacheLoaded,
+  isTagCacheReady,
+  getTagByKey,
+  getTagsByTagKeys,
+  getTagsByDisplayNames,
+  getTagKeysByDisplayName,
+  getTagKeysByType,
+  type CachedTag,
+} from '@/server/game/tagCacheLoader';
+import { perfStart, perfEnd } from '@/server/simulationPerf';
 import fs from 'fs';
 import path from 'path';
 
@@ -111,9 +125,12 @@ async function fetchWorkTags(
   options?: { tagKeys?: string[] }
 ): Promise<Array<{ workId: string; tagKey: string; derivedConfidence: number | null }>> {
   if (workIds.length === 0) return [];
+  const t = perfStart('fetchWorkTags');
   const matrix = getWorkTagMatrix();
   if (matrix) {
-    return getWorkTagsFromMatrix(workIds, options);
+    const out = getWorkTagsFromMatrix(workIds, options);
+    perfEnd('fetchWorkTags', t);
+    return out;
   }
   const result = await prisma.workTag.findMany({
     where: {
@@ -122,6 +139,7 @@ async function fetchWorkTags(
     },
     select: { workId: true, tagKey: true, derivedConfidence: true },
   });
+  perfEnd('fetchWorkTags', t);
   return result.map((r) => ({
     workId: r.workId,
     tagKey: r.tagKey,
@@ -194,7 +212,7 @@ export async function initializeWeights(
 export type ExploreTagKind = 'summary' | 'erotic' | 'abstract' | 'normal';
 
 export interface QuestionData {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   displayText: string;
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
@@ -204,6 +222,12 @@ export interface QuestionData {
   summaryDisplayNames?: string[];
   /** まとめ/エロ/抽象/通常の判別用（EXPLORE_TAG のみ。表示には使わずタグ・バッジ用） */
   exploreTagKind?: ExploreTagKind;
+  /** SPECIAL_QUESTION の種別 */
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  /** SPECIAL_QUESTION SERIES の判定用タグキー */
+  seriesTagKeys?: string[];
+  /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
+  titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
 }
 
 /** selectNextQuestion のオプション（REVEAL失敗直後など） */
@@ -223,34 +247,74 @@ export async function selectNextQuestion(
   config: MvpConfig,
   options?: SelectNextQuestionOptions
 ): Promise<QuestionData | null> {
+  const t = perfStart('selectNextQuestion');
+  try {
+  await ensureTagCacheLoaded();
   const questionIndex = questionCount + 1; // 次の質問番号（1-based）
   const usedSummaryIds = new Set(
     questionHistory
       .filter((q): q is QuestionHistoryEntry & { summaryQuestionId: string } => !!q.summaryQuestionId)
       .map(q => q.summaryQuestionId!)
   );
+  const tUsed = perfStart('buildUsedTagKeysFromHistory');
   const usedTagKeys = await buildUsedTagKeysFromHistory(questionHistory);
+  perfEnd('buildUsedTagKeysFromHistory', tUsed);
 
-  // 1問目: 非エロのまとめ質問から完全ランダムで1つ選択（禁止タグは隔離して除外）
+  // 1問目: 非エロのまとめ質問のうち、現状の作品・タグで最適なトップ3からランダムで1つ選択
   if (questionCount === 0) {
     const summaries = loadSummaryQuestions();
     const unused = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
     if (unused.length > 0) {
-      const shuffled = [...unused].sort(() => Math.random() - 0.5);
-      for (const summary of shuffled) {
-        const tags = await prisma.tag.findMany({
-          where: { displayName: { in: summary.displayNames } },
-          select: { tagKey: true, displayName: true },
-        });
+      const workIds = weights.map(w => w.workId);
+      const workTagsAll = await fetchWorkTags(workIds);
+      const workTagMap = new Map<string, Set<string>>();
+      for (const wt of workTagsAll) {
+        if (!workTagMap.has(wt.workId)) workTagMap.set(wt.workId, new Set());
+        workTagMap.get(wt.workId)!.add(wt.tagKey);
+      }
+      const probMap = new Map(probabilities.map(p => [p.workId, p.probability]));
+
+      const scored: Array<{ summary: typeof unused[0]; distanceFromHalf: number }> = [];
+      for (const summary of unused) {
+        const tags = isTagCacheReady()
+          ? getTagsByDisplayNames(summary.displayNames)
+          : await prisma.tag.findMany({
+              where: { displayName: { in: summary.displayNames } },
+              select: { tagKey: true, displayName: true },
+            });
+        const validTag = tags.find(t => !isTagBanned(t.displayName));
+        if (!validTag) continue;
+
+        const tagKeys = tags.map(t => t.tagKey);
+        let p = 0;
+        for (const wid of workIds) {
+          const workTags = workTagMap.get(wid);
+          if (workTags && tagKeys.some(tk => workTags.has(tk))) {
+            p += probMap.get(wid) ?? 0;
+          }
+        }
+        scored.push({ summary, distanceFromHalf: Math.abs(p - 0.5) });
+      }
+
+      if (scored.length > 0) {
+        scored.sort((a, b) => a.distanceFromHalf - b.distanceFromHalf);
+        const top3 = scored.slice(0, 3);
+        const chosen = top3[Math.floor(Math.random() * top3.length)]!.summary;
+        const tags = isTagCacheReady()
+          ? getTagsByDisplayNames(chosen.displayNames)
+          : await prisma.tag.findMany({
+              where: { displayName: { in: chosen.displayNames } },
+              select: { tagKey: true, displayName: true },
+            });
         const validTag = tags.find(t => !isTagBanned(t.displayName));
         if (validTag) {
           return {
             kind: 'EXPLORE_TAG',
-            displayText: summary.questionText,
+            displayText: chosen.questionText,
             tagKey: validTag.tagKey,
             isSummaryQuestion: true,
-            summaryQuestionId: summary.id,
-            summaryDisplayNames: summary.displayNames,
+            summaryQuestionId: chosen.id,
+            summaryDisplayNames: chosen.displayNames,
             exploreTagKind: 'summary',
           };
         }
@@ -265,7 +329,6 @@ export async function selectNextQuestion(
     // フォールバック: 通常タグから1問目を出題（抽象・エロは1問目では出さない）
     const q1Fallback = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(1), usedTagKeys);
     if (q1Fallback) {
-      console.log('[selectNextQuestion] Q1: まとめで出題できなかったため、通常タグでフォールバックしました。');
       return q1Fallback;
     }
     console.warn('[selectNextQuestion] Q1: フォールバック後も候補が無く、null を返します。');
@@ -296,72 +359,90 @@ export async function selectNextQuestion(
   );
 
   if (shouldConfirm) {
+    const tConfirm = perfStart('selectNextQuestion_confirm');
+    try {
     // SOFT_CONFIRM vs HARD_CONFIRM選択
     const usedHardTypes = questionHistory
       .filter(q => q.kind === 'HARD_CONFIRM')
       .map(q => q.hardConfirmType!)
       .filter((t): t is 'TITLE_INITIAL' | 'AUTHOR' => !!t);
 
-    // SOFT_CONFIRM候補（DERIVEDタグ）を探す（使用済みタグを除外）
-    // パフォーマンス最適化: 行列があれば workTags を行列から取得（DB の重い JOIN を避ける）
+    // top1を先に特定（SOFT_CONFIRMはtop1狙いなので、top1が持つタグだけ取得すれば十分）
+    const probsForConfirm = normalizeWeights(weights);
+    const sortedByProb = [...probsForConfirm].sort((a, b) => b.probability - a.probability);
+    const top1WorkId = sortedByProb[0]?.workId ?? null;
+
     const workIds = weights.map(w => w.workId);
     const threshold = config.algo.derivedConfidenceThreshold;
     const matrix = getWorkTagMatrix();
 
     let derivedTags: Array<{ tagKey: string; displayName: string; questionText: string | null; workTags: Array<{ workId: string }> }>;
 
-    if (matrix) {
-      // 行列あり: Tag のみ DB、workTags は行列から
-      const tagsFromDb = await prisma.tag.findMany({
-        where: {
-          tagType: 'DERIVED',
-          tagKey: { notIn: Array.from(usedTagKeys) },
-        },
-        select: {
-          tagKey: true,
-          displayName: true,
-          questionText: true,
-        },
-      });
-
-      const tagKeys = tagsFromDb.map(t => t.tagKey);
-      const workTagsRaw = tagKeys.length > 0
-        ? getWorkTagsFromMatrix(workIds, { tagKeys })
-        : [];
-      const workTagsFiltered = workTagsRaw.filter(
-        wt => hasDerivedFeature(wt.derivedConfidence, threshold)
-      );
-      const tagToWorkIds = new Map<string, Array<{ workId: string }>>();
-      for (const wt of workTagsFiltered) {
-        if (!tagToWorkIds.has(wt.tagKey)) tagToWorkIds.set(wt.tagKey, []);
-        tagToWorkIds.get(wt.tagKey)!.push({ workId: wt.workId });
-      }
-      derivedTags = tagsFromDb.map(t => ({
-        tagKey: t.tagKey,
-        displayName: t.displayName,
-        questionText: t.questionText,
-        workTags: tagToWorkIds.get(t.tagKey) ?? [],
-      }));
-    } else {
-      // 行列なし: 従来通り prisma で workTags も取得
-      derivedTags = await prisma.tag.findMany({
-        where: {
-          tagType: 'DERIVED',
-          tagKey: { notIn: Array.from(usedTagKeys) },
-        },
-        select: {
-          tagKey: true,
-          displayName: true,
-          questionText: true,
-          workTags: {
-            where: {
-              workId: { in: workIds },
-              derivedConfidence: { gte: threshold },
-            },
-            select: { workId: true },
+    // パフォーマンス最適化: top1が持つDERIVEDタグだけ取得（全DERIVED→99%捨て を回避）
+    if (top1WorkId != null) {
+      if (matrix) {
+        const allDerivedTagKeys = getTagKeysByType('DERIVED', { notIn: usedTagKeys });
+        const top1WorkTags = getWorkTagsFromMatrix([top1WorkId], { tagKeys: allDerivedTagKeys });
+        const top1TagKeys = [...new Set(
+          top1WorkTags
+            .filter(wt => hasDerivedFeature(wt.derivedConfidence, threshold))
+            .map(wt => wt.tagKey)
+        )];
+        if (top1TagKeys.length > 0) {
+          const tagsFromDb = isTagCacheReady()
+            ? getTagsByTagKeys(top1TagKeys)
+            : await prisma.tag.findMany({
+                where: { tagKey: { in: top1TagKeys } },
+                select: { tagKey: true, displayName: true, questionText: true },
+              });
+          const workTagsRaw = getWorkTagsFromMatrix(workIds, { tagKeys: top1TagKeys });
+          const workTagsFiltered = workTagsRaw.filter(wt => hasDerivedFeature(wt.derivedConfidence, threshold));
+          const tagToWorkIds = new Map<string, Array<{ workId: string }>>();
+          for (const wt of workTagsFiltered) {
+            if (!tagToWorkIds.has(wt.tagKey)) tagToWorkIds.set(wt.tagKey, []);
+            tagToWorkIds.get(wt.tagKey)!.push({ workId: wt.workId });
+          }
+          derivedTags = tagsFromDb.map(t => ({
+            tagKey: t.tagKey,
+            displayName: t.displayName,
+            questionText: t.questionText,
+            workTags: tagToWorkIds.get(t.tagKey) ?? [],
+          }));
+        } else {
+          derivedTags = [];
+        }
+      } else {
+        const top1WorkTags = await prisma.workTag.findMany({
+          where: {
+            workId: top1WorkId,
+            derivedConfidence: { gte: threshold },
+            tag: { tagType: 'DERIVED', tagKey: { notIn: Array.from(usedTagKeys) } },
           },
-        },
-      });
+          include: { tag: { select: { tagKey: true, displayName: true, questionText: true } } },
+        });
+        const top1TagKeys = top1WorkTags.map(wt => wt.tag.tagKey);
+        if (top1TagKeys.length > 0) {
+          derivedTags = await prisma.tag.findMany({
+            where: { tagKey: { in: top1TagKeys } },
+            select: {
+              tagKey: true,
+              displayName: true,
+              questionText: true,
+              workTags: {
+                where: {
+                  workId: { in: workIds },
+                  derivedConfidence: { gte: threshold },
+                },
+                select: { workId: true },
+              },
+            },
+          });
+        } else {
+          derivedTags = [];
+        }
+      }
+    } else {
+      derivedTags = [];
     }
 
     // Prismaで0件の場合（行列なし時のみ）、直接SQLiteで取得（フォールバック）
@@ -415,7 +496,6 @@ export async function selectNextQuestion(
         
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         db.close();
-        console.log(`[selectNextQuestion] Direct SQLite query found ${derivedTags.length} DERIVED tags`);
       } catch (directError) {
         console.error('[selectNextQuestion] Error in direct SQLite fallback:', directError);
         // フォールバックも失敗した場合は空配列のまま続行
@@ -435,10 +515,7 @@ export async function selectNextQuestion(
     if (confirmType === 'SOFT_CONFIRM' && derivedTags.length > 0) {
       // SOFT_CONFIRM: top1を狙う（top1が持つDERIVEDタグのうち、p値バンド内で0.5に近いものを選択）
       // コンフィグの p バンド（explorePValueMin/Max、未設定時 0.05〜0.95）を使用
-      const probabilities = normalizeWeights(weights);
-      const probMap = new Map(probabilities.map(p => [p.workId, p.probability]));
-      const sortedByProb = [...probabilities].sort((a, b) => b.probability - a.probability);
-      const top1WorkId = sortedByProb[0]?.workId ?? null;
+      const probMap = new Map(probsForConfirm.map(p => [p.workId, p.probability]));
 
       const pMin = config.algo.explorePValueMin ?? 0.05;
       const pMax = config.algo.explorePValueMax ?? 0.95;
@@ -472,7 +549,6 @@ export async function selectNextQuestion(
           return a.tag.tagKey.localeCompare(b.tag.tagKey);
         });
         const selectedTag = usableTags[0];
-        console.log(`[SOFT_CONFIRM] ${top1TagsInBand.length > 0 ? 'top1狙い' : 'フォールバック'}: ${selectedTag.tag.displayName} (p: ${(selectedTag.p * 100).toFixed(1)}%)`);
 
         const displayText = getTagQuestionText(
           selectedTag.tag.displayName,
@@ -485,7 +561,6 @@ export async function selectNextQuestion(
           tagKey: selectedTag.tag.tagKey,
         };
       } else {
-        console.log(`[SOFT_CONFIRM] p値が [${pMin}, ${pMax}] 内のタグがないため、統一選択にフォールバック`);
         const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
         if (fallback) return fallback;
         return await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
@@ -502,7 +577,6 @@ export async function selectNextQuestion(
       // 直前がHARD_CONFIRMなら、EXPLORE_TAGにフォールバック（2連続防止）
       const lastQuestion = questionHistory[questionHistory.length - 1];
       if (lastQuestion?.kind === 'HARD_CONFIRM') {
-        console.log(`[HARD_CONFIRM] 2連続防止: 直前がHARD_CONFIRMのため、EXPLORE_TAGにフォールバック`);
         return await selectExploreQuestion(weights, probabilities, questionHistory, config, undefined, usedTagKeys);
       }
 
@@ -546,7 +620,6 @@ export async function selectNextQuestion(
       for (const w of orderedWorks) {
         const initial = normalizeTitleForInitial(w.title ?? '');
         if (!usedTitleInitials.has(initial)) {
-          console.log(`[HARD_CONFIRM] 当てに行く: TITLE_INITIAL "${initial}" (work: ${w.title})`);
           return {
             kind: 'HARD_CONFIRM',
             displayText: `タイトルが「${initial}」から始まる？`,
@@ -559,7 +632,6 @@ export async function selectNextQuestion(
       for (const w of orderedWorks) {
         const author = w.authorName ?? '(不明)';
         if (!usedAuthors.has(author)) {
-          console.log(`[HARD_CONFIRM] 当てに行く: AUTHOR "${author}" (work: ${w.title})`);
           return {
             kind: 'HARD_CONFIRM',
             displayText: `……この作品の作者（サークル）、「${author}」かしら？`,
@@ -570,10 +642,12 @@ export async function selectNextQuestion(
       }
       
       // 上位N件の頭文字・作者名もすべて使用済み → 統一選択にフォールバック
-      console.log(`[HARD_CONFIRM] 上位${topN}件の頭文字・作者名は使用済み、統一選択にフォールバック`);
       const fallback = await selectUnifiedExploreOrSummary(qIndex, weights, probsForTop1, questionHistory, config, usedSummaryIds, usedTagKeys);
       if (fallback) return fallback;
       return await selectExploreQuestion(weights, probsForTop1, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
+    }
+    } finally {
+      perfEnd('selectNextQuestion_confirm', tConfirm);
     }
   }
 
@@ -581,8 +655,30 @@ export async function selectNextQuestion(
   if (options?.afterRevealWrong) {
     const hardAfterReveal = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
     if (hardAfterReveal) {
-      console.log('[selectNextQuestion] REVEAL失敗直後のため、HARD_CONFIRM（頭文字・作者）を優先');
       return hardAfterReveal;
+    }
+  }
+
+  // Special Question 枠（Q3, Q5, Q9, Q10）
+  const specialSlotIndices = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 10];
+  if (specialSlotIndices.includes(qIndex)) {
+    const usedSpecialTypes = new Set<SpecialQuestionType>(
+      questionHistory
+        .filter((q): q is QuestionHistoryEntry & { specialQuestionType: SpecialQuestionType } =>
+          q.kind === 'SPECIAL_QUESTION' && !!q.specialQuestionType
+        )
+        .map(q => q.specialQuestionType!)
+    );
+    const workIds = weights.map(w => w.workId);
+    const specialResult = await selectSpecialQuestion(probabilities, usedSpecialTypes, workIds);
+    if (specialResult) {
+      return {
+        kind: 'SPECIAL_QUESTION',
+        displayText: specialResult.displayText,
+        specialQuestionType: specialResult.specialQuestionType,
+        seriesTagKeys: specialResult.seriesTagKeys,
+        titleCharType: specialResult.titleCharType,
+      };
     }
   }
 
@@ -595,7 +691,6 @@ export async function selectNextQuestion(
   if (fallbackEnabled) {
     const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
     if (hardFallback) {
-      console.log('[selectNextQuestion] EXPLOREでp値範囲内のタグが無いため、HARD_CONFIRMにフォールバック');
       return hardFallback;
     }
   }
@@ -606,10 +701,7 @@ export async function selectNextQuestion(
     if (exploreResult) return exploreResult;
     if (fallbackEnabled) {
       const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
-      if (hardFallback) {
-        console.log('[selectNextQuestion] EXPLOREでp値範囲内のタグが無いため、HARD_CONFIRMにフォールバック');
-        return hardFallback;
-      }
+      if (hardFallback) return hardFallback;
     }
   }
 
@@ -618,6 +710,9 @@ export async function selectNextQuestion(
   if (emergency) return emergency;
 
   return null;
+  } finally {
+    perfEnd('selectNextQuestion', t);
+  }
 }
 
 interface SelectExploreOptions {
@@ -654,6 +749,8 @@ async function tryGetHardConfirmQuestion(
   questionHistory: QuestionHistoryEntry[],
   config: MvpConfig
 ): Promise<QuestionData | null> {
+  const t = perfStart('tryGetHardConfirmQuestion');
+  try {
   const usedTitleInitials = new Set(
     questionHistory
       .filter(q => q.kind === 'HARD_CONFIRM' && q.hardConfirmType === 'TITLE_INITIAL')
@@ -700,6 +797,9 @@ async function tryGetHardConfirmQuestion(
     }
   }
   return null;
+  } finally {
+    perfEnd('tryGetHardConfirmQuestion', t);
+  }
 }
 
 /**
@@ -711,6 +811,8 @@ async function tryEmergencyExploreFallback(
   questionHistory: QuestionHistoryEntry[],
   usedTagKeys: Set<string>
 ): Promise<QuestionData | null> {
+  const t = perfStart('tryEmergencyExploreFallback');
+  try {
   const workIds = weights.map(w => w.workId);
   if (workIds.length === 0) return null;
 
@@ -720,10 +822,12 @@ async function tryEmergencyExploreFallback(
   if (candidateTagKeys.length === 0) return null;
 
   const tagKey = candidateTagKeys[0];
-  const tag = await prisma.tag.findUnique({
-    where: { tagKey },
-    select: { displayName: true, tagType: true, questionText: true },
-  });
+  const tag = isTagCacheReady()
+    ? getTagByKey(tagKey)
+    : await prisma.tag.findUnique({
+        where: { tagKey },
+        select: { displayName: true, tagType: true, questionText: true },
+      });
   if (!tag) return null;
 
   const abstractDisplayNames = loadAbstractDisplayNames();
@@ -738,13 +842,15 @@ async function tryEmergencyExploreFallback(
     : abstractDisplayNames.has(tag.displayName)
       ? 'abstract'
       : 'normal';
-  console.log('[selectNextQuestion] 緊急フォールバック: 候補が持つタグから1本選択', tagKey);
   return {
     kind: 'EXPLORE_TAG',
     displayText,
     tagKey,
     exploreTagKind,
   };
+  } finally {
+    perfEnd('tryEmergencyExploreFallback', t);
+  }
 }
 
 /**
@@ -768,10 +874,12 @@ async function buildUsedTagKeysFromHistory(
   }
 
   if (nonSummaryTagKeys.length > 0) {
-    const tags = await prisma.tag.findMany({
-      where: { tagKey: { in: [...new Set(nonSummaryTagKeys)] } },
-      select: { displayName: true },
-    });
+    const tags = isTagCacheReady()
+      ? getTagsByTagKeys([...new Set(nonSummaryTagKeys)])
+      : await prisma.tag.findMany({
+          where: { tagKey: { in: [...new Set(nonSummaryTagKeys)] } },
+          select: { displayName: true },
+        });
     for (const tag of tags) {
       if (tag.displayName) {
         const group = getGroupDisplayNames(tag.displayName);
@@ -782,16 +890,18 @@ async function buildUsedTagKeysFromHistory(
 
   if (displayNamesToMark.size === 0) return new Set<string>();
 
-  const tags = await prisma.tag.findMany({
-    where: { displayName: { in: Array.from(displayNamesToMark) } },
-    select: { tagKey: true },
-  });
+  const tags = isTagCacheReady()
+    ? getTagsByDisplayNames(Array.from(displayNamesToMark))
+    : await prisma.tag.findMany({
+        where: { displayName: { in: Array.from(displayNamesToMark) } },
+        select: { tagKey: true },
+      });
   return new Set(tags.map(t => t.tagKey));
 }
 
 /**
  * 理想フロー: まとめと通常タグを同一プールでルールに従って1つ選択
- * Q2-3: 非エロまとめのみ / Q4-5: 非エロまとめ+通常 / Q7-9: 全まとめ+全タグ(エロ解禁) / Q11+: 抽象も加える
+ * Q2-3: 非エロまとめのみ（最適選択） / Q4-5: 全まとめ（エロ解禁）のみ（最適選択） / Q6+: 全まとめ+全タグ（抽象解禁、最適選択）
  */
 async function selectUnifiedExploreOrSummary(
   questionIndex: number,
@@ -802,6 +912,8 @@ async function selectUnifiedExploreOrSummary(
   usedSummaryIds: Set<string>,
   usedTagKeys: Set<string>
 ): Promise<QuestionData | null> {
+  const t = perfStart('selectUnifiedExploreOrSummary');
+  try {
   const workIds = weights.map(w => w.workId);
   const totalWorks = weights.length;
   const abstractDisplayNames = loadAbstractDisplayNames();
@@ -809,13 +921,14 @@ async function selectUnifiedExploreOrSummary(
   const summaries = loadSummaryQuestions();
 
   // 質問番号ごとのまとめ候補
+  // Q2-3: 非エロまとめ / Q4-5: 全まとめ（エロ解禁） / Q6+: 全まとめ
   let summaryCandidates: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> = [];
   if (questionIndex >= 2 && questionIndex <= 3) {
     summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
   } else if (questionIndex >= 4 && questionIndex <= 5) {
-    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
-  } else if (questionIndex >= 7) {
-    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id));
+    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id)); // エロ解禁
+  } else if (questionIndex >= 6) {
+    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id)); // Q6+ 全まとめ
   }
 
   // まとめの displayNames → tagKeys 解決
@@ -823,12 +936,12 @@ async function selectUnifiedExploreOrSummary(
   for (const s of summaryCandidates) for (const d of s.displayNames) allSummaryDisplayNames.add(d);
   const summaryDisplayNameToTagKeys = new Map<string, string[]>();
   if (allSummaryDisplayNames.size > 0) {
-    const tTag1 = Date.now();
-    const tagsInSummaries = await prisma.tag.findMany({
-      where: { displayName: { in: Array.from(allSummaryDisplayNames) } },
-      select: { tagKey: true, displayName: true },
-    });
-    console.log(`[perf] selectUnifiedExploreOrSummary tagsInSummaries: ${Date.now() - tTag1}ms`);
+    const tagsInSummaries = isTagCacheReady()
+      ? getTagsByDisplayNames(Array.from(allSummaryDisplayNames))
+      : await prisma.tag.findMany({
+          where: { displayName: { in: Array.from(allSummaryDisplayNames) } },
+          select: { tagKey: true, displayName: true },
+        });
     for (const t of tagsInSummaries) {
       if (!summaryDisplayNameToTagKeys.has(t.displayName)) {
         summaryDisplayNameToTagKeys.set(t.displayName, []);
@@ -852,9 +965,7 @@ async function selectUnifiedExploreOrSummary(
   }
 
   // 通常タグ候補（カバレッジゲート＋質問番号フィルタ）
-  const tFetch = Date.now();
   const workTagsAll = await fetchWorkTags(workIds);
-  console.log(`[perf] selectUnifiedExploreOrSummary fetchWorkTags: ${Date.now() - tFetch}ms`);
   const tagWorkCountMap = new Map<string, number>();
   for (const wt of workTagsAll) {
     tagWorkCountMap.set(wt.tagKey, (tagWorkCountMap.get(wt.tagKey) || 0) + 1);
@@ -865,18 +976,19 @@ async function selectUnifiedExploreOrSummary(
     if (!passesCoverageGate(workCount, totalWorks, config.dataQuality.minCoverageMode, config.dataQuality.minCoverageRatio, config.dataQuality.minCoverageWorks, config.dataQuality.maxCoverageRatio ?? null)) continue;
     passingTagKeys.push(tagKey);
   }
-  if (questionIndex < 11) {
-    const tFilter = Date.now();
-    const tagsForFilter = await prisma.tag.findMany({
-      where: { tagKey: { in: passingTagKeys } },
-      select: { tagKey: true, displayName: true },
-    });
-    console.log(`[perf] selectUnifiedExploreOrSummary tagsForFilter: ${Date.now() - tFilter}ms`);
+  // Q6未満では抽象・エロを除外（Q2-5はまとめのみで通常タグは追加しないため、実質Q6+用）
+  if (questionIndex < 6 && passingTagKeys.length > 0) {
+    const tagsForFilter = isTagCacheReady()
+      ? getTagsByTagKeys(passingTagKeys)
+      : await prisma.tag.findMany({
+          where: { tagKey: { in: passingTagKeys } },
+          select: { tagKey: true, displayName: true },
+        });
     passingTagKeys = passingTagKeys.filter(tagKey => {
       const tag = tagsForFilter.find(t => t.tagKey === tagKey);
       if (!tag) return true;
-      if (questionIndex < 11 && abstractDisplayNames.has(tag.displayName)) return false;
-      if (questionIndex < 7 && eroticDisplayNames.has(tag.displayName)) return false;
+      if (abstractDisplayNames.has(tag.displayName)) return false;
+      if (eroticDisplayNames.has(tag.displayName)) return false;
       return true;
     });
   }
@@ -916,14 +1028,14 @@ async function selectUnifiedExploreOrSummary(
     });
   }
 
-  // Q4以降のみ通常タグを候補に追加（Q2-3は非エロまとめのみ）
-  if (questionIndex >= 4 && passingTagKeys.length > 0) {
-    const tAll = Date.now();
-    const allTags = await prisma.tag.findMany({
-      where: { tagKey: { in: passingTagKeys } },
-      select: { tagKey: true, displayName: true, tagType: true },
-    });
-    console.log(`[perf] selectUnifiedExploreOrSummary allTags: ${Date.now() - tAll}ms`);
+  // Q6以降のみ通常タグを候補に追加（Q2-5はまとめのみ）
+  if (questionIndex >= 6 && passingTagKeys.length > 0) {
+    const allTags = isTagCacheReady()
+      ? getTagsByTagKeys(passingTagKeys)
+      : await prisma.tag.findMany({
+          where: { tagKey: { in: passingTagKeys } },
+          select: { tagKey: true, displayName: true, tagType: true },
+        });
     for (const tag of allTags) {
       const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
       availableTags.push({
@@ -944,7 +1056,6 @@ async function selectUnifiedExploreOrSummary(
     const summaryOnly = availableTags.filter(t => t.tagKey.startsWith('summary:'));
     if (summaryOnly.length > 0) {
       tagsForSelection = summaryOnly;
-      console.log(`[selectUnifiedExploreOrSummary] まとめ優先: ${summaryOnly.length}件に絞り込み`);
     }
   }
 
@@ -961,8 +1072,27 @@ async function selectUnifiedExploreOrSummary(
 
   const pValueBand = getExplorePValueBand(config);
   let selectedKey: string | null;
+
+  // 案4: effectiveCandidates が小さいときは top 候補差異タグ IG（上位N件だけでIG計算）
+  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+  const topNIGThreshold = 100;
+  const topNForIG = 20;
+  const probsForIG =
+    effectiveCandidates < topNIGThreshold && effectiveCandidates > 0
+      ? (() => {
+          const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
+          const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
+          const sum = topN.reduce((s, p) => s + p.probability, 0);
+          return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
+        })()
+      : probabilities;
+
   if (useIG && !preferHighP) {
-    selectedKey = selectExploreTagByIG(tagsForSelection, probabilities, workHasTag, pValueBand);
+    // 案3: p値で候補を事前絞り（同じpValueBandなら結果は同じ、IG計算が軽くなる）
+    const tagsForIG = pValueBand
+      ? filterTagsByPValueBandForIG(tagsForSelection, probsForIG, workHasTag, pValueBand)
+      : tagsForSelection;
+    selectedKey = selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand);
   } else {
     selectedKey = selectExploreTag(
       tagsForSelection,
@@ -976,7 +1106,8 @@ async function selectUnifiedExploreOrSummary(
   }
   if (!selectedKey && pValueBand) {
     if (useIG && !preferHighP) {
-      selectedKey = selectExploreTagByIG(tagsForSelection, probabilities, workHasTag, undefined);
+      // バンド外し時は全候補で再試行（事前絞りなし）
+      selectedKey = selectExploreTagByIG(tagsForSelection, probsForIG, workHasTag, undefined);
     } else {
       selectedKey = selectExploreTag(
         tagsForSelection,
@@ -988,9 +1119,6 @@ async function selectUnifiedExploreOrSummary(
         preferHighP
       );
     }
-    if (selectedKey) {
-      console.log('[selectUnifiedExploreOrSummary] p値バンドで候補0のためバンド外しで再選択');
-    }
   }
   if (!selectedKey) return null;
 
@@ -998,11 +1126,13 @@ async function selectUnifiedExploreOrSummary(
     const id = selectedKey.slice(8);
     const summary = summaryCandidates.find(s => s.id === id);
     if (!summary) return null;
-    const tags = await prisma.tag.findMany({
-      where: { displayName: { in: summary.displayNames } },
-      select: { tagKey: true },
-      take: 1,
-    });
+    const tags = isTagCacheReady()
+      ? getTagsByDisplayNames(summary.displayNames)
+      : await prisma.tag.findMany({
+          where: { displayName: { in: summary.displayNames } },
+          select: { tagKey: true },
+          take: 1,
+        });
     const tagKey = tags[0]?.tagKey ?? null;
     if (!tagKey) return null;
     return {
@@ -1016,10 +1146,12 @@ async function selectUnifiedExploreOrSummary(
     };
   }
 
-  const selectedTag = await prisma.tag.findUnique({
-    where: { tagKey: selectedKey },
-    select: { displayName: true, tagType: true, questionText: true },
-  });
+  const selectedTag = isTagCacheReady()
+    ? getTagByKey(selectedKey)
+    : await prisma.tag.findUnique({
+        where: { tagKey: selectedKey },
+        select: { displayName: true, tagType: true, questionText: true },
+      });
   if (!selectedTag) return null;
   const displayText = getTagQuestionText(
     selectedTag.displayName,
@@ -1037,6 +1169,9 @@ async function selectUnifiedExploreOrSummary(
     tagKey: selectedKey,
     exploreTagKind,
   };
+  } finally {
+    perfEnd('selectUnifiedExploreOrSummary', t);
+  }
 }
 
 /**
@@ -1050,15 +1185,14 @@ async function selectExploreQuestion(
   options?: SelectExploreOptions | null,
   usedTagKeys?: Set<string>
 ): Promise<QuestionData | null> {
+  const t = perfStart('selectExploreQuestion');
+  try {
   const opts = options ?? buildExploreOptions(questionHistory.length + 1);
   const { summaryOnlyTagKeys, questionIndex = opts.questionIndex ?? 0, abstractDisplayNames = new Set(), eroticDisplayNames = new Set() } = opts;
   const abstractSet = abstractDisplayNames.size > 0 ? abstractDisplayNames : loadAbstractDisplayNames();
   const eroticSet = eroticDisplayNames.size > 0 ? eroticDisplayNames : loadEroticDisplayNames();
 
   const resolvedUsedTagKeys = usedTagKeys ?? await buildUsedTagKeysFromHistory(questionHistory);
-
-  // デバッグ: 使用済みタグを表示
-  console.log(`[selectExploreQuestion] usedTagKeys (${resolvedUsedTagKeys.size}): ${Array.from(resolvedUsedTagKeys).slice(0, 10).join(', ')}${resolvedUsedTagKeys.size > 10 ? '...' : ''}`);
 
   // パフォーマンス最適化: WorkTagsを先に取得して、カバレッジゲートを通過するタグのみを取得
   const workIds = weights.map(w => w.workId);
@@ -1095,30 +1229,32 @@ async function selectExploreQuestion(
     passingTagKeys = passingTagKeys.filter(k => summaryOnlyTagKeys!.has(k));
   }
 
-  // デバッグ: passingTagKeysの数を表示
-  console.log(`[selectExploreQuestion] passingTagKeys: ${passingTagKeys.length} tags available`);
-  
-  if (passingTagKeys.length === 0) {
-    console.log(`[selectExploreQuestion] No tags available, returning null`);
-    return null;
-  }
+  if (passingTagKeys.length === 0) return null;
 
-  // カバレッジゲートを通過したタグのみを取得
-  let allTags = await prisma.tag.findMany({
-    where: {
-      tagKey: { in: passingTagKeys },
-      tagType: { in: ['OFFICIAL', 'DERIVED'] },
-    },
-    select: {
-      tagKey: true,
-      displayName: true,
-      tagType: true,
-      questionText: true,
-    },
-  });
+  // カバレッジゲートを通過したタグのみを取得（キャッシュ優先）
+  const allTagsRaw = isTagCacheReady()
+    ? getTagsByTagKeys(passingTagKeys, { tagTypes: ['OFFICIAL', 'DERIVED'] })
+    : await prisma.tag.findMany({
+        where: {
+          tagKey: { in: passingTagKeys },
+          tagType: { in: ['OFFICIAL', 'DERIVED'] },
+        },
+        select: {
+          tagKey: true,
+          displayName: true,
+          tagType: true,
+          questionText: true,
+        },
+      });
+  let allTags = allTagsRaw.map((t) => ({
+    tagKey: t.tagKey,
+    displayName: t.displayName,
+    tagType: (t.tagType ?? 'DERIVED') as string,
+    questionText: t.questionText,
+  }));
 
-  // Prismaで0件の場合、直接SQLiteで取得（フォールバック）
-  if (allTags.length === 0 && passingTagKeys.length > 0) {
+  // Prismaで0件の場合、直接SQLiteで取得（フォールバック・キャッシュ未使用時のみ）
+  if (allTags.length === 0 && passingTagKeys.length > 0 && !isTagCacheReady()) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const sqlite3 = require('better-sqlite3');
@@ -1143,7 +1279,6 @@ async function selectExploreQuestion(
       
       // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       db.close();
-      console.log(`[selectExploreQuestion] Direct SQLite query found ${allTags.length} tags`);
     } catch (directError) {
       console.error('[selectExploreQuestion] Error in direct SQLite fallback:', directError);
       // フォールバックも失敗した場合は空配列のまま続行
@@ -1153,10 +1288,7 @@ async function selectExploreQuestion(
   const availableTags: TagInfo[] = [];
   for (const tag of allTags) {
     // 使用済みタグを再度チェック（安全策）
-    if (resolvedUsedTagKeys.has(tag.tagKey)) {
-      console.log(`[selectExploreQuestion] WARNING: tag "${tag.tagKey}" was in allTags but should be excluded`);
-      continue;
-    }
+    if (resolvedUsedTagKeys.has(tag.tagKey)) continue;
     // 禁止タグは隔離（質問に使わない）
     if (isTagBanned(tag.displayName)) continue;
     // 抽象質問（旧ふわっと）: 11問目以降のみ候補
@@ -1176,17 +1308,13 @@ async function selectExploreQuestion(
     });
   }
 
-  console.log(`[selectExploreQuestion] availableTags: ${availableTags.length} (after filtering used tags)`);
-
-  if (availableTags.length === 0) {
-    console.log(`[selectExploreQuestion] No available tags after filtering`);
-    return null;
-  }
+  if (availableTags.length === 0) return null;
 
   // workHasTag関数（既に取得済みのworkTagsを使用）
+  const passingTagKeysSet = new Set(passingTagKeys);
   const workTagMap = new Map<string, Set<string>>();
   for (const wt of workTags) {
-    if (passingTagKeys.includes(wt.tagKey)) {
+    if (passingTagKeysSet.has(wt.tagKey)) {
       if (!workTagMap.has(wt.workId)) {
         workTagMap.set(wt.workId, new Set());
       }
@@ -1212,8 +1340,25 @@ async function selectExploreQuestion(
 
   const pValueBand = getExplorePValueBand(config);
   const useIG = config.algo.useIGForExploreSelection !== false;
+  // 案4: effectiveCandidates が小さいときは top 候補差異タグ IG
+  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+  const topNIGThreshold = 100;
+  const topNForIG = 20;
+  const probsForIG =
+    useIG && effectiveCandidates < topNIGThreshold && effectiveCandidates > 0
+      ? (() => {
+          const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
+          const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
+          const sum = topN.reduce((s, p) => s + p.probability, 0);
+          return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
+        })()
+      : probabilities;
+  // 案3: useIG時はp値で候補を事前絞り（IG計算軽量化）
+  const tagsForIG = useIG && pValueBand
+    ? filterTagsByPValueBandForIG(availableTags, probsForIG, workHasTag, pValueBand)
+    : availableTags;
   const selectedTagKey = useIG
-    ? selectExploreTagByIG(availableTags, probabilities, workHasTag, pValueBand)
+    ? selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand)
     : selectExploreTag(
         availableTags,
         probabilities,
@@ -1248,6 +1393,20 @@ async function selectExploreQuestion(
     tagKey: selectedTagKey,
     exploreTagKind,
   };
+  } finally {
+    perfEnd('selectExploreQuestion', t);
+  }
+}
+
+/** HARD_CONFIRM 用の Work 情報（事前取得して渡すと DB クエリを省略） */
+export interface WorkInfoForConfirm {
+  title: string | null;
+  authorName: string | null;
+}
+
+export interface ProcessAnswerOptions {
+  /** workId → title/authorName のマップ。HARD_CONFIRM 時に prisma の代わりに使用 */
+  workInfoMap?: Map<string, WorkInfoForConfirm>;
 }
 
 /**
@@ -1257,8 +1416,12 @@ export async function processAnswer(
   weights: WorkWeight[],
   question: QuestionData,
   answerChoice: string,
-  config: MvpConfig
+  config: MvpConfig,
+  options?: ProcessAnswerOptions
 ): Promise<WorkWeight[]> {
+  const t = perfStart('processAnswer');
+  try {
+  await ensureTagCacheLoaded();
   const strengthMap: Record<string, number> = {
     YES: 1.0,
     PROBABLY_YES: 0.6,
@@ -1279,6 +1442,68 @@ export async function processAnswer(
     strength *= config.algo.softConfirmStrengthScale ?? 1.0;
   }
 
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'SERIES') {
+    // Type 3: シリーズもの/総集編（タグベース、ベイズ更新を流用）
+    const seriesTagKeys = question.seriesTagKeys ?? ['off_e1f6b6c9ce', 'off_ad42c1ba79'];
+    const workIds = weights.map(w => w.workId);
+    const workTags = await fetchWorkTags(workIds, { tagKeys: seriesTagKeys });
+    const workTagMap = new Map<string, Set<string>>();
+    for (const wt of workTags) {
+      if (!workTagMap.has(wt.workId)) workTagMap.set(wt.workId, new Set());
+      workTagMap.get(wt.workId)!.add(wt.tagKey);
+    }
+    const workHasFeature = (workId: string): boolean => {
+      const tags = workTagMap.get(workId);
+      return !!tags && seriesTagKeys.some(tk => tags.has(tk));
+    };
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
+      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_CHAR_TYPE') {
+    // Type 5: タイトル文字種（漢字/カタカナ/ひらがな）
+    const expectedCharType = question.titleCharType!;
+    const workIds = weights.map(w => w.workId);
+    let workMap: Map<string, WorkInfoForConfirm>;
+
+    if (options?.workInfoMap) {
+      workMap = options.workInfoMap;
+    } else {
+      const works = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: { workId: true, title: true, authorName: true },
+      });
+      workMap = new Map(works.map(w => [w.workId, w]));
+    }
+
+    const workHasFeature = (workId: string): boolean => {
+      const work = workMap.get(workId);
+      if (!work) return false;
+      return getTitleCharType(work.title ?? '') === expectedCharType;
+    };
+
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
+      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
     // Tag-based質問（包括・統合: 同一グループのタグをまとめて判定）
     const tagKey = question.tagKey!;
@@ -1290,18 +1515,22 @@ export async function processAnswer(
     if (summaryDisplayNames?.length) {
       groupDisplayNames = summaryDisplayNames;
     } else {
-      const askedTag = await prisma.tag.findUnique({
-        where: { tagKey },
-        select: { displayName: true },
-      });
+      const askedTag = isTagCacheReady()
+        ? getTagByKey(tagKey)
+        : await prisma.tag.findUnique({
+            where: { tagKey },
+            select: { displayName: true },
+          });
       const displayName = askedTag?.displayName ?? tagKey;
       groupDisplayNames = getGroupDisplayNames(displayName);
     }
 
-    const groupTags = await prisma.tag.findMany({
-      where: { displayName: { in: groupDisplayNames } },
-      select: { tagKey: true },
-    });
+    const groupTags = isTagCacheReady()
+      ? getTagsByDisplayNames(groupDisplayNames)
+      : await prisma.tag.findMany({
+          where: { displayName: { in: groupDisplayNames } },
+          select: { tagKey: true },
+        });
     const groupTagKeys = groupTags.map(t => t.tagKey);
 
     const workTags = await fetchWorkTags(workIds, {
@@ -1345,13 +1574,20 @@ export async function processAnswer(
     const expectedValue = question.hardConfirmValue!;
     const hardConfirmType = question.hardConfirmType!;
 
-    // 全Workを取得して判定
     const workIds = weights.map(w => w.workId);
-    const works = await prisma.work.findMany({
-      where: { workId: { in: workIds } },
-    });
+    let workMap: Map<string, WorkInfoForConfirm>;
 
-    const workMap = new Map(works.map(w => [w.workId, w]));
+    if (options?.workInfoMap) {
+      // 事前取得済みの workInfoMap を使用（DB クエリ省略）
+      workMap = options.workInfoMap;
+    } else {
+      // フォールバック: DB から取得
+      const works = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: { workId: true, title: true, authorName: true },
+      });
+      workMap = new Map(works.map(w => [w.workId, w]));
+    }
 
     let workHasFeature: (workId: string) => boolean;
     if (hardConfirmType === 'TITLE_INITIAL') {
@@ -1381,5 +1617,8 @@ export async function processAnswer(
       strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
       config.algo.beta
     );
+  }
+  } finally {
+    perfEnd('processAnswer', t);
   }
 }

@@ -74,6 +74,11 @@ const FlowSchema = z.object({
    * 推奨: 2か3で試す。未設定時は1。
    */
   titleInitialTopN: z.number().int().min(1).optional(),
+  /**
+   * Special Question を挿入する質問番号（1-based）。例: [3, 5, 9, 10] で Q3, Q5, Q9, Q10。
+   * 未設定時は [3, 5, 9, 10]。
+   */
+  specialQuestionSlotIndices: z.array(z.number().int().positive()).optional(),
 }).strict();
 
 const DataQualitySchema = z.object({

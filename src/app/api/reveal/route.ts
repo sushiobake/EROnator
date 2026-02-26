@@ -222,7 +222,13 @@ export async function POST(request: NextRequest) {
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
         displayText: nextQuestion.displayText,
+        isSummaryQuestion: nextQuestion.isSummaryQuestion,
+        summaryQuestionId: nextQuestion.summaryQuestionId,
+        summaryDisplayNames: nextQuestion.summaryDisplayNames,
         exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
+        titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
       });
 
       // questionCountをインクリメント
@@ -243,6 +249,7 @@ export async function POST(request: NextRequest) {
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
         exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
       };
 
       const confidence = calculateConfidence(updatedProbabilities);

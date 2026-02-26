@@ -1,36 +1,33 @@
 /**
  * 人力タグ付け: 各フォルダの作品数（1作品＝1フォルダ）
  * GET /api/admin/manual-tagging/works/counts
- * SQLite のときは better-sqlite3 で dev.db を直接読んで確実に反映。それ以外は Prisma raw SQL。
+ * Prisma のみ使用（sqlite-direct 廃止で二重アクセスを解消）
  */
 
 import { NextResponse } from 'next/server';
-import { prisma } from '@/server/db/client';
-import { isSqlite } from '@/server/db/is-sqlite';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 
 const FOLDERS = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const;
 
 export async function GET() {
   try {
-    if (isSqlite()) {
-      const { getCountsFromSqlite } = await import('@/server/db/sqlite-direct');
-      const counts = getCountsFromSqlite();
-      return NextResponse.json({ success: true, counts });
-    }
+    await ensurePrismaConnected();
 
-    const countValues = await Promise.all(
-      FOLDERS.map(async (folder) => {
-        const rows = await prisma.$queryRawUnsafe<Array<{ count: number }>>(
-          'SELECT COUNT(*) as count FROM Work WHERE commentText IS NOT NULL AND manualTaggingFolder = $1',
-          folder
-        );
-        return rows[0]?.count ?? 0;
-      })
-    );
-    const result: Record<string, number> = {};
-    FOLDERS.forEach((f, i) => {
-      result[f] = countValues[i];
+    const rows = await prisma.work.groupBy({
+      by: ['manualTaggingFolder'],
+      where: {
+        commentText: { not: null },
+        manualTaggingFolder: { not: null },
+      },
+      _count: { id: true },
     });
+
+    const result: Record<string, number> = Object.fromEntries(FOLDERS.map((f) => [f, 0]));
+    for (const r of rows) {
+      if (r.manualTaggingFolder && FOLDERS.includes(r.manualTaggingFolder as (typeof FOLDERS)[number])) {
+        result[r.manualTaggingFolder] = r._count.id;
+      }
+    }
     return NextResponse.json({ success: true, counts: result });
   } catch (error) {
     console.error('[manual-tagging/works/counts]', error);

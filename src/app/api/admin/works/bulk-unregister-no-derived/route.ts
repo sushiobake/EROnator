@@ -37,7 +37,6 @@ export async function POST(request: Request) {
     );
 
     const updatedCount = typeof updated === 'number' ? updated : 0;
-    console.log(`[bulk-unregister-no-derived] Set gameRegistered=false for ${updatedCount} works`);
 
     return NextResponse.json({ success: true, updated: updatedCount });
   } catch (error) {

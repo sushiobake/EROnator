@@ -112,18 +112,11 @@ export async function POST(request: NextRequest) {
               tagKey: { in: derivedTagKeys },
             },
           });
-          console.log(`[準有名タグ生成] 既存タグ削除: ${work.workId}, ${derivedTagKeys.length}件`);
         }
       }
 
       try {
-        // AIで準有名タグを生成
-        console.log(`[準有名タグ生成] 開始: ${work.workId}`);
-        
-        // コメントの長さをログ出力
         const commentLength = work.commentText.length;
-        console.log(`[準有名タグ生成] コメント長: ${commentLength}文字`);
-        
         // コメントが長すぎる場合の処理（Hugging Face APIの入力トークン制限を考慮）
         // 日本語の場合、1文字 ≈ 1-2トークン。安全のため、8000文字（約8000-16000トークン）に制限
         const MAX_COMMENT_LENGTH = 8000;
@@ -143,15 +136,9 @@ export async function POST(request: NextRequest) {
         let aiResult = await analyzeWithConfiguredProvider(commentTextToUse, SYSTEM_PROMPT);
         
         // OFFICIALタグを除外
-        const filteredTags = aiResult.derivedTags.filter(tag => {
-          const isOfficial = officialNameSet.has(tag.displayName.toLowerCase());
-          if (isOfficial) {
-            console.log(`[準有名タグ生成] ${work.workId}: "${tag.displayName}" は有名タグ(S)のため除外`);
-          }
-          return !isOfficial;
-        });
-        
-        console.log(`[準有名タグ生成] 成功: ${work.workId}, AI=${aiResult.derivedTags.length}件 → 有効=${filteredTags.length}件`);
+        const filteredTags = aiResult.derivedTags.filter(tag =>
+          !officialNameSet.has(tag.displayName.toLowerCase())
+        );
 
         if (filteredTags.length === 0) {
           if (aiResult.derivedTags.length > 0) {
@@ -171,7 +158,6 @@ export async function POST(request: NextRequest) {
 
           if (!finalTagKey) {
             finalTagKey = generateTagKey(tag.displayName, 'DERIVED');
-            console.log(`[準有名タグ生成] "${tag.displayName}" → 新規DERIVED作成`);
             await prisma.tag.create({
               data: {
                 tagKey: finalTagKey,
@@ -181,8 +167,6 @@ export async function POST(request: NextRequest) {
                 questionText: `${tag.displayName}が関係している？`,
               },
             });
-          } else {
-            console.log(`[準有名タグ生成] "${tag.displayName}" → 既存タグを使用`);
           }
 
           // WorkTagをupsert

@@ -85,14 +85,16 @@ export function getWorksFromSqlite(
 export function getCountsFromSqlite(): Record<string, number> {
   const db = openDb();
   try {
-    const result: Record<string, number> = {};
-    for (const folder of FOLDERS) {
-      const row = db
-        .prepare(
-          'SELECT COUNT(*) as count FROM Work WHERE commentText IS NOT NULL AND manualTaggingFolder = ?'
-        )
-        .get(folder) as { count: number } | undefined;
-      result[folder] = row?.count ?? 0;
+    const result: Record<string, number> = Object.fromEntries(FOLDERS.map((f) => [f, 0]));
+    const rows = db
+      .prepare(
+        `SELECT manualTaggingFolder as folder, COUNT(*) as count FROM Work
+         WHERE commentText IS NOT NULL AND manualTaggingFolder IS NOT NULL
+         GROUP BY manualTaggingFolder`
+      )
+      .all() as { folder: string; count: number }[];
+    for (const row of rows) {
+      if (row.folder in result) result[row.folder] = row.count;
     }
     return result;
   } finally {

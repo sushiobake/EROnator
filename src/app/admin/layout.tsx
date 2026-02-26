@@ -4,6 +4,8 @@
  */
 
 import { notFound } from 'next/navigation';
+import { AdminProgressProvider } from './context/AdminProgressContext';
+import ProgressPanel from './components/ProgressPanel';
 
 export default function AdminLayout({
   children,
@@ -13,5 +15,10 @@ export default function AdminLayout({
   if (process.env.VERCEL_ENV === 'production') {
     notFound();
   }
-  return <>{children}</>;
+  return (
+    <AdminProgressProvider>
+      {children}
+      <ProgressPanel />
+    </AdminProgressProvider>
+  );
 }

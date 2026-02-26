@@ -27,6 +27,14 @@ const JOB_LABELS: Record<JobType, string> = {
   simulate: 'シミュレーション',
 };
 
+function calcEtaMin(current: number, total: number, startTime: number): number | undefined {
+  if (current <= 0 || total <= 0 || current >= total) return undefined;
+  const elapsedMs = Date.now() - startTime;
+  const msPerItem = elapsedMs / current;
+  const remaining = (total - current) * msPerItem;
+  return Math.ceil(remaining / 60000);
+}
+
 function ProgressRow({
   job,
   label,
@@ -35,12 +43,33 @@ function ProgressRow({
 }: {
   job: JobType;
   label: string;
-  data: { current?: number; done?: number; total: number; phase?: string; etaMin?: number; round?: number; roundTotal?: number } | null | undefined;
+  data: { current?: number; done?: number; total: number; phase?: string; etaMin?: number; startTime?: number; round?: number; roundTotal?: number } | null | undefined;
   justCompleted?: boolean;
 }) {
   const current = data ? (data.current ?? data.done ?? 0) : 0;
   const total = data?.total ?? 0;
+  const startTime = data?.startTime ?? 0;
   const isActive = data && total > 0;
+
+  // 残り時間・経過時間を1秒ごとに再計算（リアルタイム更新）
+  const [etaMin, setEtaMin] = useState<number | undefined>(undefined);
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  useEffect(() => {
+    if (!isActive || total <= 0) return;
+    const update = () => {
+      const elapsed = startTime > 0 ? Math.floor((Date.now() - startTime) / 1000) : 0;
+      setElapsedSec(elapsed);
+      if (current > 0 && current < total && startTime > 0) {
+        setEtaMin(calcEtaMin(current, total, startTime));
+      } else {
+        setEtaMin(undefined);
+      }
+    };
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, [isActive, current, total, startTime]);
+
   const roundInfo = data && data.round != null && data.roundTotal != null && data.roundTotal > 1
     ? ` (ラウンド ${data.round}/${data.roundTotal})`
     : '';
@@ -65,12 +94,17 @@ function ProgressRow({
         <>
           <div>
             {current}/{total} 件{roundInfo}
-            {data.etaMin != null && data.etaMin > 0 && (
+            {etaMin != null && etaMin > 0 && (
               <span style={{ color: '#666', marginLeft: '0.5rem' }}>
-                残り約{data.etaMin}分
+                残り約{etaMin}分
               </span>
             )}
           </div>
+          {current === 0 && total > 0 && elapsedSec >= 1 && (
+            <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.2rem' }}>
+              開始から{elapsedSec >= 60 ? `${Math.floor(elapsedSec / 60)}分` : `${elapsedSec}秒`}経過
+            </div>
+          )}
         </>
       ) : (
         <div style={{ color: '#999', fontSize: '0.8rem' }}>

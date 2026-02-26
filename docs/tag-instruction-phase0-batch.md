@@ -26,6 +26,7 @@
 1. **タイトルを必ず読む** … タイトルに含まれる語（合宿、催眠、JK、人妻、総集編 など）は必ずタグ候補に。
 2. **キャラタグ（characterName）** … commentText に登場人物の名前があれば代表1人を入れる。なければ `null`。作品タイトルはキャラ名ではない。
 3. **シリーズ系** … タイトルに数字・「続編」「総集編」「編」があれば、シリーズ系タグを1つ付ける（allTags の s に「シリーズもの」「ベスト・総集編」等があるか確認）。
+4. **titleReadingInitial** … タイトルの読みの先頭1文字をカタカナで返す。括弧・記号を除いた最初の有効文字の読み。漢字→読み（例: 隣→ト、双→フ、異→イ）。英字→日本語読み（例: L→エル、A→エー）。ひらがな・カタカナ始まりはその1文字をカタカナに。1文字のみ。不明な場合は `null`。
 
 ---
 
@@ -74,6 +75,7 @@ commentText の**明記**されている特徴で、officialTags に無いもの
       "aTags": ["Aタグ1", "Aタグ2"],
       "bTags": ["Bタグ1"],
       "characterName": "キャラ名",
+      "titleReadingInitial": "カ",
       "taggingReasoning": {
         "タイトルから": "1行で。",
         "各タグ根拠": "1行で。",
@@ -87,6 +89,7 @@ commentText の**明記**されている特徴で、officialTags に無いもの
 - **additionalSTags**: allTags.s から。既に officialTags にある語は含めない。
 - **aTags** / **bTags**: allTags.a / allTags.b から。最大3個程度。既に officialTags・additionalSTags にある語は含めない。
 - **characterName**: 登場人物名が明記されていれば代表1人。なければ `null`。
+- **titleReadingInitial**: タイトル読みの先頭1文字（カタカナ）。50音質問用。不明な場合は `null`。
 - **taggingReasoning**: 各項目1行以内。長文禁止。
 
 ---

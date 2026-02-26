@@ -131,7 +131,6 @@ export async function POST(request: NextRequest) {
             // popularityBaseを計算
             const computedPopularityBase = computePopularityBase(data.reviewCount, data.reviewAverage);
             updateData.popularityBase = computedPopularityBase;
-            console.log(`  [popularityBase計算] reviewCount=${data.reviewCount}, reviewAverage=${data.reviewAverage}, popularityBase=${computedPopularityBase}`);
           }
 
           // isAiがあれば更新（UNKNOWNの場合は既存値を保持）

@@ -51,7 +51,13 @@
     "export:worker-tag-lists": "node scripts/export-worker-tag-lists.js",
     "migrate:question-templates": "tsx scripts/migrate-question-templates-to-db.ts",
     "migrate:question-templates:dry-run": "tsx scripts/migrate-question-templates-to-db.ts --dry-run",
-    "rename:question-text": "tsx scripts/rename-question-template-to-question-text.ts"
+    "rename:question-text": "tsx scripts/rename-question-template-to-question-text.ts",
+    "backfill:title-reading-initial": "tsx scripts/backfill-title-reading-initial.ts",
+    "count:title-char-types": "tsx scripts/count-title-char-types.ts",
+    "export:title-reading-for-chatgpt": "tsx scripts/export-title-reading-for-chatgpt.ts",
+    "import:title-reading-initial": "tsx scripts/import-title-reading-initial.ts",
+    "backfill:title-reading-initial-llm": "tsx scripts/backfill-title-reading-initial-llm.ts",
+    "backfill:title-reading-initial-llm:dry-run": "tsx scripts/backfill-title-reading-initial-llm.ts --dry-run"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

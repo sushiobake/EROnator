@@ -1,6 +1,7 @@
 /**
  * タグ管理・インポートページ
  * /admin/tags
+ * ProgressPanel / AdminProgressProvider は admin/layout.tsx で提供
  */
 
 'use client';
@@ -9,10 +10,9 @@ import { useState, useEffect } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
 import ManualTagging from '../components/ManualTagging';
-import ProgressPanel from '../components/ProgressPanel';
 import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
-import { AdminProgressProvider } from '../context/AdminProgressContext';
+import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
 
 interface ParsedWork {
@@ -74,6 +74,7 @@ function historyAnswerSymbol(a: string | undefined): string {
 }
 
 export default function AdminTagsPage() {
+  const { setProgress } = useAdminProgress();
   const [activeTab, setActiveTab] = useState<TabType>('works');
   const [adminToken, setAdminToken] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
@@ -136,12 +137,8 @@ export default function AdminTagsPage() {
   const [newBannedTag, setNewBannedTag] = useState({ pattern: '', type: 'exact' as const, reason: '' });
 
   // シミュレーション用state
-  const [simSelectedWorkId, setSimSelectedWorkId] = useState<string>('');
   const [simWorksStats, setSimWorksStats] = useState<{ totalWorks: number; gameRegisteredCount: number } | null>(null);
-  // ノイズ率を質問タイプ別に設定
-  const [simNoiseExplore, setSimNoiseExplore] = useState<number>(0);
-  const [simNoiseSoft, setSimNoiseSoft] = useState<number>(0);
-  const [simNoiseHard, setSimNoiseHard] = useState<number>(0);
+  const [simAmbiguityLevel, setSimAmbiguityLevel] = useState<number>(2);
   const [simAiGateChoice, setSimAiGateChoice] = useState<string>('BOTH');
   const [simLoading, setSimLoading] = useState(false);
   const [simResult, setSimResult] = useState<{
@@ -177,10 +174,10 @@ export default function AdminTagsPage() {
         derivedConfidence: number | null;
       }>;
     };
+    perfSummary?: Record<string, number>;
   } | null>(null);
   const [simShowWorkDetails, setSimShowWorkDetails] = useState(false);
   const [simExpandedSteps, setSimExpandedSteps] = useState(false);
-  const [simBatchMode, setSimBatchMode] = useState(true); // デフォルトON
   const [simTrialsPerWork, setSimTrialsPerWork] = useState(1);
   const [simBatchResult, setSimBatchResult] = useState<{
     totalTrials: number;
@@ -193,6 +190,7 @@ export default function AdminTagsPage() {
       success: boolean; 
       questionCount: number; 
       outcome: string;
+      perfSummary?: Record<string, number>;
       steps?: Array<{
         qIndex: number;
         question: { kind: string; displayText: string; exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' };
@@ -202,6 +200,8 @@ export default function AdminTagsPage() {
         confidenceAfter: number;
         revealResult?: string;
       }>;
+      diagnostic?: unknown;
+      analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
       workDetails?: {
         workId: string;
         title: string;
@@ -223,18 +223,46 @@ export default function AdminTagsPage() {
       timestamp: string;
       totalWorksInDb: number;
       sampleSize: number;
-      noiseRates: {
-        explore: number;
-        soft: number;
-        hard: number;
-      };
+      ambiguityLevel?: number;
       aiGateChoice: string;
       trialsPerWork: number;
     };
+    failureSummary?: Record<string, number>;
+    failureAnalysis?: { failureCount: number; avgWasNoisyCount: number | null; avgCorrectRank: number | null; avgTop1Confidence: number | null };
   } | null>(null);
   const [simBatchLoading, setSimBatchLoading] = useState(false);
-  const [simSampleSize, setSimSampleSize] = useState<number>(0); // 0=全件
+  const [simSampleSize, setSimSampleSize] = useState<number>(50);
   const [simSaving, setSimSaving] = useState(false);
+  const [simFailureFilter, setSimFailureFilter] = useState(false);
+  const [simResultPage, setSimResultPage] = useState(0);
+  const SIM_RESULT_PAGE_SIZE = 100;
+  const [simPerfExpanded, setSimPerfExpanded] = useState(false);
+  const [simBatchPerfExpanded, setSimBatchPerfExpanded] = useState(false);
+  const [simModalPerfExpanded, setSimModalPerfExpanded] = useState(false);
+  const [simModalRetryLoading, setSimModalRetryLoading] = useState(false);
+  const [simResultModal, setSimResultModal] = useState<{
+    success: boolean;
+    targetWorkId: string;
+    targetWorkTitle: string;
+    finalWorkId: string | null;
+    finalWorkTitle: string | null;
+    questionCount: number;
+    outcome: string;
+    errorMessage?: string;
+    steps: Array<{
+      qIndex: number;
+      question: { kind: string; displayText: string; exploreTagKind?: string };
+      answer: string;
+      wasNoisy: boolean;
+      confidenceBefore: number;
+      confidenceAfter: number;
+      revealResult?: string;
+    }>;
+    workDetails?: unknown;
+    perfSummary?: Record<string, number>;
+    diagnostic?: unknown;
+    analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
+  } | null>(null);
 
   // 更新履歴編集タブ用
   const [appInfoVersion, setAppInfoVersion] = useState('');
@@ -479,11 +507,6 @@ export default function AdminTagsPage() {
       return;
     }
 
-    if (debugEnabled) {
-      console.log('[UI] Starting AI analysis...');
-      console.log('[UI] Selected works:', selectedWorks.size);
-    }
-    
     setAnalyzing(true);
     
     // 進捗表示のため、選択された作品のIDをキーにした空のオブジェクトを作成
@@ -503,12 +526,6 @@ export default function AdminTagsPage() {
           commentText: w.commentText,
         }));
 
-      if (debugEnabled) {
-        console.log('[UI] Sending request to /api/admin/tags/analyze');
-        console.log('[UI] Works to analyze:', worksToAnalyze.length);
-        console.log('[UI] Sample work:', worksToAnalyze[0]?.workId, worksToAnalyze[0]?.title);
-      }
-
       const response = await fetch('/api/admin/tags/analyze', {
         method: 'POST',
         headers: {
@@ -517,10 +534,6 @@ export default function AdminTagsPage() {
         },
         body: JSON.stringify({ works: worksToAnalyze }),
       });
-
-      if (debugEnabled) {
-        console.log('[UI] Response status:', response.status);
-      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -532,15 +545,8 @@ export default function AdminTagsPage() {
       }
 
       const data = await response.json();
-      if (debugEnabled) {
-        console.log('[UI] Response data:', data);
-      }
 
       if (data.success && data.results) {
-        if (debugEnabled) {
-          console.log('[UI] Analysis results received:', data.results.length);
-        }
-        
         // 結果をworkIdをキーにしたオブジェクトに変換
         const resultsMap: Record<string, typeof data.results[0]> = {};
         for (const result of data.results) {
@@ -550,18 +556,7 @@ export default function AdminTagsPage() {
           };
         }
         
-        if (debugEnabled) {
-          console.log('[UI] Setting analysis results:', Object.keys(resultsMap).length);
-        }
         setAnalysisResults(resultsMap);
-        
-        const totalTags = data.results.reduce((sum: number, r: any) => sum + r.derivedTags.length + r.characterTags.length, 0);
-        if (debugEnabled) {
-          console.log('[UI] Total tags extracted:', totalTags);
-          if (totalTags === 0) {
-            console.warn('[UI] No tags extracted from any work');
-          }
-        }
       } else {
         if (debugEnabled) {
           console.error('[UI] Analysis failed:', data.error);
@@ -783,15 +778,8 @@ export default function AdminTagsPage() {
       }
 
       const data = await response.json();
-      if (debugEnabled) {
-        console.log('Load from DB response:', data);
-      }
-      
+
       if (data.success && Array.isArray(data.works)) {
-        if (debugEnabled) {
-          console.log(`Loaded ${data.works.length} works from DB`);
-        }
-        
         if (data.works.length === 0 && pageNum === 1) {
           alert(
             effectiveFilter === 'all'
@@ -844,10 +832,6 @@ export default function AdminTagsPage() {
         
         setAnalysisResults(existingResults);
         setDbLoaded(true);
-        
-        if (debugEnabled) {
-          console.log('Parse result set, analysis results set');
-        }
       } else {
         console.error('Invalid response:', data);
         alert(data.error || `DBからの読み込みに失敗しました: success=${data.success}, works=${data.works ? data.works.length : 'undefined'}`);
@@ -1218,19 +1202,10 @@ export default function AdminTagsPage() {
       }
 
       const data = await response.json();
-      
-      if (debugEnabled) {
-        console.log('[UI] Tag list response:', data);
-        console.log('[UI] Tags count:', data.tags?.length || 0);
-      }
-      
+
       if (data.success && Array.isArray(data.tags)) {
         setTags(data.tags);
         setTagsStats(data.stats || null);
-        
-        if (debugEnabled) {
-          console.log('[UI] Tags set:', data.tags.length);
-        }
       } else {
         throw new Error(data.error || 'タグリストの取得に失敗しました');
       }
@@ -1459,8 +1434,7 @@ export default function AdminTagsPage() {
   }, [historyDetailRowId, adminToken, historyItems, historyReplayCache]);
 
   return (
-    <AdminProgressProvider>
-      <>
+    <>
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <h1>管理画面</h1>
       <p style={{ color: '#666', marginBottom: '2rem' }}>
@@ -3628,294 +3602,163 @@ export default function AdminTagsPage() {
             </p>
           )}
 
-          {/* 設定パネル */}
-          <div style={{ 
-            background: '#f5f5f5', 
-            padding: '1.5rem', 
-            borderRadius: '8px',
-            marginBottom: '2rem'
-          }}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>設定</h3>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-              {/* 作品選択 */}
+          {/* 設定パネル（コンパクト） */}
+          <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '8px', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  正解作品
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <select
-                    value={simSelectedWorkId}
-                    onChange={(e) => setSimSelectedWorkId(e.target.value)}
-                    style={{ 
-                      flex: 1,
-                      padding: '0.5rem',
-                      borderRadius: '4px',
-                      border: '1px solid #ccc'
-                    }}
-                  >
-                    <option value="">-- 選択 --</option>
-                    {parseResult?.works?.map(work => (
-                      <option key={work.workId} value={work.workId}>
-                        {work.title} ({work.circleName})
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    onClick={() => {
-                      if (parseResult?.works && parseResult.works.length > 0) {
-                        const randomIndex = Math.floor(Math.random() * parseResult.works.length);
-                        setSimSelectedWorkId(parseResult.works[randomIndex].workId);
-                      }
-                    }}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: '#666',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ランダム
-                  </button>
-                </div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>サンプル数</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={simSampleSize}
+                  onChange={(e) => setSimSampleSize(Math.max(0, Number(e.target.value)))}
+                  style={{ width: '80px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                />
+                <span style={{ fontSize: '0.8rem', color: '#666', marginLeft: '0.25rem' }}>（0=全件）</span>
               </div>
-
-              {/* ノイズ率（質問タイプ別） */}
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  ノイズ率（質問タイプ別）
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                      <span style={{ background: RANK_BG.S, color: RANK_TEXT.S, padding: '0.1rem 0.3rem', borderRadius: '2px' }}>EXPLORE</span>
-                      : {simNoiseExplore}%
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      value={simNoiseExplore}
-                      onChange={(e) => setSimNoiseExplore(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                      <span style={{ background: RANK_BG.B, color: RANK_TEXT.B, padding: '0.1rem 0.3rem', borderRadius: '2px' }}>SOFT</span>
-                      : {simNoiseSoft}%
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      value={simNoiseSoft}
-                      onChange={(e) => setSimNoiseSoft(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>
-                      <span style={{ background: RANK_BG.X, color: RANK_TEXT.X, padding: '0.1rem 0.3rem', borderRadius: '2px' }}>HARD</span>
-                      : {simNoiseHard}%
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="50"
-                      value={simNoiseHard}
-                      onChange={(e) => setSimNoiseHard(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                </div>
-                <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.5rem' }}>
-                  各質問タイプで回答を間違える確率（0% = 完璧に回答）
-                </div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>曖昧さレベル 1-10</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={simAmbiguityLevel}
+                  onChange={(e) => setSimAmbiguityLevel(Number(e.target.value))}
+                  style={{ width: '120px', verticalAlign: 'middle' }}
+                />
+                <span style={{ fontSize: '0.85rem', marginLeft: '0.5rem' }}>{simAmbiguityLevel}</span>
               </div>
-
-              {/* AIゲート選択 */}
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
-                  AIゲート
-                </label>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>AIゲート</label>
                 <select
                   value={simAiGateChoice}
                   onChange={(e) => setSimAiGateChoice(e.target.value)}
-                  style={{ 
-                    width: '100%',
-                    padding: '0.5rem',
-                    borderRadius: '4px',
-                    border: '1px solid #ccc'
-                  }}
+                  style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #ccc' }}
                 >
-                  <option value="BOTH">両方（AI + 手描き）</option>
+                  <option value="BOTH">両方</option>
                   <option value="AI_ONLY">AIのみ</option>
                   <option value="HAND_ONLY">手描きのみ</option>
                 </select>
               </div>
-            </div>
-
-            {/* 実行ボタン */}
-            <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>試行回数/作品</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
+                  value={simTrialsPerWork}
+                  onChange={(e) => setSimTrialsPerWork(Number(e.target.value))}
+                  style={{ width: '80px' }}
+                />
+                <span style={{ fontSize: '0.85rem', marginLeft: '0.25rem' }}>{simTrialsPerWork}</span>
+              </div>
               <button
                 onClick={async () => {
-                  if (!simSelectedWorkId) {
-                    alert('作品を選択してください');
-                    return;
-                  }
-                  setSimLoading(true);
-                  setSimResult(null);
+                  if (simSampleSize > 5000 && simSampleSize < 10000 && !confirm(`${simSampleSize}件は時間がかかります。続行しますか？`)) return;
+                  if (simSampleSize >= 10000 && !confirm(`${simSampleSize}件はかなり時間がかかります。本当に続行しますか？`)) return;
+                  setSimBatchLoading(true);
+                  setSimBatchResult(null);
+                  const simStartTime = Date.now();
+                  setProgress('simulate', { done: 0, total: 1, phase: '準備中...', startTime: simStartTime });
                   try {
-                    const response = await fetch('/api/admin/simulate', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        targetWorkId: simSelectedWorkId,
-                        noiseRates: {
-                          explore: simNoiseExplore / 100,
-                          soft: simNoiseSoft / 100,
-                          hard: simNoiseHard / 100,
-                        },
-                        aiGateChoice: simAiGateChoice,
-                      }),
-                    });
-                    if (!response.ok) {
-                      const error = await response.json();
-                      throw new Error(error.error || 'Simulation failed');
-                    }
-                    const data = await response.json();
-                    setSimResult(data);
-                  } catch (error) {
-                    console.error('Simulation error:', error);
-                    alert(error instanceof Error ? error.message : 'シミュレーションに失敗しました');
-                  } finally {
-                    setSimLoading(false);
-                  }
-                }}
-                disabled={simLoading || !simSelectedWorkId}
-                style={{
-                  padding: '0.75rem 2rem',
-                  background: simLoading ? '#ccc' : '#0070f3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: simLoading ? 'default' : 'pointer',
-                  fontSize: '1rem',
-                }}
-              >
-                {simLoading ? '実行中...' : '単発シミュレーション実行'}
-              </button>
-
-              <button
-                onClick={() => setSimBatchMode(!simBatchMode)}
-                style={{
-                  padding: '0.75rem 2rem',
-                  background: simBatchMode ? '#ff6600' : '#666',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                }}
-              >
-                {simBatchMode ? 'バッチモード ON' : 'バッチモード OFF'}
-              </button>
-            </div>
-
-            {/* バッチモード設定 */}
-            {simBatchMode && (
-              <div style={{ 
-                marginTop: '1rem', 
-                padding: '1rem', 
-                background: RANK_BG.B,
-                borderRadius: '4px'
-              }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                  <div>
-                    <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>
-                      サンプル数（0=全件）
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={simSampleSize}
-                      onChange={(e) => setSimSampleSize(Math.max(0, Number(e.target.value)))}
-                      style={{ 
-                        width: '100%', 
-                        padding: '0.5rem',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px'
-                      }}
-                      placeholder="0でDB全件"
-                    />
-                    <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
-                      DB作品数: {parseResult?.stats?.total || parseResult?.works?.length || 0}件
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem' }}>
-                      作品あたりの試行回数: {simTrialsPerWork}
-                    </label>
-                    <input
-                      type="range"
-                      min="1"
-                      max="10"
-                      value={simTrialsPerWork}
-                      onChange={(e) => setSimTrialsPerWork(Number(e.target.value))}
-                      style={{ width: '100%' }}
-                    />
-                  </div>
-                </div>
-                <button
-                  onClick={async () => {
-                    setSimBatchLoading(true);
-                    setSimBatchResult(null);
-                    try {
+                    // チャンク実行: 進捗を逐次更新するため、workIds を取得して分割実行
+                    const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}`);
+                    if (!idsRes.ok) throw new Error('サンプル取得に失敗しました');
+                    const { workIds } = (await idsRes.json()) as { workIds: string[] };
+                    const totalTrials = workIds.length * simTrialsPerWork;
+                    setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中', startTime: simStartTime });
+                    const CHUNK_SIZE = 4;
+                    const allResults: Array<{ workId: string; title: string; success: boolean; questionCount: number; outcome: string; steps?: unknown; workDetails?: unknown; diagnostic?: unknown; analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number }; errorMessage?: string; perfSummary?: Record<string, number> }> = [];
+                    let doneCount = 0;
+                    let totalWorksInDb = 0;
+                    for (let i = 0; i < workIds.length; i += CHUNK_SIZE) {
+                      const chunk = workIds.slice(i, i + CHUNK_SIZE);
                       const response = await fetch('/api/admin/simulate', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          workIds: [],
-                          noiseRates: {
-                            explore: simNoiseExplore / 100,
-                            soft: simNoiseSoft / 100,
-                            hard: simNoiseHard / 100,
-                          },
+                          workIds: chunk,
+                          ambiguityLevel: simAmbiguityLevel,
                           aiGateChoice: simAiGateChoice,
                           trialsPerWork: simTrialsPerWork,
-                          sampleSize: simSampleSize,
+                          includePerf: true,
                         }),
                       });
                       if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.error || 'Batch simulation failed');
+                        const err = await response.json();
+                        throw new Error(err.error || 'Batch simulation failed');
                       }
-                      const data = await response.json();
-                      setSimBatchResult(data);
-                    } catch (error) {
-                      console.error('Batch simulation error:', error);
-                      alert(error instanceof Error ? error.message : 'バッチシミュレーションに失敗しました');
-                    } finally {
-                      setSimBatchLoading(false);
+                      const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
+                      allResults.push(...data.results);
+                      if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
+                      doneCount += data.results.length;
+                      setProgress('simulate', { done: doneCount, total: totalTrials, phase: '実行中' });
                     }
-                  }}
+                    const successCount = allResults.filter((r) => r.success).length;
+                    const totalQuestions = allResults.reduce((s, r) => s + r.questionCount, 0);
+                    const failureSummary: Record<string, number> = {};
+                    const failures = allResults.filter((r) => !r.success);
+                    for (const f of failures) {
+                      failureSummary[f.outcome] = (failureSummary[f.outcome] ?? 0) + 1;
+                    }
+                    const durationSeconds = Math.round((Date.now() - simStartTime) / 1000);
+                    const failureAnalysis = failures.length > 0 ? (() => {
+                      const withAnalysis = failures.filter((f: { analysisData?: { wasNoisyCount: number } }) => f.analysisData);
+                      const withDiag = failures.filter((f: { diagnostic?: { correctRank: number; top1Confidence: number } }) => f.diagnostic);
+                      return {
+                        failureCount: failures.length,
+                        avgWasNoisyCount: withAnalysis.length > 0
+                          ? Math.round((withAnalysis.reduce((s: number, f: { analysisData?: { wasNoisyCount: number } }) => s + (f.analysisData!.wasNoisyCount), 0) / withAnalysis.length) * 100) / 100
+                          : null,
+                        avgCorrectRank: withDiag.length > 0
+                          ? Math.round((withDiag.reduce((s: number, f: { diagnostic?: { correctRank: number } }) => s + (f.diagnostic!.correctRank), 0) / withDiag.length) * 100) / 100
+                          : null,
+                        avgTop1Confidence: withDiag.length > 0
+                          ? Math.round((withDiag.reduce((s: number, f: { diagnostic?: { top1Confidence: number } }) => s + (f.diagnostic!.top1Confidence), 0) / withDiag.length) * 10000) / 10000
+                          : null,
+                      };
+                    })() : null;
+                    setSimBatchResult({
+                      totalTrials: allResults.length,
+                      successCount,
+                      successRate: allResults.length > 0 ? Math.round((successCount / allResults.length) * 100) / 100 : 0,
+                      avgQuestions: allResults.length > 0 ? Math.round((totalQuestions / allResults.length) * 10) / 10 : 0,
+                      results: allResults,
+                      failureSummary,
+                      failureAnalysis,
+                      metadata: {
+                        timestamp: new Date().toISOString(),
+                        sampleSize: workIds.length,
+                        totalWorksInDb: totalWorksInDb || (simWorksStats?.gameRegisteredCount ?? 0),
+                        ambiguityLevel: simAmbiguityLevel,
+                        aiGateChoice: simAiGateChoice,
+                        trialsPerWork: simTrialsPerWork,
+                        durationSeconds,
+                      },
+                    } as Parameters<typeof setSimBatchResult>[0]);
+                    setSimResultPage(0);
+                  } catch (error) {
+                    console.error('Batch simulation error:', error);
+                    alert(error instanceof Error ? error.message : 'バッチシミュレーションに失敗しました');
+                  } finally {
+                    setSimBatchLoading(false);
+                    setProgress('simulate', null);
+                  }
+                }}
                   disabled={simBatchLoading}
                   style={{
-                    padding: '0.75rem 2rem',
+                    padding: '0.5rem 1.5rem',
                     background: simBatchLoading ? '#ccc' : '#ff6600',
                     color: 'white',
                     border: 'none',
                     borderRadius: '4px',
                     cursor: simBatchLoading ? 'default' : 'pointer',
+                    fontSize: '0.95rem',
                   }}
                 >
-                  {simBatchLoading ? '実行中...' : simSampleSize > 0 ? `ランダム${simSampleSize}件でバッチ実行` : `全件でバッチ実行`}
+                  {simBatchLoading ? '実行中...' : simSampleSize > 0 ? `${simSampleSize}件で実行` : '全件で実行'}
                 </button>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* 単発結果 */}
@@ -3947,12 +3790,9 @@ export default function AdminTagsPage() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                           targetWorkId: simResult.targetWorkId,
-                          noiseRates: {
-                            explore: simNoiseExplore / 100,
-                            soft: simNoiseSoft / 100,
-                            hard: simNoiseHard / 100,
-                          },
+                          ambiguityLevel: simAmbiguityLevel,
                           aiGateChoice: simAiGateChoice,
+                          includePerf: true,
                         }),
                       });
                       const data = await response.json().catch(() => ({}));
@@ -3997,12 +3837,61 @@ export default function AdminTagsPage() {
                 <div>
                   <strong>結果:</strong> {simResult.outcome}
                 </div>
+                {((simResult as { diagnostic?: { correctRank?: number }; analysisData?: { correctRank?: number } }).diagnostic?.correctRank ?? (simResult as { analysisData?: { correctRank?: number } }).analysisData?.correctRank) != null && (
+                  <div>
+                    <strong>正解の順位:</strong><br />
+                    {(() => {
+                      const rank = (simResult as { diagnostic?: { correctRank?: number }; analysisData?: { correctRank?: number } }).diagnostic?.correctRank ?? (simResult as { analysisData?: { correctRank?: number } }).analysisData?.correctRank;
+                      return rank === -1 ? '候補外' : `${rank}位`;
+                    })()}
+                  </div>
+                )}
                 {simResult.errorMessage && (
                   <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.9rem' }}>
                     <strong>エラー:</strong> {simResult.errorMessage}
                   </div>
                 )}
               </div>
+
+              {/* 計測結果（開こうとしたら開ける・デフォルト閉じ） */}
+              {simResult.perfSummary && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSimPerfExpanded(!simPerfExpanded)}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      background: '#f5f5f5',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {simPerfExpanded ? '▼ 計測 (ms) を閉じる' : '▶ 計測 (ms) を開く'}
+                  </button>
+                  {simPerfExpanded && (
+                    <div style={{ 
+                      marginTop: '0.5rem',
+                      padding: '1rem', 
+                      background: '#f5f5f5', 
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '0.9rem'
+                    }}>
+                      <div>
+                        runSimulation: {simResult.perfSummary.runSimulation}ms | selectNextQuestion: {simResult.perfSummary.selectNextQuestion}ms | processAnswer: {simResult.perfSummary.processAnswer}ms | fetchWorkTags: {simResult.perfSummary.fetchWorkTags}ms | tagCoverage: {simResult.perfSummary.tagCoverage}ms
+                      </div>
+                      {(simResult.perfSummary.buildUsedTagKeysFromHistory != null || simResult.perfSummary.selectUnifiedExploreOrSummary != null) && (
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#555' }}>
+                          selectNextQuestion内訳: buildUsedTagKeysFromHistory: {simResult.perfSummary.buildUsedTagKeysFromHistory ?? 0}ms | selectUnifiedExploreOrSummary: {simResult.perfSummary.selectUnifiedExploreOrSummary ?? 0}ms | selectExploreQuestion: {simResult.perfSummary.selectExploreQuestion ?? 0}ms | selectNextQuestion_confirm: {simResult.perfSummary.selectNextQuestion_confirm ?? 0}ms | tryGetHardConfirmQuestion: {simResult.perfSummary.tryGetHardConfirmQuestion ?? 0}ms | tryEmergencyExploreFallback: {simResult.perfSummary.tryEmergencyExploreFallback ?? 0}ms
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* ステップ詳細 & 作品詳細 */}
               <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -4147,7 +4036,8 @@ export default function AdminTagsPage() {
                           <th style={{ padding: '0.5rem', textAlign: 'center' }}>回答</th>
                           <th style={{ padding: '0.5rem', textAlign: 'center' }}>ノイズ</th>
                           <th style={{ padding: '0.5rem', textAlign: 'right' }}>p値</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'right' }}>確度</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right' }}>候補</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4170,12 +4060,13 @@ export default function AdminTagsPage() {
                                 <span style={{ 
                                   display: 'inline-block',
                                   padding: '0.2rem 0.5rem',
-                                  background: step.question.kind === 'EXPLORE_TAG' ? RANK_BG.S 
+                                  background: step.question.kind === 'EXPLORE_TAG' ? RANK_BG.S
                                     : step.question.kind === 'SOFT_CONFIRM' ? RANK_BG.B
                                     : step.question.kind === 'HARD_CONFIRM' ? RANK_BG.X
+                                    : step.question.kind === 'SPECIAL_QUESTION' ? '#9c27b0'
                                     : step.question.kind === 'REVEAL' ? '#ffeb3b'
                                     : '#e0e0e0',
-                                  color: step.question.kind === 'EXPLORE_TAG' ? RANK_TEXT.S : step.question.kind === 'SOFT_CONFIRM' ? RANK_TEXT.B : step.question.kind === 'HARD_CONFIRM' ? RANK_TEXT.X : undefined,
+                                  color: step.question.kind === 'EXPLORE_TAG' ? RANK_TEXT.S : step.question.kind === 'SOFT_CONFIRM' ? RANK_TEXT.B : step.question.kind === 'HARD_CONFIRM' ? RANK_TEXT.X : step.question.kind === 'SPECIAL_QUESTION' ? '#fff' : undefined,
                                   borderRadius: '4px',
                                   fontSize: '0.8rem',
                                   marginRight: '0.5rem',
@@ -4187,8 +4078,21 @@ export default function AdminTagsPage() {
                                       {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
                                     </span>
                                   )}
+                                  {step.question.kind === 'HARD_CONFIRM' && step.question.hardConfirmType && (
+                                    <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                      {step.question.hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
+                                    </span>
+                                  )}
+                                  {step.question.kind === 'SPECIAL_QUESTION' && step.question.specialQuestionType && (
+                                    <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                      {step.question.specialQuestionType === 'SERIES' ? 'シリーズ' : step.question.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.question.specialQuestionType}
+                                    </span>
+                                  )}
                                 </span>
                                 {step.question.displayText}
+                                {(step as any).preferHighP && (
+                                  <span style={{ marginLeft: '0.25rem', padding: '0.1rem 0.3rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.75rem' }}>当たり狙い</span>
+                                )}
                                 {revealMiss && (
                                   <span style={{ 
                                     marginLeft: '0.5rem', 
@@ -4227,6 +4131,9 @@ export default function AdminTagsPage() {
                                   : '-'}
                               </td>
                               <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                                {(step as any).effectiveCandidates ?? '-'}
+                              </td>
+                              <td style={{ padding: '0.5rem', textAlign: 'right', whiteSpace: 'nowrap', minWidth: '300px' }}>
                                 {(step.confidenceBefore * 100).toFixed(1)}%
                                 {!isReveal && ` → ${(step.confidenceAfter * 100).toFixed(1)}%`}
                               </td>
@@ -4254,6 +4161,11 @@ export default function AdminTagsPage() {
                   {simBatchResult.metadata && (
                     <span style={{ fontSize: '0.9rem', color: '#666', marginLeft: '1rem' }}>
                       ({simBatchResult.metadata.sampleSize}件 / DB全{simBatchResult.metadata.totalWorksInDb}件)
+                      {'durationSeconds' in simBatchResult.metadata && typeof simBatchResult.metadata.durationSeconds === 'number' && (
+                        <span style={{ marginLeft: '0.5rem' }}>
+                          | シミュレーション時間: {Math.floor(simBatchResult.metadata.durationSeconds / 60)}分{simBatchResult.metadata.durationSeconds % 60}秒
+                        </span>
+                      )}
                     </span>
                   )}
                 </h3>
@@ -4288,6 +4200,50 @@ export default function AdminTagsPage() {
                   {simSaving ? '保存中...' : '結果を保存'}
                 </button>
               </div>
+
+              {/* 計測結果（1件目・開こうとしたら開ける・デフォルト閉じ） */}
+              {simBatchResult.results?.[0]?.perfSummary && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSimBatchPerfExpanded(!simBatchPerfExpanded)}
+                    style={{
+                      padding: '0.4rem 0.8rem',
+                      background: '#fff3e0',
+                      border: '1px solid #e0d0c0',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {simBatchPerfExpanded ? '▼ 計測 (ms) 1件目 を閉じる' : '▶ 計測 (ms) 1件目 を開く'}
+                  </button>
+                  {simBatchPerfExpanded && (
+                    <div style={{ 
+                      marginTop: '0.5rem',
+                      padding: '1rem', 
+                      background: '#fff3e0', 
+                      borderRadius: '4px',
+                      fontFamily: 'monospace',
+                      fontSize: '0.9rem'
+                    }}>
+                      <div>
+                        runSimulation: {simBatchResult.results[0].perfSummary.runSimulation}ms
+                        {' | '}selectNextQuestion: {simBatchResult.results[0].perfSummary.selectNextQuestion}ms
+                        {' | '}processAnswer: {simBatchResult.results[0].perfSummary.processAnswer}ms
+                        {' | '}fetchWorkTags: {simBatchResult.results[0].perfSummary.fetchWorkTags}ms
+                        {' | '}tagCoverage: {simBatchResult.results[0].perfSummary.tagCoverage}ms
+                      </div>
+                      {(simBatchResult.results[0].perfSummary.buildUsedTagKeysFromHistory != null || simBatchResult.results[0].perfSummary.selectUnifiedExploreOrSummary != null) && (
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#555' }}>
+                          selectNextQuestion内訳: buildUsedTagKeysFromHistory: {simBatchResult.results[0].perfSummary.buildUsedTagKeysFromHistory ?? 0}ms | selectUnifiedExploreOrSummary: {simBatchResult.results[0].perfSummary.selectUnifiedExploreOrSummary ?? 0}ms | selectExploreQuestion: {simBatchResult.results[0].perfSummary.selectExploreQuestion ?? 0}ms | selectNextQuestion_confirm: {simBatchResult.results[0].perfSummary.selectNextQuestion_confirm ?? 0}ms | tryGetHardConfirmQuestion: {simBatchResult.results[0].perfSummary.tryGetHardConfirmQuestion ?? 0}ms | tryEmergencyExploreFallback: {simBatchResult.results[0].perfSummary.tryEmergencyExploreFallback ?? 0}ms
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div style={{ 
                 display: 'grid', 
@@ -4341,24 +4297,70 @@ export default function AdminTagsPage() {
                 </div>
               </div>
 
-              {/* 全作品一覧 */}
-              <div style={{ marginTop: '1rem' }}>
-                <h4 style={{ marginBottom: '0.5rem' }}>
-                  全結果一覧（クリックで詳細表示）
+              {simBatchResult.failureSummary && Object.keys(simBatchResult.failureSummary).length > 0 && (
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.9rem' }}>
+                  <strong>失敗サマリー:</strong>{' '}
+                  {Object.entries(simBatchResult.failureSummary).map(([k, v]) => `${k}: ${v}件`).join(', ')}
+                  {simBatchResult.failureAnalysis && (
+                    <span style={{ marginLeft: '1rem' }}>
+                      | 失敗分析: avgWasNoisy={simBatchResult.failureAnalysis.avgWasNoisyCount ?? '-'}, avgCorrectRank={simBatchResult.failureAnalysis.avgCorrectRank ?? '-'}, avgTop1Conf={simBatchResult.failureAnalysis.avgTop1Confidence != null ? `${(simBatchResult.failureAnalysis.avgTop1Confidence * 100).toFixed(1)}%` : '-'}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={simFailureFilter} onChange={(e) => setSimFailureFilter(e.target.checked)} />
+                  失敗のみ表示
+                </label>
+                <button
+                  onClick={() => {
+                    const data = JSON.stringify(simBatchResult, null, 2);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `sim-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  }}
+                  style={{ padding: '0.4rem 0.8rem', background: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                >
+                  JSONでダウンロード
+                </button>
+              </div>
+
+              {/* 全作品一覧（ページネーション） */}
+              <div style={{ marginTop: '0.5rem' }}>
+                <h4 style={{ marginBottom: '0.5rem', fontSize: '0.95rem' }}>
+                  結果一覧（クリックで詳細）
                 </h4>
+                {(() => {
+                  const filtered = simFailureFilter ? simBatchResult.results.filter(r => !r.success) : simBatchResult.results;
+                  const totalPages = Math.max(1, Math.ceil(filtered.length / SIM_RESULT_PAGE_SIZE));
+                  const pageResults = filtered.slice(simResultPage * SIM_RESULT_PAGE_SIZE, (simResultPage + 1) * SIM_RESULT_PAGE_SIZE);
+                  return (
+                    <>
+                      <div style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+                        {simResultPage + 1}/{totalPages} ページ（{filtered.length}件）
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <button onClick={() => setSimResultPage(p => Math.max(0, p - 1))} disabled={simResultPage === 0} style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}>前へ</button>
+                        <button onClick={() => setSimResultPage(p => Math.min(totalPages - 1, p + 1))} disabled={simResultPage >= totalPages - 1} style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem' }}>次へ</button>
+                      </div>
                 <div style={{ 
-                  maxHeight: '400px', 
+                  maxHeight: '2800px', 
                   overflowY: 'auto',
                   background: '#fff',
                   padding: '0.5rem',
                   borderRadius: '4px'
                 }}>
-                  {simBatchResult.results.map((r, i) => (
+                  {pageResults.map((r, i) => (
                     <div 
-                      key={i} 
+                      key={`${r.workId}-${simResultPage}-${i}`} 
                       onClick={() => {
-                        // 保存済みの結果を表示（再実行しない）
-                        setSimResult({
+                        // 保存済みの結果をポップアップ表示（過程をデフォルト表示・2倍縦長）
+                        setSimResultModal({
                           success: r.success,
                           targetWorkId: r.workId,
                           targetWorkTitle: r.title,
@@ -4369,9 +4371,10 @@ export default function AdminTagsPage() {
                           steps: r.steps || [],
                           workDetails: r.workDetails,
                           errorMessage: (r as { errorMessage?: string }).errorMessage,
+                          perfSummary: (r as { perfSummary?: Record<string, number> }).perfSummary,
+                          diagnostic: (r as { diagnostic?: unknown }).diagnostic,
+                          analysisData: (r as { analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number } }).analysisData,
                         });
-                        setSimExpandedSteps(true);
-                        setSimShowWorkDetails(false);
                       }}
                       style={{ 
                         padding: '0.5rem 0.75rem',
@@ -4411,7 +4414,233 @@ export default function AdminTagsPage() {
                     </div>
                   ))}
                 </div>
+                    </>
+                  );
+                })()}
               </div>
+
+              {/* 作品詳細ポップアップ（バッチ結果から選択時） */}
+              {simResultModal && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                    padding: '1rem',
+                  }}
+                  onClick={() => setSimResultModal(null)}
+                >
+                  <div
+                    style={{
+                      background: simResultModal.success ? '#e8f5e9' : '#ffebee',
+                      padding: '1.5rem',
+                      borderRadius: '8px',
+                      maxWidth: '95vw',
+                      maxHeight: '90vh',
+                      overflowY: 'auto',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.2rem' }}>
+                        {simResultModal.success ? '成功' : '失敗'} - {simResultModal.outcome}
+                      </h3>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!simResultModal?.targetWorkId) return;
+                            setSimModalRetryLoading(true);
+                            try {
+                              const response = await fetch('/api/admin/simulate', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  targetWorkId: simResultModal.targetWorkId,
+                                  ambiguityLevel: simAmbiguityLevel,
+                                  aiGateChoice: simAiGateChoice,
+                                  includePerf: true,
+                                }),
+                              });
+                              const data = await response.json().catch(() => ({}));
+                              if (!response.ok) {
+                                throw new Error((data as { error?: string }).error ?? (data as { message?: string }).message ?? '再試行に失敗しました');
+                              }
+                              setSimResultModal({
+                                success: data.success,
+                                targetWorkId: data.targetWorkId,
+                                targetWorkTitle: data.targetWorkTitle,
+                                finalWorkId: data.finalWorkId,
+                                finalWorkTitle: data.finalWorkTitle,
+                                questionCount: data.questionCount,
+                                outcome: data.outcome,
+                                steps: data.steps ?? [],
+                                workDetails: data.workDetails,
+                                errorMessage: data.errorMessage,
+                                perfSummary: data.perfSummary,
+                                diagnostic: data.diagnostic,
+                                analysisData: data.analysisData,
+                              });
+                            } catch (error) {
+                              alert(error instanceof Error ? error.message : '再試行に失敗しました');
+                            } finally {
+                              setSimModalRetryLoading(false);
+                            }
+                          }}
+                          disabled={simModalRetryLoading}
+                          style={{ padding: '0.4rem 1rem', background: simModalRetryLoading ? '#ccc' : '#9c27b0', color: 'white', border: 'none', borderRadius: '4px', cursor: simModalRetryLoading ? 'default' : 'pointer', fontSize: '0.9rem' }}
+                        >
+                          {simModalRetryLoading ? '実行中...' : '🔄 もう1度試行'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSimResultModal(null)}
+                          style={{ padding: '0.4rem 1rem', background: '#666', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '0.5rem' }}><strong>作品:</strong> {simResultModal.targetWorkTitle}</div>
+                    <div style={{ marginBottom: '0.5rem' }}><strong>質問数:</strong> {simResultModal.questionCount}問</div>
+                    {(() => {
+                      const rank = (simResultModal.diagnostic as { correctRank?: number })?.correctRank ?? simResultModal.analysisData?.correctRank;
+                      if (rank == null) return null;
+                      return (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong>正解の順位:</strong> {rank === -1 ? '候補外' : `${rank}位`}
+                        </div>
+                      );
+                    })()}
+                    {simResultModal.analysisData && (
+                      <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff', borderRadius: '4px', fontSize: '0.9rem' }}>
+                        <strong>分析:</strong> wasNoisy={simResultModal.analysisData.wasNoisyCount}回
+                        {simResultModal.analysisData.noisyRatio != null && ` (noisyRatio=${(simResultModal.analysisData.noisyRatio * 100).toFixed(1)}%)`}
+                        , correctRank={simResultModal.analysisData.correctRank}, top1Confidence={(simResultModal.analysisData.top1Confidence * 100).toFixed(1)}%
+                        {simResultModal.analysisData.noisyStepIndices?.length > 0 && `, ノイズ発生Q#=[${simResultModal.analysisData.noisyStepIndices.join(',')}]`}
+                      </div>
+                    )}
+                    {simResultModal.errorMessage && (
+                      <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.9rem' }}>
+                        <strong>エラー:</strong> {simResultModal.errorMessage}
+                      </div>
+                    )}
+                    {simResultModal.perfSummary && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        <button
+                          type="button"
+                          onClick={() => setSimModalPerfExpanded(!simModalPerfExpanded)}
+                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                          {simModalPerfExpanded ? '▼ 計測を閉じる' : '▶ 計測 (ms) を開く'}
+                        </button>
+                        {simModalPerfExpanded && (
+                          <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f5f5f5', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                            runSimulation: {simResultModal.perfSummary.runSimulation}ms | selectNextQuestion: {simResultModal.perfSummary.selectNextQuestion}ms
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ marginTop: '1rem' }}>
+                      <strong>過程</strong>
+                      <div style={{ 
+                        marginTop: '0.5rem',
+                        maxHeight: '3200px',
+                        overflowY: 'auto',
+                        background: '#fff',
+                        padding: '1rem',
+                        borderRadius: '4px',
+                        fontSize: '0.9rem'
+                      }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ background: '#f0f0f0' }}>
+                              <th style={{ padding: '0.5rem', textAlign: 'left' }}>Q#</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'left' }}>質問</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center' }}>回答</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center' }}>ノイズ</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right' }}>p値</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right' }}>候補</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {simResultModal.steps.map((step, idx) => {
+                              const isReveal = step.question.kind === 'REVEAL';
+                              const revealSuccess = (step as { revealResult?: string }).revealResult === 'SUCCESS';
+                              const revealMiss = (step as { revealResult?: string }).revealResult === 'MISS';
+                              const stepExt = step as { tagCoverage?: number; effectiveCandidates?: number; preferHighP?: boolean; revealWorkTitle?: string };
+                              const tagCoverage = stepExt.tagCoverage;
+                              const pColor = tagCoverage !== undefined
+                                ? (Math.abs(tagCoverage - 0.5) < 0.1 ? '#2e7d32' : Math.abs(tagCoverage - 0.5) > 0.4 ? '#c62828' : '#666')
+                                : '#999';
+                              const pBold = tagCoverage !== undefined && Math.abs(tagCoverage - 0.5) > 0.4;
+                              return (
+                                <tr key={idx} style={{ borderBottom: '1px solid #eee', background: isReveal ? (revealSuccess ? '#c8e6c9' : '#ffcdd2') : 'transparent' }}>
+                                  <td style={{ padding: '0.5rem' }}>{step.qIndex}</td>
+                                  <td style={{ padding: '0.5rem' }}>
+                                    <span style={{ 
+                                      display: 'inline-block',
+                                      padding: '0.2rem 0.5rem',
+                                      background: step.question.kind === 'EXPLORE_TAG' ? RANK_BG.S : step.question.kind === 'SOFT_CONFIRM' ? RANK_BG.B : step.question.kind === 'HARD_CONFIRM' ? RANK_BG.X : step.question.kind === 'SPECIAL_QUESTION' ? '#9c27b0' : step.question.kind === 'REVEAL' ? '#ffeb3b' : '#e0e0e0',
+                                      borderRadius: '4px',
+                                      fontSize: '0.8rem',
+                                      marginRight: '0.5rem',
+                                    }}>
+                                      {step.question.kind}
+                                      {step.question.exploreTagKind && (
+                                        <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                          {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
+                                        </span>
+                                      )}
+                                      {step.question.kind === 'HARD_CONFIRM' && step.question.hardConfirmType && (
+                                        <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                          {step.question.hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
+                                        </span>
+                                      )}
+                                      {step.question.kind === 'SPECIAL_QUESTION' && step.question.specialQuestionType && (
+                                        <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                          {step.question.specialQuestionType === 'SERIES' ? 'シリーズ' : step.question.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.question.specialQuestionType}
+                                        </span>
+                                      )}
+                                    </span>
+                                    {step.question.displayText}
+                                    {revealMiss && <span style={{ marginLeft: '0.5rem', color: '#c62828', fontWeight: 'bold' }}>← 不正解！</span>}
+                                    {stepExt.preferHighP && (
+                                      <span style={{ marginLeft: '0.25rem', padding: '0.1rem 0.3rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.75rem' }}>当たり狙い</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                                    <span style={{ color: step.answer === 'YES' || step.answer === 'CORRECT' ? '#2e7d32' : step.answer === 'NO' || step.answer === 'WRONG' ? '#c62828' : '#666', fontWeight: 'bold' }}>
+                                      {step.answer}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{step.wasNoisy && <span style={{ color: '#ff6600' }}>!</span>}</td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'right', color: pColor, fontWeight: pBold ? 'bold' : 'normal' }}>
+                                    {tagCoverage !== undefined ? `${(tagCoverage * 100).toFixed(0)}%` : '-'}
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>
+                                    {stepExt.effectiveCandidates ?? '-'}
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'right', whiteSpace: 'nowrap', minWidth: '300px' }}>
+                                    {(step.confidenceBefore * 100).toFixed(1)}%
+                                    {!isReveal && ` → ${(step.confidenceAfter * 100).toFixed(1)}%`}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -4673,7 +4902,7 @@ export default function AdminTagsPage() {
                               <th style={{ padding: '0.6rem', textAlign: 'center', whiteSpace: 'nowrap' }}>滞在</th>
                               <th style={{ padding: '0.6rem', textAlign: 'center' }}>ミス</th>
                               <th style={{ padding: '0.6rem', textAlign: 'right' }}>p値</th>
-                              <th style={{ padding: '0.6rem', textAlign: 'right' }}>確度</th>
+                              <th style={{ padding: '0.6rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -4694,8 +4923,8 @@ export default function AdminTagsPage() {
                                   <span style={{
                                     display: 'inline-block',
                                     padding: '0.25rem 0.5rem',
-                                    background: step.kind === 'EXPLORE_TAG' ? RANK_BG.S : step.kind === 'SOFT_CONFIRM' ? RANK_BG.B : step.kind === 'HARD_CONFIRM' ? RANK_BG.X : step.kind === 'REVEAL' ? '#ffeb3b' : '#e0e0e0',
-                                    color: step.kind === 'EXPLORE_TAG' ? RANK_TEXT.S : step.kind === 'SOFT_CONFIRM' ? RANK_TEXT.B : step.kind === 'HARD_CONFIRM' ? RANK_TEXT.X : undefined,
+                                    background: step.kind === 'EXPLORE_TAG' ? RANK_BG.S : step.kind === 'SOFT_CONFIRM' ? RANK_BG.B : step.kind === 'HARD_CONFIRM' ? RANK_BG.X : step.kind === 'SPECIAL_QUESTION' ? '#9c27b0' : step.kind === 'REVEAL' ? '#ffeb3b' : '#e0e0e0',
+                                    color: step.kind === 'EXPLORE_TAG' ? RANK_TEXT.S : step.kind === 'SOFT_CONFIRM' ? RANK_TEXT.B : step.kind === 'HARD_CONFIRM' ? RANK_TEXT.X : step.kind === 'SPECIAL_QUESTION' ? '#fff' : undefined,
                                     borderRadius: '4px',
                                     fontSize: '0.9rem',
                                     marginRight: '0.5rem',
@@ -4705,6 +4934,11 @@ export default function AdminTagsPage() {
                                     {step.exploreTagKind && (
                                       <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
                                         {EXPLORE_TAG_KIND_LABEL[step.exploreTagKind] ?? step.exploreTagKind}
+                                      </span>
+                                    )}
+                                    {step.specialQuestionType && (
+                                      <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
+                                        {step.specialQuestionType === 'SERIES' ? 'シリーズ' : step.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.specialQuestionType}
                                       </span>
                                     )}
                                   </span>
@@ -4740,7 +4974,7 @@ export default function AdminTagsPage() {
                                 <td style={{ padding: '0.6rem', textAlign: 'right' }}>
                                   {step.tagCoverage != null ? `${(step.tagCoverage * 100).toFixed(0)}%` : '—'}
                                 </td>
-                                <td style={{ padding: '0.6rem', textAlign: 'right' }}>
+                                <td style={{ padding: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap', minWidth: '320px' }}>
                                   {step.confidenceBefore != null
                                     ? step.confidenceAfter != null
                                       ? `${(step.confidenceBefore * 100).toFixed(1)}% → ${(step.confidenceAfter * 100).toFixed(1)}%`
@@ -4971,8 +5205,6 @@ export default function AdminTagsPage() {
         </section>
       )}
     </div>
-    <ProgressPanel />
       </>
-    </AdminProgressProvider>
   );
 }

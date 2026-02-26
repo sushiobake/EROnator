@@ -1,0 +1,13 @@
+{
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/out": true,
+    "**/.backup": true,
+    "**/data/simulation-results": true,
+    "**/*.db": true,
+    "**/*.db-journal": true,
+    "**/*.db-shm": true,
+    "**/*.db-wal": true
+  }
+}

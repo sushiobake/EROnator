@@ -29,13 +29,15 @@ export interface TagResponse {
  * - 質問プール全体・候補質問一覧・質問IDの全量を返さない（Brief）
  */
 export interface QuestionResponse {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   displayText: string;
   tagKey?: string; // EXPLORE_TAG, SOFT_CONFIRM用
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR'; // HARD_CONFIRM用
   hardConfirmValue?: string; // HARD_CONFIRM用（例: "あ", "サークルA"）
   /** 質問の出題種別（キャラ差分表示用） */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
+  /** SPECIAL_QUESTION の種別 */
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
 }
 
 /**

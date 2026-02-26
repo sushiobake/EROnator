@@ -13,6 +13,7 @@ import {
 import { processAnswer, selectNextQuestion } from '@/server/game/engine';
 import { applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { getMvpConfig } from '@/server/config/loader';
+import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { WorkResponse, QuestionResponse, SessionStateResponse } from '@/server/api/types';
@@ -27,7 +28,6 @@ export async function POST(request: NextRequest) {
   try {
     // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
-    console.log(`[perf] /api/answer ensurePrismaConnected: ${Date.now() - t0}ms`);
 
     const body = await request.json();
     const { sessionId, choice, questionShownAt } = body;
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
     // セッション取得
     const t1 = Date.now();
     const session = await SessionManager.getSession(sessionId);
-    console.log(`[perf] /api/answer getSession: ${Date.now() - t1}ms`);
     if (!session) {
       throw new ApiError(
         404,
@@ -91,17 +90,19 @@ export async function POST(request: NextRequest) {
       currentQuestion.qIndex,
       weights
     );
-    console.log(`[perf] /api/answer saveWeightsSnapshot: ${Date.now() - t2}ms`);
 
     // 回答処理（まとめ質問のときは strength ±0.6 と summaryDisplayNames を使用）
     const questionData = {
       kind: currentQuestion.kind,
-      displayText: '', // 使用しない
+      displayText: currentQuestion.displayText ?? '',
       tagKey: currentQuestion.tagKey,
       hardConfirmType: currentQuestion.hardConfirmType,
       hardConfirmValue: currentQuestion.hardConfirmValue,
       isSummaryQuestion: currentQuestion.isSummaryQuestion,
       summaryDisplayNames: currentQuestion.summaryDisplayNames,
+      specialQuestionType: currentQuestion.specialQuestionType,
+      seriesTagKeys: currentQuestion.seriesTagKeys,
+      titleCharType: (currentQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
     };
 
     const t3 = Date.now();
@@ -111,7 +112,6 @@ export async function POST(request: NextRequest) {
       choice,
       config
     );
-    console.log(`[perf] /api/answer processAnswer: ${Date.now() - t3}ms`);
 
     const t3b = Date.now();
     // 正規化
@@ -151,11 +151,10 @@ export async function POST(request: NextRequest) {
       weights: snapshotWeights,
     }];
 
-    console.log(`[perf] /api/answer prepare(post-normalize): ${Date.now() - t3b}ms`);
-
     // REVEAL判定（一度外した作品は候補から外し、確度順で未出の先頭をREVEAL）
     const tReveal = Date.now();
-    if (confidence >= config.confirm.revealThreshold) {
+    const revealThreshold = getRevealThresholdForQuestion(newQuestionCount - 1, config.confirm.revealThreshold);
+    if (confidence >= revealThreshold) {
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) {
           return b.probability - a.probability;
@@ -243,7 +242,9 @@ export async function POST(request: NextRequest) {
     }
 
     // maxQuestions 到達時は確度に関係なく強制 REVEAL（既出は候補から外す）
-    if (session.questionCount + 1 >= (config.flow.maxQuestions as number)) {
+    // confidence >= 0.3 のときは 35 問まで延長
+    const effectiveMax = getEffectiveMaxQuestions(config.flow.maxQuestions as number, confidence);
+    if (session.questionCount + 1 >= effectiveMax) {
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) return b.probability - a.probability;
         return a.workId.localeCompare(b.workId);
@@ -277,7 +278,6 @@ export async function POST(request: NextRequest) {
         }
       }
     }
-    console.log(`[perf] /api/answer revealChecks: ${Date.now() - tReveal}ms`);
 
     // 次の質問を選択（回答付き履歴を渡して連続NO判定に使う）
     const t4 = Date.now();
@@ -288,8 +288,6 @@ export async function POST(request: NextRequest) {
       historyWithAnswer,
       config
     );
-    console.log(`[perf] /api/answer selectNextQuestion: ${Date.now() - t4}ms`);
-
     if (!nextQuestion) {
       // 質問が無い → 強制 REVEAL または FAIL_LIST（いずれも1回だけセッション更新）
       await SessionManager.updateSession(sessionId, {
@@ -348,6 +346,9 @@ export async function POST(request: NextRequest) {
       summaryQuestionId: nextQuestion.summaryQuestionId,
       summaryDisplayNames: nextQuestion.summaryDisplayNames,
       exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+      specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+      seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
+      titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
     }];
     const weightsHistoryWithNext = [...newWeightsHistory, {
       qIndex: nextQIndex,
@@ -365,8 +366,6 @@ export async function POST(request: NextRequest) {
       weights: weightsMap,
       weightsHistory: weightsHistoryWithNext,
     });
-    console.log(`[perf] /api/answer updateSession: ${Date.now() - t5}ms`);
-    console.log(`[perf] /api/answer TOTAL: ${Date.now() - t0}ms`);
 
     // 返却（最小限の情報のみ）
     const questionResponse: QuestionResponse = {
@@ -376,6 +375,7 @@ export async function POST(request: NextRequest) {
       hardConfirmType: nextQuestion.hardConfirmType,
       hardConfirmValue: nextQuestion.hardConfirmValue,
       exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+      specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
     };
 
     const sessionState: SessionStateResponse = {

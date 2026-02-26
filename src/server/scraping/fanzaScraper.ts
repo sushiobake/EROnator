@@ -31,7 +31,6 @@ function norm(s: unknown): string {
  */
 async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
   try {
-    console.log(`  [年齢確認] 商品詳細ページにアクセス: ${productUrl}`);
     await page.goto(productUrl, { 
       waitUntil: 'networkidle2',
       timeout: 30000,
@@ -47,12 +46,7 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
              bodyText.includes('年齢確認');
     });
 
-    if (!isAgeGate) {
-      console.log(`  [年齢確認] ✅ 年齢確認なしでアクセス成功`);
-      return true;
-    }
-
-    console.log(`  [年齢確認] 年齢確認ページを検出`);
+    if (!isAgeGate) return true;
 
     // 年齢確認ボタンを探す
     // 複数のセレクタを試す
@@ -71,7 +65,6 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
       try {
         const button = await page.$(selector);
         if (button) {
-          console.log(`  [年齢確認] ボタンを検出: ${selector}`);
           await button.click();
           await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
           clicked = true;
@@ -89,7 +82,6 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
       for (const button of allButtons) {
         const text = await page.evaluate(el => el.textContent || '', button);
         if (text.includes('はい') || text.includes('18歳以上') || text.includes('同意')) {
-          console.log(`  [年齢確認] テキストでボタンを検出: ${text}`);
           await button.click();
           await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
           clicked = true;
@@ -98,10 +90,7 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
       }
     }
 
-    if (!clicked) {
-      console.log(`  [年齢確認] ⚠️  年齢確認ボタンが見つかりませんでした`);
-      return false;
-    }
+    if (!clicked) return false;
 
     // 年齢確認を通過したか確認
     const stillAgeGate = await page.evaluate(() => {
@@ -109,12 +98,7 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
       return title.includes('年齢認証') || title.includes('年齢確認');
     });
 
-    if (stillAgeGate) {
-      console.log(`  [年齢確認] ❌ 年齢確認を通過できませんでした`);
-      return false;
-    }
-
-    console.log(`  [年齢確認] ✅ 年齢確認を通過しました`);
+    if (stillAgeGate) return false;
     return true;
   } catch (error) {
     console.error(`  [年齢確認] エラー:`, error);
@@ -416,11 +400,6 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
     result.reviewCount = reviewInfo.reviewCount;
     result.reviewAverage = reviewInfo.reviewAverage;
     
-    // デバッグログ
-    console.log(`  [レビュー情報] reviewCount=${reviewInfo.reviewCount}, reviewAverage=${reviewInfo.reviewAverage}`);
-    if (reviewInfo.reviewCount === null && reviewInfo.reviewAverage === null) {
-      console.log('  [レビュー情報] 警告: レビュー情報を取得できませんでした');
-    }
 
     // isAiを判定（タイトルの左上のカテゴリラベルから）
     // FANZAでは「コミック」または「コミック・AI」という表記がある
@@ -520,8 +499,6 @@ export async function scrapeWorkComment(
 
   let browser: Browser | null = null;
   try {
-    console.log(`[スクレイピング] 開始: ${productUrl}`);
-
     browser = await puppeteer.launch({
       headless,
       args: [
@@ -543,19 +520,11 @@ export async function scrapeWorkComment(
 
     // 年齢確認を突破
     const ageGatePassed = await bypassAgeGate(page, productUrl);
-    if (!ageGatePassed) {
-      console.log(`[スクレイピング] ❌ 年齢確認を突破できませんでした`);
-      return null;
-    }
+    if (!ageGatePassed) return null;
 
     // 作品データを抽出
     const data = await extractWorkData(page, productUrl);
 
-    if (!data.commentText && !data.rawText) {
-      console.log(`[スクレイピング] ⚠️  作品コメントが取得できませんでした`);
-    } else {
-      console.log(`[スクレイピング] ✅ 成功: タイトル=${data.title}, コメント長=${data.commentText?.length || 0}`);
-    }
 
     return data;
   } catch (error) {

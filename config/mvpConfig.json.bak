@@ -3,16 +3,14 @@
   "confirm": {
     "revealThreshold": 0.7,
     "confidenceConfirmBand": [
-      0.2,
+      0.25,
       0.7
     ],
     "qForcedIndices": [
-      6,
-      10,
-      17
+      10
     ],
-    "softConfidenceMin": 0.2,
-    "hardConfidenceMin": 0.55
+    "softConfidenceMin": 0.25,
+    "hardConfidenceMin": 0.15
   },
   "algo": {
     "beta": 1.2,
@@ -37,7 +35,7 @@
     "effectiveConfirmThresholdParams": {
       "min": 5,
       "max": 300,
-      "divisor": 100
+      "divisor": 50
     },
     "consecutiveNoForAtari": 5,
     "summaryPreferRatio": 0.2,

@@ -40,7 +40,11 @@ function getLikelihood(
       const v = workHasFeature ? 0.3 : 0.7;
       return Math.max(low, Math.min(high, v));
     }
-    case 'UNKNOWN':
+    case 'UNKNOWN': {
+      // 微弱NO: workHasFeature ? 0.1 : 0.9（OFFICIALタグ含む全タグ質問で適用）
+      const v = workHasFeature ? 0.1 : 0.9;
+      return Math.max(low, Math.min(high, v));
+    }
     case 'DONT_CARE':
     default:
       return 1;

@@ -194,7 +194,6 @@ export async function POST(request: NextRequest) {
       }
 
       const apiUrl = `https://api.dmm.com/affiliate/v3/ItemList?${params.toString()}`;
-      console.log(`[DMM Import API] Round ${r + 1}/${rounds} offset=${currentOffset}...`);
 
       const response = await fetch(apiUrl);
       if (!response.ok) {

@@ -1,0 +1,19 @@
+# ローカル開発用 PostgreSQL
+# 使い方: docker compose up -d
+# 停止: docker compose down
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: eronator-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: eronator
+    ports:
+      - "5432:5432"
+    volumes:
+      - eronator_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  eronator_postgres_data:

@@ -68,7 +68,6 @@ export async function POST(request: NextRequest) {
         const sqlite3 = require('better-sqlite3');
         const path = require('path');
         const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-        console.log(`[start] Prisma returned 0 works, using direct SQLite query as fallback...`);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
         const db = sqlite3(dbPath, { readonly: true });
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
@@ -76,7 +75,6 @@ export async function POST(request: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         db.close();
         allWorks = directWorks;
-        console.log(`[start] Direct SQLite query found ${allWorks.length} works`);
       } catch (directError) {
         console.error('[start] Error in direct SQLite fallback:', directError);
         throw new ApiError(
@@ -135,6 +133,9 @@ export async function POST(request: NextRequest) {
       summaryQuestionId: firstQuestion.summaryQuestionId,
       summaryDisplayNames: firstQuestion.summaryDisplayNames,
       exploreTagKind: (firstQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+      specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+      seriesTagKeys: (firstQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
+      titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
     });
 
     // 返却（最小限の情報のみ）
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
       hardConfirmType: firstQuestion.hardConfirmType,
       hardConfirmValue: firstQuestion.hardConfirmValue,
       exploreTagKind: (firstQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+      specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
     };
 
     // Confidence計算（デバッグ用）

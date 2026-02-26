@@ -41,8 +41,7 @@ export default function ContactPage() {
       }
 
       // 簡易的な送信処理（実際のAPI実装は後で追加可能）
-      console.log('Contact form submitted:', formData);
-      
+
       // 成功メッセージ
       setSubmitStatus('success');
       setFormData({ name: '', email: '', subject: '', message: '' });

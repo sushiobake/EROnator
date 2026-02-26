@@ -273,7 +273,6 @@ export async function POST(request: NextRequest) {
                 const fallbackResult = await fetchCommentsForWorkIds(fallbackIds, prisma, (done, total) => {
                   send({ type: 'progress', job: 'comment', done, total: ROUND_SIZE, round, roundTotal: totalRounds });
                 });
-                console.log(`[bulk-comment-phase012] フォールバック取得 完了: 成功=${fallbackResult.success}, 失敗=${fallbackResult.failed}`);
                 if (fallbackResult.success > 0) {
                   phase0Count = await runPhase0();
                 }

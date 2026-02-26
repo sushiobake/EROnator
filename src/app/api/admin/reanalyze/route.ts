@@ -50,7 +50,6 @@ async function analyzeWork(
     return await analyzeWithGroq(work.commentText, systemPrompt);
   }
   if (aiProvider === 'cloudflare' && process.env.CLOUDFLARE_WORKER_AI_URL) {
-    console.log('[AI] Using Cloudflare (app prompt + tag lists)');
     const commentHash = crypto.createHash('sha256').update(work.commentText, 'utf8').digest('hex');
     return await analyzeWithCloudflareAi(
       {
@@ -70,11 +69,9 @@ async function analyzeWork(
   }
 
   if (process.env.GROQ_API_KEY) {
-    console.log('[AI] Using Groq (auto-detected)');
     return await analyzeWithGroq(work.commentText, systemPrompt);
   }
   if (process.env.CLOUDFLARE_WORKER_AI_URL) {
-    console.log('[AI] Using Cloudflare (auto-detected, app prompt + tag lists)');
     const commentHash = crypto.createHash('sha256').update(work.commentText, 'utf8').digest('hex');
     return await analyzeWithCloudflareAi(
       {
@@ -90,7 +87,6 @@ async function analyzeWork(
     );
   }
   if (process.env.HUGGINGFACE_API_TOKEN) {
-    console.log('[AI] Using HuggingFace (auto-detected)');
     return await analyzeWithHuggingFace(work.commentText, systemPrompt);
   }
 
@@ -204,7 +200,6 @@ export async function POST(request: Request) {
       select: { displayName: true }
     });
     const officialTagNames = officialTagsFromDb.map(t => t.displayName);
-    console.log(`[Reanalyze] Loaded ${officialTagNames.length} OFFICIAL tags from DB`);
     const aList = getTagsByRank('A');
     const bList = getTagsByRank('B');
     const cList = getTagsByRank('C');
@@ -269,13 +264,9 @@ export async function POST(request: Request) {
           if (useNewFormat) {
             const addSRaw = analysis.additionalSTags ?? [];
             const addS = addSRaw.filter(name => officialNameToKey.has(name.trim().toLowerCase()));
-            if (addSRaw.length > addS.length) {
-              console.log(`[Reanalyze] ${work.workId}: 追加SでS一覧にない語を除外 ${addSRaw.length}→${addS.length}`);
-            }
             const aTags = analysis.aTags ?? [];
             const bTags = analysis.bTags ?? [];
             const cTags = analysis.cTags ?? [];
-            console.log(`[Reanalyze] ${work.workId}: 追加S=${addS.length} A=${aTags.length} B=${bTags.length} C=${cTags.length}`);
 
             for (const displayName of addS) {
               const tagKey = officialNameToKey.get(displayName.toLowerCase());
@@ -373,8 +364,7 @@ export async function POST(request: Request) {
           // キャラクタータグを保存（1つのみ）
         if (analysis.characterTags && analysis.characterTags.length > 0) {
           const charName = analysis.characterTags[0];
-          console.log(`[Reanalyze] ${work.workId}: キャラクター名 "${charName}" を保存`);
-          
+
           // 既存のキャラクタータグを削除
           const existingCharTags = await prisma.workTag.findMany({
             where: { workId: work.workId },

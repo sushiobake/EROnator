@@ -1,0 +1,24 @@
+﻿# dependencies
+node_modules
+
+# build output
+.next
+out
+
+# backups (often has recursive structure - heavy for ripgrep)
+.backup
+
+# simulation results (large JSON files)
+data/simulation-results
+
+# prisma DB files
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-shm
+prisma/*.db-wal
+
+# env (sensitive)
+.env
+.env.*
+.env.local
+.env.supabase

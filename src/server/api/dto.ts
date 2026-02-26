@@ -63,6 +63,7 @@ export async function toQuestionResponse(
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
       exploreTagKind: entry.exploreTagKind,
+      specialQuestionType: entry.specialQuestionType,
     };
   }
   if (entry.kind === 'HARD_CONFIRM') {
@@ -73,6 +74,20 @@ export async function toQuestionResponse(
         : `作者（サークル）は「${entry.hardConfirmValue}」ですか？`,
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
+      exploreTagKind: entry.exploreTagKind,
+    };
+  }
+  if (entry.kind === 'SPECIAL_QUESTION') {
+    const displayText =
+      (typeof entry.displayText === 'string' && entry.displayText.trim() !== '')
+        ? entry.displayText
+        : entry.specialQuestionType === 'SERIES'
+          ? 'その作品は、シリーズものや総集編？'
+          : '特別質問';
+    return {
+      kind: entry.kind,
+      displayText,
+      specialQuestionType: entry.specialQuestionType,
       exploreTagKind: entry.exploreTagKind,
     };
   }

@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Works: 作品データ
@@ -45,6 +44,7 @@ model Work {
   lastCheckResultJson String?  // 最終チェックの完全な出力 JSON
   lastCheckReasoning  String?  // AIチェック時の推論 JSON
   lastTaggingReasoning String?  // AIタグ付け時の推論 JSON
+  titleReadingInitial String?  // タイトル読みの先頭1文字（カタカナ）。50音質問用
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

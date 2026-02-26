@@ -85,23 +85,6 @@ export async function analyzeWithCloudflareAi(
   const debug = process.env.DEBUG_CLOUDFLARE_AI === '1';
 
   try {
-    if (debug) {
-      if (isPayload) {
-        const p = body as CloudflarePayload;
-        const fullLen = (p.commentText ?? '').length;
-        const previewLen = Math.min(300, fullLen);
-        console.log('[Cloudflare AI Debug] Request (minimal payload):', {
-          title: p.title?.substring(0, 60),
-          commentLength: fullLen,
-          commentPreviewFirst300: (p.commentText ?? '').substring(0, previewLen) + (fullLen > 300 ? '...' : ''),
-          note: '作品コメントは全文をWorkerに送信しています。上記はログ用の先頭300字です。',
-          currentSTagsCount: p.currentSTags?.length ?? 0,
-        });
-      } else {
-        console.log('[Cloudflare AI Debug] Request (legacy): commentLength=', (body as { commentText?: string }).commentText?.length ?? 0, 'promptLength=', (body as { systemPrompt?: string }).systemPrompt?.length ?? 0);
-      }
-    }
-
     const response = await fetch(cloudflareWorkerUrl, {
       method: 'POST',
       headers: {
@@ -156,25 +139,6 @@ export async function analyzeWithCloudflareAi(
     if (bindingMismatch) {
       console.warn('[Cloudflare AI] Binding mismatch - discarding result. Sent workId=%s runId=%s commentHash=%s vs echoed workId=%s runId=%s commentHash=%s',
         sentWorkId, sentRunId, sentCommentHash, echoedWorkId, echoedRunId, echoedCommentHash);
-    }
-
-    if (debug) {
-      // デバッグ: Worker側で追加したdebugAiRawフィールドを出力
-      if ('debugAiRaw' in data) {
-        console.log('[Cloudflare AI Debug] Raw AI Response from Worker:', (data as { debugAiRaw?: unknown }).debugAiRaw);
-      }
-      
-      console.log('[Cloudflare AI Debug] Response:', JSON.stringify({
-        matchedTags: (data as { matchedTags?: unknown }).matchedTags,
-        suggestedTags: (data as { suggestedTags?: unknown }).suggestedTags,
-        derivedTags: (data as { derivedTags?: unknown }).derivedTags,
-        additionalSTags: (data as { additionalSTags?: unknown }).additionalSTags,
-        aTags: (data as { aTags?: unknown }).aTags,
-        bTags: (data as { bTags?: unknown }).bTags,
-        cTags: (data as { cTags?: unknown }).cTags,
-        characterTags: (data as { characterTags?: unknown }).characterTags,
-        needsReview: (data as { needsReview?: unknown }).needsReview,
-      }, null, 2));
     }
 
     const toStrArr = (v: unknown): string[] =>
@@ -266,11 +230,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
   // プロンプトを構築
   const prompt = `${systemPrompt}\n\n作品コメント:\n${commentText}\n\nJSON形式で出力してください:`;
 
-  console.log('[AI Debug] Using OpenAI-compatible endpoint:', apiUrl);
-  console.log('[AI Debug] Model name:', modelName);
-  console.log('[AI Debug] Comment text length:', commentText.length);
-  console.log('[AI Debug] Prompt length:', prompt.length);
-
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -317,11 +276,7 @@ async function analyzeWithHuggingFaceOpenAICompatible(
       throw new Error(`Hugging Face API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    // 成功した場合はこのエンドポイントを使用
-    console.log('[AI Debug] Successfully connected to OpenAI-compatible endpoint');
-
     const data = await response.json();
-    console.log('[AI Debug] Hugging Face API response:', JSON.stringify(data, null, 2));
 
     // OpenAI互換形式のレスポンスからテキストを抽出
     const text = data.choices?.[0]?.message?.content || '';
@@ -329,9 +284,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
     if (!text) {
       throw new Error('AIからの応答が空です');
     }
-
-    // デバッグログ: AIの応答テキストを出力
-    console.log('[AI Debug] Hugging Face API response text:', text.substring(0, 500));
 
     // 推論プロセス（<think>、<reasoning>など）を除去してJSONを抽出
     let cleanedText = text;
@@ -345,7 +297,7 @@ async function analyzeWithHuggingFaceOpenAICompatible(
     
     // 前後の空白を除去
     cleanedText = cleanedText.trim();
-    
+
     // 方法2: JSONの開始位置（最初の{）を探して、それ以降を取得
     // これにより、<think>タグが閉じられていない場合でもJSONを抽出できる
     const jsonStartIndex = cleanedText.indexOf('{');
@@ -354,8 +306,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
     }
     
     // デバッグログ: クリーンアップ後のテキストを出力
-    console.log('[AI Debug] Cleaned text (first 500 chars):', cleanedText.substring(0, 500));
-
     // JSONを抽出（複数のパターンに対応）
     let jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
@@ -370,9 +320,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
       console.error('[AI Debug] Cleaned text (first 1000 chars):', cleanedText.substring(0, 1000));
       throw new Error('AIからの応答からJSONを抽出できませんでした');
     }
-
-    // デバッグログ: 抽出したJSONを出力
-    console.log('[AI Debug] Extracted JSON:', jsonMatch[0].substring(0, 500));
 
     // JSONをパース（不完全なJSONの修復を試みる）
     let parsed;
@@ -401,11 +348,8 @@ async function analyzeWithHuggingFaceOpenAICompatible(
             repairedJson = truncated + ']}';
           }
           
-          console.log('[AI Debug] Repaired JSON:', repairedJson.substring(0, 500));
-          
           try {
             parsed = JSON.parse(repairedJson);
-            console.log('[AI Debug] JSON repair successful');
           } catch (repairError) {
             console.error('[AI Debug] JSON repair failed:', repairError);
             throw parseError; // 元のエラーを投げる
@@ -417,9 +361,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
         throw parseError;
       }
     }
-
-    // デバッグログ: パース結果を出力
-    console.log('[AI Debug] Parsed JSON:', JSON.stringify(parsed, null, 2));
 
     // バリデーション: AIの出力を整形
     const rawDerivedTags = Array.isArray(parsed.derivedTags)
@@ -434,13 +375,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
 
     // 後処理フィルタを適用
     const filterResult = filterDerivedTags(rawDerivedTags, 5);
-    
-    // デバッグログ: フィルタ結果
-    if (filterResult.rejected.length > 0) {
-      console.log('[AI Debug] Filtered out tags:', 
-        filterResult.rejected.map(r => `${r.tag.displayName} (${r.reason})`).join(', ')
-      );
-    }
 
     // 厳選: 上位5件を選択（confidence 50%以上）
     // ※DBには5件保存、ゲーム使用時は上位2件のみ使用
@@ -452,15 +386,6 @@ async function analyzeWithHuggingFaceOpenAICompatible(
           .slice(0, 1) // 最大1件
           .map((name: any) => String(name))
       : [];
-
-    // デバッグログ: 最終結果を出力
-    console.log('[AI Debug] Final result:', {
-      rawCount: rawDerivedTags.length,
-      afterFilterCount: filterResult.passed.length,
-      selectedCount: derivedTags.length,
-      derivedTags: derivedTags.map(t => `${t.displayName} (${t.confidence.toFixed(2)})`),
-      characterTags,
-    });
 
     return {
       derivedTags,
@@ -503,7 +428,6 @@ export async function analyzeWithHuggingFace(
 
   for (const modelName of modelsToTry) {
     try {
-      console.log(`[AI Debug] Trying model: ${modelName} on router.huggingface.co...`);
       // router.huggingface.co用の形式: モデル名に`:hf-inference`を追加
       const modelNameWithSuffix = modelName.includes(':') ? modelName : `${modelName}:hf-inference`;
       return await analyzeWithHuggingFaceOpenAICompatible(
@@ -548,9 +472,6 @@ export async function analyzeWithGroq(
   const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
   const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
 
-  console.log(`[Groq] Using model: ${model}`);
-  console.log(`[Groq] Comment length: ${commentText.length}`);
-
   try {
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -585,8 +506,6 @@ export async function analyzeWithGroq(
     if (!content) {
       throw new Error('Groq API returned empty content');
     }
-
-    console.log('[Groq] Raw response:', content.substring(0, 500));
 
     // JSONをパース
     let parsed: any;
@@ -667,20 +586,8 @@ export async function analyzeWithGroq(
       ? [...matchedTags, ...suggestedTags]
       : legacyTags;
 
-    console.log('[Groq] Parsed tags:', {
-      matched: matchedTags.length,
-      suggested: suggestedTags.length,
-      legacy: legacyTags.length,
-    });
-
     // 後処理フィルタを適用
     const filterResult = filterDerivedTags(rawDerivedTags, 5);
-    
-    if (filterResult.rejected.length > 0) {
-      console.log('[Groq] Filtered out tags:', 
-        filterResult.rejected.map(r => `${r.tag.displayName} (${r.reason})`).join(', ')
-      );
-    }
 
     // 厳選: 上位5件を選択
     const derivedTags = selectTopTags(filterResult.passed, 5);
@@ -697,15 +604,6 @@ export async function analyzeWithGroq(
     }
 
     const needsReview = parsed.needsReview === true;
-
-    console.log('[Groq] Final result:', {
-      rawCount: rawDerivedTags.length,
-      afterFilterCount: filterResult.passed.length,
-      selectedCount: derivedTags.length,
-      derivedTags: derivedTags.map(t => `${t.displayName} (${t.confidence.toFixed(2)}${t.source ? `, ${t.source}` : ''})`),
-      characterTags,
-      needsReview,
-    });
 
     return {
       derivedTags,

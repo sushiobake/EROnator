@@ -1,16 +1,29 @@
 /**
  * /api/admin/simulate: シミュレーション実行API
- * 
+ *
  * 指定した作品を「正解」として、自動回答でゲームをシミュレーション
- * ノイズ率に応じて一定確率で間違った回答をする
+ * 曖昧さレベル（1-10）に応じて PROBABLY / 逆回答 / UNKNOWN を混ぜる
+ * 後方互換: noiseRate / noiseRates も受け付ける
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import { isSqlite } from '@/server/db/is-sqlite';
 import { getMvpConfig } from '@/server/config/loader';
-import { selectNextQuestion, processAnswer, filterWorksByAiGate } from '@/server/game/engine';
-import { normalizeWeights, calculateConfidence } from '@/server/algo/scoring';
+import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, type WorkInfoForConfirm } from '@/server/game/engine';
+import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
+import { ensureTagCacheLoaded } from '@/server/game/tagCacheLoader';
+import {
+  perfStart,
+  perfEnd,
+  createPerfAccumulator,
+  runWithPerfAccumulator,
+  toPerfSummary,
+} from '@/server/simulationPerf';
+import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
+import { getTitleCharType } from '@/server/utils/titleCharType';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 
@@ -23,6 +36,7 @@ interface SimulationStep {
     hardConfirmType?: string;
     hardConfirmValue?: string;
     exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
+    specialQuestionType?: string;
   };
   answer: string;
   wasNoisy: boolean; // ノイズで間違えたか
@@ -36,6 +50,9 @@ interface SimulationStep {
   revealWorkId?: string;
   revealWorkTitle?: string;
   revealResult?: 'SUCCESS' | 'MISS';
+  // デバッグ・分析用
+  effectiveCandidates?: number;
+  preferHighP?: boolean; // 当たり狙いで選ばれたか
 }
 
 interface WorkDetails {
@@ -64,6 +81,17 @@ export interface SimulationDiagnostic {
   candidatesCount: number;
 }
 
+/** 分析用データ（JSON保存・分析表示用） */
+export interface SimulationAnalysisData {
+  wasNoisyCount: number;
+  firstNoisyStepIndex: number; // 0-based、ノイズなしなら -1
+  noisyStepIndices: number[]; // wasNoisy だった step の qIndex 一覧
+  correctRank: number; // diagnostic と同じ（分析用に重複）
+  top1Confidence: number; // diagnostic と同じ（分析用に重複）
+  totalQuestions: number; // questionCount（分析用に重複）
+  noisyRatio: number; // wasNoisyCount / totalQuestions（0〜1）
+}
+
 interface SimulationResult {
   success: boolean;
   targetWorkId: string;
@@ -75,9 +103,24 @@ interface SimulationResult {
   outcome: 'SUCCESS' | 'WRONG_REVEAL' | 'FAIL_LIST' | 'MAX_QUESTIONS' | 'ERROR';
   /** Task A: 失敗型の確定用 */
   diagnostic?: SimulationDiagnostic;
+  /** 分析用（wasNoisy数・correctRank等） */
+  analysisData?: SimulationAnalysisData;
   workDetails?: WorkDetails;
   /** 実行時エラー時のみ */
   errorMessage?: string;
+}
+
+/** バッチ用: 全トライアルで共有するデータ（DB クエリ削減） */
+interface SharedBatchContext {
+  allWorks: Array<{
+    workId: string;
+    isAi: string | null;
+    popularityBase: number | null;
+    popularityPlayBonus: number | null;
+    title: string | null;
+    authorName: string | null;
+  }>;
+  workTitleMap: Map<string, string>;
 }
 
 /** シミュ用: 正解作品に基づく正答を1か所で判定（まとめ質問・頭文字正規化対応）。両ループで共通利用。 */
@@ -89,11 +132,24 @@ function getCorrectAnswer(
     hardConfirmValue?: string;
     isSummaryQuestion?: boolean;
     summaryDisplayNames?: string[];
+    specialQuestionType?: string;
+    seriesTagKeys?: string[];
+    titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
   },
   targetWork: { title: string | null; authorName: string | null },
   targetTags: Set<string>,
   targetWorkTags: { displayName: string }[]
 ): string {
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'SERIES') {
+    const seriesTagKeys = question.seriesTagKeys ?? ['off_e1f6b6c9ce', 'off_ad42c1ba79'];
+    const hasSeries = seriesTagKeys.some(tk => targetTags.has(tk));
+    return hasSeries ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_CHAR_TYPE') {
+    const targetCharType = getTitleCharType(targetWork.title ?? '');
+    const expectedCharType = question.titleCharType ?? 'KANJI';
+    return targetCharType === expectedCharType ? 'YES' : 'NO';
+  }
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
     const summaryDisplayNames = question.summaryDisplayNames;
     const isSummaryQuestion = !!question.isSummaryQuestion || (summaryDisplayNames?.length ?? 0) > 0;
@@ -117,22 +173,49 @@ function getCorrectAnswer(
   return 'DONT_CARE';
 }
 
+/** 曖昧さレベル 1-10 に基づき回答を決定。L=1: 常に正解、L=10: かなり曖昧 */
+function pickAnswerFromAmbiguity(
+  correctAnswer: 'YES' | 'NO',
+  ambiguityLevel: number,
+  questionKind: string
+): 'YES' | 'NO' | 'PROBABLY_YES' | 'PROBABLY_NO' | 'UNKNOWN' {
+  const L = Math.max(1, Math.min(10, Math.round(ambiguityLevel)));
+  if (L === 1) return correctAnswer;
+
+  const wrongRate = 0.0133 * (L - 1);
+  const correctRate = L <= 9 ? 1 - 0.1 * (L - 1) : 0.08;
+  const vagueRate = 1 - correctRate - wrongRate;
+
+  const isSoft = questionKind === 'SOFT_CONFIRM';
+  const w = isSoft ? 0.5 : 1;
+  const wrong = wrongRate * w;
+  const vague = vagueRate * w;
+  const correct = 1 - wrong - vague;
+
+  const r = Math.random();
+  if (r < correct) return correctAnswer;
+  if (r < correct + wrong) return correctAnswer === 'YES' ? 'NO' : 'YES';
+  const v = r - correct - wrong;
+  if (v < vague * 0.75) return correctAnswer === 'YES' ? 'PROBABLY_YES' : 'PROBABLY_NO';
+  if (v < vague * 0.9) return correctAnswer === 'YES' ? 'PROBABLY_NO' : 'PROBABLY_YES';
+  return 'UNKNOWN';
+}
+
 export async function POST(request: NextRequest) {
   try {
     await ensurePrismaConnected();
     
     const body = await request.json();
-    const { 
-      targetWorkId, 
-      noiseRate = 0, // 後方互換: 単一の値（0〜1）
-      noiseRates, // 質問タイプ別: { explore, soft, hard }
-      aiGateChoice = 'BOTH' // AI_ONLY, HAND_ONLY, BOTH
+    const {
+      targetWorkId,
+      ambiguityLevel = 2, // 1-10（デフォルト: サンプル50・曖昧さ2 に合わせる）
+      noiseRate = 0, // 後方互換
+      noiseRates,
+      aiGateChoice = 'BOTH',
+      includePerf = false, // true で計測結果をレスポンスに含める
     } = body;
-    
-    // ノイズ率を質問タイプ別に設定（後方互換対応）
-    const noiseExplore = noiseRates?.explore ?? noiseRate;
-    const noiseSoft = noiseRates?.soft ?? noiseRate;
-    const noiseHard = noiseRates?.hard ?? noiseRate;
+
+    const level = ambiguityLevel != null ? Math.max(1, Math.min(10, Number(ambiguityLevel))) : 2;
 
     if (!targetWorkId) {
       return NextResponse.json(
@@ -142,6 +225,10 @@ export async function POST(request: NextRequest) {
     }
 
     const config = getMvpConfig();
+
+    // 単体シミュレーションでも行列・Tag キャッシュをプリロード
+    getWorkTagMatrix();
+    await ensureTagCacheLoaded();
 
     // 正解作品を取得（タグの詳細情報も含む）
     const targetWork = await prisma.work.findUnique({
@@ -188,12 +275,13 @@ export async function POST(request: NextRequest) {
       derivedConfidence: wt.derivedConfidence,
     }));
 
-    // ゲーム登録済みかつ要注意でない作品のみ取得
+    // ゲーム登録済みかつ要注意でない作品のみ取得（HARD_CONFIRM 用に title/authorName も取得）
     const allWorks = await prisma.work.findMany({
       where: { gameRegistered: true, needsReview: false },
       select: {
         workId: true,
         title: true,
+        authorName: true,
         isAi: true,
         popularityBase: true,
         popularityPlayBonus: true,
@@ -211,6 +299,11 @@ export async function POST(request: NextRequest) {
 
     // workIdからWorkへのマップを作成
     const workMap = new Map(allWorks.map(w => [w.workId, w]));
+
+    // HARD_CONFIRM 用の Work 情報マップ（DB クエリ省略）
+    const workInfoMap = new Map<string, WorkInfoForConfirm>(
+      allWorks.map(w => [w.workId, { title: w.title, authorName: w.authorName }])
+    );
 
     // 初期重み（filteredWorksはstring[]なのでworkIdそのもの）
     let weights: WorkWeight[] = filteredWorks
@@ -234,7 +327,10 @@ export async function POST(request: NextRequest) {
     /** REVEALで不正解だった workId。同じ作品は再REVEALしない。 */
     const revealedWrongWorkIds = new Set<string>();
 
-    while (questionCount < config.flow.maxQuestions) {
+    const perfAcc = createPerfAccumulator(includePerf);
+    await runWithPerfAccumulator(perfAcc, async () => {
+    const simT = perfStart('runSimulation');
+    while (true) {
       // 正規化
       const probabilities = normalizeWeights(weights);
       const sorted = [...probabilities].sort((a, b) => {
@@ -245,6 +341,7 @@ export async function POST(request: NextRequest) {
       });
       const confidence = sorted[0]?.probability ?? 0;
       const topWorkId = sorted[0]?.workId ?? '';
+      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence)) break;
 
       // 次の質問を選択
       const question = await selectNextQuestion(
@@ -299,22 +396,23 @@ export async function POST(request: NextRequest) {
         targetWorkTags
       );
 
-      // ノイズを適用（質問タイプ別の確率で逆回答）
-      let noiseRateForQuestion = 0;
-      if (question.kind === 'EXPLORE_TAG') {
-        noiseRateForQuestion = noiseExplore;
-      } else if (question.kind === 'SOFT_CONFIRM') {
-        noiseRateForQuestion = noiseSoft;
-      } else if (question.kind === 'HARD_CONFIRM') {
-        noiseRateForQuestion = noiseHard;
-      }
-      const wasNoisy = Math.random() < noiseRateForQuestion;
-      let actualAnswer = correctAnswer;
-      if (wasNoisy) {
-        actualAnswer = correctAnswer === 'YES' ? 'NO' : 'YES';
-      }
+      // 曖昧さレベルに基づき回答を決定（HARD は常に正解）
+      const baseAnswer = correctAnswer as 'YES' | 'NO';
+      const actualAnswer =
+        question.kind === 'HARD_CONFIRM'
+          ? baseAnswer
+          : pickAnswerFromAmbiguity(baseAnswer, level, question.kind);
+      const wasNoisy = actualAnswer !== baseAnswer;
 
-      // 質問履歴に追加（まとめ質問のときは summaryQuestionId 等を保存し、同一まとめの重複出題を防ぐ。answer は連続NOで当たりを挟む判定に使用）
+      // preferHighP: この質問選択時に連続NOだったか（当たり狙いモード）
+      let consecutiveNoCount = 0;
+      for (let i = questionHistory.length - 1; i >= 0; i--) {
+        if (questionHistory[i]?.answer === 'NO') consecutiveNoCount++;
+        else break;
+      }
+      const consecutiveNoForAtari = config.flow.consecutiveNoForAtari ?? 5;
+      const preferHighP = consecutiveNoCount >= consecutiveNoForAtari;
+
       questionHistory.push({
         qIndex,
         kind: question.kind,
@@ -324,8 +422,11 @@ export async function POST(request: NextRequest) {
         isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
         summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
-        answer: actualAnswer === 'YES' ? 'YES' : 'NO',
+        answer: actualAnswer,
         exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        seriesTagKeys: (question as { seriesTagKeys?: string[] }).seriesTagKeys,
+        titleCharType: (question as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
       });
 
       // 回答処理
@@ -333,7 +434,8 @@ export async function POST(request: NextRequest) {
         weights,
         question,
         actualAnswer,
-        config
+        config,
+        { workInfoMap }
       );
       weights = updatedWeights;
 
@@ -350,6 +452,7 @@ export async function POST(request: NextRequest) {
       // タグのp値（確率ベースカバレッジ）を計算
       let tagCoverage: number | undefined;
       if (question.tagKey) {
+        const tagCovT = perfStart('tagCoverage');
         // このタグを持つ作品を取得
         const workIdsWithTag = await prisma.workTag.findMany({
           where: {
@@ -363,9 +466,11 @@ export async function POST(request: NextRequest) {
         tagCoverage = probabilities
           .filter(p => tagWorkIds.has(p.workId))
           .reduce((sum, p) => sum + p.probability, 0);
+        perfEnd('tagCoverage', tagCovT);
       }
 
       // ステップを記録（EXPLORE_TAG のとき exploreTagKind を付与し、シミュで種別がわかるようにする）
+      const effectiveCandidates = calculateEffectiveCandidates(probabilities);
       steps.push({
         qIndex,
         question: {
@@ -375,6 +480,7 @@ export async function POST(request: NextRequest) {
           hardConfirmType: question.hardConfirmType,
           hardConfirmValue: question.hardConfirmValue,
           exploreTagKind: question.kind === 'EXPLORE_TAG' ? (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind : undefined,
+          specialQuestionType: question.kind === 'SPECIAL_QUESTION' ? (question as { specialQuestionType?: string }).specialQuestionType : undefined,
         },
         answer: actualAnswer,
         wasNoisy,
@@ -383,10 +489,13 @@ export async function POST(request: NextRequest) {
         top1WorkId: topWorkId,
         top1Probability: confidence,
         tagCoverage,
+        effectiveCandidates,
+        preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighP : undefined,
       });
 
       // REVEAL判定（既出＝一度不正解だった作品は候補から外す）
-      if (newConfidence >= config.confirm.revealThreshold) {
+      const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
+      if (newConfidence >= revealThreshold) {
         const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
         if (revealWorkId) {
           // REVEAL対象の作品タイトルを取得
@@ -414,6 +523,7 @@ export async function POST(request: NextRequest) {
             revealWorkId: revealWorkId,
             revealWorkTitle: revealWorkTitle,
             revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+            effectiveCandidates: calculateEffectiveCandidates(newProbabilities),
           });
 
           if (isCorrect) {
@@ -442,6 +552,9 @@ export async function POST(request: NextRequest) {
         // revealWorkId が null（上位がすべて既出）の場合は REVEAL せず次の質問へ
       }
     }
+
+    perfEnd('runSimulation', simT);
+    });
 
     // ループ正常終了（maxQuestions 到達）→ 強制 REVEAL（既出は候補から外す）
     if (outcome === 'MAX_QUESTIONS' && questionCount >= config.flow.maxQuestions) {
@@ -473,6 +586,7 @@ export async function POST(request: NextRequest) {
           revealWorkId: forceRevealId,
           revealWorkTitle,
           revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          effectiveCandidates: calculateEffectiveCandidates(finalProbs),
         });
         outcome = isCorrect ? 'SUCCESS' : 'MAX_QUESTIONS';
         finalWorkId = forceRevealId;
@@ -503,11 +617,20 @@ export async function POST(request: NextRequest) {
       top1Confidence: sortedForDiag[0]?.probability ?? 0,
       candidatesCount: weights.length,
     };
-    if (outcome !== 'SUCCESS') {
-      console.log(
-        `[simulate] Task A diagnostic: endedBy=${diagnostic.endedBy} correctRank=${diagnostic.correctRank} correctStillInCandidates=${diagnostic.correctStillInCandidates} top1Confidence=${diagnostic.top1Confidence.toFixed(3)} candidatesCount=${diagnostic.candidatesCount} targetWorkId=${targetWorkId}`
-      );
-    }
+    // 分析用データ（wasNoisy数・ノイズ発生ステップ等）
+    const noisySteps = steps.filter(s => s.wasNoisy);
+    const firstNoisyIdx = noisySteps.length > 0
+      ? steps.findIndex(s => s.wasNoisy)
+      : -1;
+    const analysisData: SimulationAnalysisData = {
+      wasNoisyCount: noisySteps.length,
+      firstNoisyStepIndex: firstNoisyIdx,
+      noisyStepIndices: steps.filter(s => s.wasNoisy).map(s => s.qIndex),
+      correctRank: diagnostic.correctRank,
+      top1Confidence: diagnostic.top1Confidence,
+      totalQuestions: questionCount,
+      noisyRatio: questionCount > 0 ? noisySteps.length / questionCount : 0,
+    };
 
     const result: SimulationResult = {
       success: outcome === 'SUCCESS',
@@ -519,6 +642,7 @@ export async function POST(request: NextRequest) {
       steps,
       outcome,
       diagnostic,
+      analysisData,
     };
 
     // 作品詳細情報を追加
@@ -534,7 +658,12 @@ export async function POST(request: NextRequest) {
       tags: targetWorkTags,
     };
 
-    return NextResponse.json({ ...result, workDetails });
+    const perfSummary = toPerfSummary(perfAcc);
+    return NextResponse.json({
+      ...result,
+      workDetails,
+      ...(perfSummary && { perfSummary }),
+    });
   } catch (error) {
     console.error('Error in /api/admin/simulate:', error);
     return NextResponse.json(
@@ -548,6 +677,37 @@ export async function POST(request: NextRequest) {
 }
 
 /**
+ * サンプル対象の workIds を取得（チャンク実行・進捗表示用）
+ * GET /api/admin/simulate?sampleSize=10
+ */
+export async function GET(request: NextRequest) {
+  try {
+    await ensurePrismaConnected();
+    const sampleSize = Math.max(0, Number(request.nextUrl.searchParams.get('sampleSize') ?? 0));
+    const works = await prisma.work.findMany({
+      where: { gameRegistered: true, needsReview: false },
+      select: { workId: true },
+    });
+    let workIds = works.map((w) => w.workId);
+    if (sampleSize > 0 && sampleSize < workIds.length) {
+      const shuffled = [...workIds];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      workIds = shuffled.slice(0, sampleSize);
+    }
+    return NextResponse.json({ workIds });
+  } catch (error) {
+    console.error('Error in /api/admin/simulate (GET):', error);
+    return NextResponse.json(
+      { error: 'Internal server error', message: error instanceof Error ? error.message : 'Unknown' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * バッチシミュレーション用エンドポイント
  */
 export async function PUT(request: NextRequest) {
@@ -555,21 +715,28 @@ export async function PUT(request: NextRequest) {
     await ensurePrismaConnected();
     
     const body = await request.json();
-    const { 
-      workIds, // 対象作品ID配列（空なら全作品）
-      noiseRate = 0, // 後方互換
-      noiseRates, // 質問タイプ別: { explore, soft, hard }
+    const {
+      workIds,
+      ambiguityLevel = 2,
+      noiseRate = 0,
+      noiseRates,
       aiGateChoice = 'BOTH',
-      trialsPerWork = 1, // 作品あたりの試行回数
-      sampleSize = 0, // ランダムサンプリング件数（0=全件）
+      trialsPerWork = 1,
+      sampleSize = 0,
+      parallelCount = 12,
+      includePerf = false,
     } = body;
-    
-    // ノイズ率を質問タイプ別に設定（後方互換対応）
-    const noiseExplore = noiseRates?.explore ?? noiseRate;
-    const noiseSoft = noiseRates?.soft ?? noiseRate;
-    const noiseHard = noiseRates?.hard ?? noiseRate;
+
+    const level = ambiguityLevel != null ? Math.max(1, Math.min(10, Number(ambiguityLevel))) : 2;
+    // SQLite は同時アクセスに弱いため6並列、Postgres は12並列
+    const defaultParallel = isSqlite() ? 6 : 12;
+    const parallel = Math.max(1, Math.min(32, Number(parallelCount) || defaultParallel));
 
     const config = getMvpConfig();
+
+    // 並列シミュレーション前に WorkTag 行列と Tag キャッシュをプリロード（初回の 3-7 秒遅延を防ぐ）
+    getWorkTagMatrix();
+    await ensureTagCacheLoaded();
 
     // 対象作品を取得（未指定時はゲーム登録済みのみ）
     let targetWorkIds: string[];
@@ -583,6 +750,23 @@ export async function PUT(request: NextRequest) {
       targetWorkIds = works.map(w => w.workId);
     }
 
+    // バッチ用: allWorks を1回だけ取得し、全トライアルで共有（100件→1回に削減）
+    const allWorks = await prisma.work.findMany({
+      where: { gameRegistered: true, needsReview: false },
+      select: {
+        workId: true,
+        isAi: true,
+        popularityBase: true,
+        popularityPlayBonus: true,
+        title: true,
+        authorName: true,
+      },
+    });
+    const workTitleMap = new Map<string, string>(
+      allWorks.map(w => [w.workId, w.title ?? '(不明)'])
+    );
+    const sharedContext: SharedBatchContext = { allWorks, workTitleMap };
+
     // ランダムサンプリング
     if (sampleSize > 0 && sampleSize < targetWorkIds.length) {
       // Fisher-Yates shuffle して先頭N件を取得
@@ -594,7 +778,6 @@ export async function PUT(request: NextRequest) {
       targetWorkIds = shuffled.slice(0, sampleSize);
     }
 
-    // バッチ結果（実行時エラーも 1 件として含め、outcome: 'ERROR' と errorMessage で記録）
     const results: Array<{
       workId: string;
       title: string;
@@ -603,21 +786,28 @@ export async function PUT(request: NextRequest) {
       outcome: string;
       steps?: SimulationStep[];
       workDetails?: WorkDetails;
+      diagnostic?: SimulationDiagnostic;
+      analysisData?: SimulationAnalysisData;
       errorMessage?: string;
+      perfSummary?: Record<string, number>;
     }> = [];
 
-    let successCount = 0;
-    let totalQuestions = 0;
-
+    const tasks: Array<{ targetWorkId: string; trial: number }> = [];
     for (const targetWorkId of targetWorkIds) {
       for (let trial = 0; trial < trialsPerWork; trial++) {
-        const simResult = await runSimulation(
-          targetWorkId,
-          { explore: noiseExplore, soft: noiseSoft, hard: noiseHard },
-          aiGateChoice,
-          config
-        );
+        tasks.push({ targetWorkId, trial });
+      }
+    }
 
+    const startTime = Date.now();
+    for (let i = 0; i < tasks.length; i += parallel) {
+      const chunk = tasks.slice(i, i + parallel);
+      const chunkResults = await Promise.all(
+        chunk.map(({ targetWorkId }) =>
+          runSimulation(targetWorkId, level, aiGateChoice, config, sharedContext, includePerf)
+        )
+      );
+      for (const simResult of chunkResults) {
         if (simResult) {
           results.push({
             workId: simResult.targetWorkId,
@@ -627,22 +817,48 @@ export async function PUT(request: NextRequest) {
             outcome: simResult.outcome,
             steps: simResult.steps,
             workDetails: simResult.workDetails,
+            diagnostic: simResult.diagnostic,
+            analysisData: simResult.analysisData,
             errorMessage: simResult.errorMessage,
+            perfSummary: simResult.perfSummary,
           });
-          if (simResult.success) {
-            successCount++;
-          }
-          totalQuestions += simResult.questionCount;
         }
       }
     }
 
+    const successCount = results.filter((r) => r.success).length;
     const totalTrials = results.length;
+    const totalQuestions = results.reduce((s, r) => s + r.questionCount, 0);
     const successRate = totalTrials > 0 ? successCount / totalTrials : 0;
     const avgQuestions = totalTrials > 0 ? totalQuestions / totalTrials : 0;
 
-    // 作品総数を取得（DB内の全作品数）
+    const failures = results.filter((r) => !r.success);
+    const failureSummary: Record<string, number> = {};
+    for (const f of failures) {
+      failureSummary[f.outcome] = (failureSummary[f.outcome] ?? 0) + 1;
+    }
+
     const totalWorksInDb = await prisma.work.count();
+
+    // 失敗ケースの分析サマリー（JSON保存・分析用）
+    const failureAnalysis = failures.length > 0 ? (() => {
+      const withAnalysis = failures.filter(f => f.analysisData);
+      const withDiag = failures.filter(f => f.diagnostic);
+      return {
+        failureCount: failures.length,
+        avgWasNoisyCount: withAnalysis.length > 0
+          ? Math.round((withAnalysis.reduce((s, f) => s + (f.analysisData!.wasNoisyCount), 0) / withAnalysis.length) * 100) / 100
+          : null,
+        avgCorrectRank: withDiag.length > 0
+          ? Math.round((withDiag.reduce((s, f) => s + (f.diagnostic!.correctRank), 0) / withDiag.length) * 100) / 100
+          : null,
+        avgTop1Confidence: withDiag.length > 0
+          ? Math.round((withDiag.reduce((s, f) => s + (f.diagnostic!.top1Confidence), 0) / withDiag.length) * 10000) / 10000
+          : null,
+      };
+    })() : null;
+
+    const durationSeconds = Math.round((Date.now() - startTime) / 1000);
 
     return NextResponse.json({
       totalTrials,
@@ -650,18 +866,17 @@ export async function PUT(request: NextRequest) {
       successRate: Math.round(successRate * 100) / 100,
       avgQuestions: Math.round(avgQuestions * 10) / 10,
       results,
-      // 追加情報（保存・共有用）
+      failureSummary,
+      failureAnalysis,
       metadata: {
         timestamp: new Date().toISOString(),
         totalWorksInDb,
         sampleSize: sampleSize > 0 ? sampleSize : totalWorksInDb,
-        noiseRates: {
-          explore: noiseExplore,
-          soft: noiseSoft,
-          hard: noiseHard,
-        },
+        ambiguityLevel: level,
         aiGateChoice,
         trialsPerWork,
+        parallelCount: parallel,
+        durationSeconds,
       },
     });
   } catch (error) {
@@ -723,13 +938,16 @@ export async function PATCH(request: NextRequest) {
 
 /**
  * シミュレーション実行（内部関数）
+ * @param sharedContext バッチ時のみ。allWorks と workTitleMap を共有して DB クエリを削減
  */
 async function runSimulation(
   targetWorkId: string,
-  noiseRates: { explore: number; soft: number; hard: number },
+  ambiguityLevel: number,
   aiGateChoice: string,
-  config: ReturnType<typeof getMvpConfig>
-): Promise<SimulationResult | null> {
+  config: ReturnType<typeof getMvpConfig>,
+  sharedContext?: SharedBatchContext,
+  includePerf = false
+): Promise<(SimulationResult & { perfSummary?: Record<string, number> }) | null> {
   try {
     // 正解作品を取得（タグの詳細情報も含む）
     const targetWork = await prisma.work.findUnique({
@@ -781,16 +999,29 @@ async function runSimulation(
       })),
     };
 
-    // ゲーム登録済みかつ要注意でない作品のみ取得
-    const allWorks = await prisma.work.findMany({
-      where: { gameRegistered: true, needsReview: false },
-      select: {
-        workId: true,
-        isAi: true,
-        popularityBase: true,
-        popularityPlayBonus: true,
-      },
-    });
+    // ゲーム登録済みかつ要注意でない作品のみ取得（バッチ時は共有データを使用）
+    const allWorks = sharedContext
+      ? sharedContext.allWorks
+      : await prisma.work.findMany({
+          where: { gameRegistered: true, needsReview: false },
+          select: {
+            workId: true,
+            isAi: true,
+            popularityBase: true,
+            popularityPlayBonus: true,
+            title: true,
+            authorName: true,
+          },
+        });
+
+    const workTitleMap = sharedContext?.workTitleMap ?? new Map<string, string>(
+      allWorks.map(w => [w.workId, w.title ?? '(不明)'])
+    );
+
+    // HARD_CONFIRM 用の Work 情報マップ（DB クエリ省略）
+    const workInfoMap = new Map<string, WorkInfoForConfirm>(
+      allWorks.map(w => [w.workId, { title: w.title, authorName: w.authorName }])
+    );
 
     const filteredWorks = filterWorksByAiGate(
       allWorks.map(w => ({
@@ -823,7 +1054,10 @@ async function runSimulation(
     let endedBy: SimulationDiagnostic['endedBy'] = 'OTHER';
     const revealedWrongWorkIds = new Set<string>();
 
-    while (questionCount < config.flow.maxQuestions) {
+    const perfAcc = createPerfAccumulator(includePerf);
+    await runWithPerfAccumulator(perfAcc, async () => {
+    const simT = perfStart('runSimulation');
+    while (true) {
       const probabilities = normalizeWeights(weights);
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) {
@@ -833,6 +1067,7 @@ async function runSimulation(
       });
       const confidence = sorted[0]?.probability ?? 0;
       const topWorkId = sorted[0]?.workId ?? '';
+      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence)) break;
 
       const question = await selectNextQuestion(
         weights,
@@ -846,11 +1081,7 @@ async function runSimulation(
         endedBy = 'NO_MORE_QUESTIONS';
         const forceRevealWorkId = sorted[0]?.workId;
         if (forceRevealWorkId) {
-          const revealWork = await prisma.work.findUnique({
-            where: { workId: forceRevealWorkId },
-            select: { title: true },
-          });
-          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const revealWorkTitle = workTitleMap.get(forceRevealWorkId) ?? '(不明)';
           const isCorrect = forceRevealWorkId === targetWorkId;
           questionCount++;
           steps.push({
@@ -877,7 +1108,6 @@ async function runSimulation(
       questionCount++;
       const qIndex = questionCount;
 
-      // 自動回答（共通ヘルパーでまとめ・頭文字正規化対応）
       const correctAnswer = getCorrectAnswer(
         question as { kind: string; tagKey?: string; hardConfirmType?: string; hardConfirmValue?: string; isSummaryQuestion?: boolean; summaryDisplayNames?: string[] },
         targetWork,
@@ -885,19 +1115,20 @@ async function runSimulation(
         targetWorkTagsForAnswer
       );
 
-      // ノイズを適用（質問タイプ別の確率で逆回答）
-      let noiseRateForQuestion = 0;
-      if (question.kind === 'EXPLORE_TAG') {
-        noiseRateForQuestion = noiseRates.explore;
-      } else if (question.kind === 'SOFT_CONFIRM') {
-        noiseRateForQuestion = noiseRates.soft;
-      } else if (question.kind === 'HARD_CONFIRM') {
-        noiseRateForQuestion = noiseRates.hard;
+      const baseAnswer = correctAnswer as 'YES' | 'NO';
+      const actualAnswer =
+        question.kind === 'HARD_CONFIRM'
+          ? baseAnswer
+          : pickAnswerFromAmbiguity(baseAnswer, ambiguityLevel, question.kind);
+      const wasNoisy = actualAnswer !== baseAnswer;
+
+      let consecutiveNoCountBatch = 0;
+      for (let i = questionHistory.length - 1; i >= 0; i--) {
+        if (questionHistory[i]?.answer === 'NO') consecutiveNoCountBatch++;
+        else break;
       }
-      const wasNoisy = Math.random() < noiseRateForQuestion;
-      const actualAnswer = wasNoisy 
-        ? (correctAnswer === 'YES' ? 'NO' : 'YES')
-        : correctAnswer;
+      const consecutiveNoForAtariBatch = config.flow.consecutiveNoForAtari ?? 5;
+      const preferHighPBatch = consecutiveNoCountBatch >= consecutiveNoForAtariBatch;
 
       questionHistory.push({
         qIndex,
@@ -908,26 +1139,33 @@ async function runSimulation(
         isSummaryQuestion: (question as { isSummaryQuestion?: boolean }).isSummaryQuestion,
         summaryQuestionId: (question as { summaryQuestionId?: string }).summaryQuestionId,
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
-        answer: actualAnswer === 'YES' ? 'YES' : actualAnswer === 'NO' ? 'NO' : undefined,
+        answer: actualAnswer,
+        exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        seriesTagKeys: (question as { seriesTagKeys?: string[] }).seriesTagKeys,
+        titleCharType: (question as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
       });
 
       // タグのp値（確率ベースカバレッジ）を計算（回答処理前のprobabilitiesで計算）
       let tagCoverage: number | undefined;
       if (question.tagKey) {
-        const workIdsWithTag = await prisma.workTag.findMany({
-          where: {
-            tagKey: question.tagKey,
-            workId: { in: weights.map(w => w.workId) },
-          },
-          select: { workId: true },
-        });
-        const tagWorkIds = new Set(workIdsWithTag.map(wt => wt.workId));
+        const tagCovT = perfStart('tagCoverage');
+        const workIds = weights.map(w => w.workId);
+        const tagWorkIds = getWorkTagMatrix()
+          ? new Set(getWorkTagsFromMatrix(workIds, { tagKeys: [question.tagKey] }).map(wt => wt.workId))
+          : new Set(
+              (await prisma.workTag.findMany({
+                where: { tagKey: question.tagKey, workId: { in: workIds } },
+                select: { workId: true },
+              })).map(wt => wt.workId)
+            );
         tagCoverage = probabilities
           .filter(p => tagWorkIds.has(p.workId))
           .reduce((sum, p) => sum + p.probability, 0);
+        perfEnd('tagCoverage', tagCovT);
       }
 
-      weights = await processAnswer(weights, question, actualAnswer, config);
+      weights = await processAnswer(weights, question, actualAnswer, config, { workInfoMap });
 
       const newProbabilities = normalizeWeights(weights);
       const newSorted = [...newProbabilities].sort((a, b) => {
@@ -955,16 +1193,15 @@ async function runSimulation(
         top1WorkId: topWorkId,
         top1Probability: confidence,
         tagCoverage,
+        effectiveCandidates: calculateEffectiveCandidates(probabilities),
+        preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighPBatch : undefined,
       });
 
-      if (newConfidence >= config.confirm.revealThreshold) {
+      const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
+      if (newConfidence >= revealThreshold) {
         const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
         if (revealWorkId) {
-          const revealWork = await prisma.work.findUnique({
-            where: { workId: revealWorkId },
-            select: { title: true },
-          });
-          const revealWorkTitle = revealWork?.title ?? '(不明)';
+          const revealWorkTitle = workTitleMap.get(revealWorkId) ?? '(不明)';
           const isCorrect = revealWorkId === targetWorkId;
           questionCount++;
           steps.push({
@@ -982,6 +1219,7 @@ async function runSimulation(
             revealWorkId: revealWorkId,
             revealWorkTitle: revealWorkTitle,
             revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+            effectiveCandidates: calculateEffectiveCandidates(newProbabilities),
           });
           if (isCorrect) {
             endedBy = 'REVEAL';
@@ -1006,6 +1244,9 @@ async function runSimulation(
       }
     }
 
+    perfEnd('runSimulation', simT);
+    });
+
     // ループ正常終了（maxQuestions 到達）→ 強制 REVEAL（既出は候補から外す）
     if (outcome === 'MAX_QUESTIONS' && questionCount >= config.flow.maxQuestions) {
       endedBy = 'MAX_QUESTIONS';
@@ -1017,11 +1258,7 @@ async function runSimulation(
       const forceRevealId = finalSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? finalSorted[0]?.workId;
       const forceRevealConf = finalSorted.find(p => p.workId === forceRevealId)?.probability ?? finalSorted[0]?.probability ?? 0;
       if (forceRevealId) {
-        const revealWork = await prisma.work.findUnique({
-          where: { workId: forceRevealId },
-          select: { title: true },
-        });
-        const revealWorkTitle = revealWork?.title ?? '(不明)';
+        const revealWorkTitle = workTitleMap.get(forceRevealId) ?? '(不明)';
         const isCorrect = forceRevealId === targetWorkId;
         questionCount++;
         steps.push({
@@ -1036,6 +1273,7 @@ async function runSimulation(
           revealWorkId: forceRevealId,
           revealWorkTitle,
           revealResult: isCorrect ? 'SUCCESS' : 'MISS',
+          effectiveCandidates: calculateEffectiveCandidates(finalProbs),
         });
         outcome = isCorrect ? 'SUCCESS' : 'MAX_QUESTIONS';
         finalWorkId = forceRevealId;
@@ -1058,13 +1296,23 @@ async function runSimulation(
 
     let finalWorkTitle: string | null = null;
     if (finalWorkId) {
-      const fw = await prisma.work.findUnique({
-        where: { workId: finalWorkId },
-        select: { title: true },
-      });
-      finalWorkTitle = fw?.title ?? null;
+      finalWorkTitle = workTitleMap.get(finalWorkId) ?? null;
     }
 
+    // 分析用データ（wasNoisy数・ノイズ発生ステップ等）
+    const noisySteps = steps.filter(s => s.wasNoisy);
+    const firstNoisyIdx = noisySteps.length > 0 ? steps.findIndex(s => s.wasNoisy) : -1;
+    const analysisData: SimulationAnalysisData = {
+      wasNoisyCount: noisySteps.length,
+      firstNoisyStepIndex: firstNoisyIdx,
+      noisyStepIndices: steps.filter(s => s.wasNoisy).map(s => s.qIndex),
+      correctRank: diagnostic.correctRank,
+      top1Confidence: diagnostic.top1Confidence,
+      totalQuestions: questionCount,
+      noisyRatio: questionCount > 0 ? noisySteps.length / questionCount : 0,
+    };
+
+    const perfSummary = toPerfSummary(perfAcc);
     return {
       success: outcome === 'SUCCESS',
       targetWorkId,
@@ -1075,7 +1323,9 @@ async function runSimulation(
       steps,
       outcome,
       diagnostic,
+      analysisData,
       workDetails,
+      ...(perfSummary && { perfSummary }),
     };
   } catch (error) {
     console.error('Error in runSimulation:', error);

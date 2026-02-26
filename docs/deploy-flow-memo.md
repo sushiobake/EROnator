@@ -54,8 +54,9 @@
    - 括弧 `[YOUR-PASSWORD]` などは消して、実際の値だけ書く。`.env` は触らない
 
 3. **同期実行**
-   - `npm run sync:supabase`
-   - 終わったら手元は SQLite のまま（スキーマも自動で戻る）
+   - SQLite 使用時: `npm run sync:supabase`
+   - Postgres 使用時: `npm run sync:supabase -- --source=postgres`
+   - 終わったら手元の DB のまま（スキーマも自動で戻る）
    - **WorkTag 行列**（`data/workTagMatrix.json`）も同期完了後に自動で再生成される
 
 **同期の仕方**: 現状は **一括のみ**（ゲーム登録済みの全 Work を upsert）。Work は 1 件ずつ、WorkTag は 500 件ずつバッチで送っている。件数制限や「差分だけ」のオプションはない。必要ならスクリプトに `--limit` などを追加する対応は可能。

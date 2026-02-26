@@ -104,8 +104,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log(`[tags/list] Found ${tags.length} tags from Prisma`);
-
     // Prismaで0件の場合、直接SQLiteで取得（load-from-dbと同じフォールバック）
     if (tags.length === 0) {
       try {
@@ -113,7 +111,6 @@ export async function GET(request: NextRequest) {
         const sqlite3 = require('better-sqlite3');
         const path = require('path');
         const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-        console.log(`[tags/list] Prisma returned 0 tags, but DB file exists. Using direct SQLite query as fallback...`);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
         const db = sqlite3(dbPath, { readonly: true });
         
@@ -139,8 +136,6 @@ export async function GET(request: NextRequest) {
           questionText: string | null;
           workCount: number;
         }>;
-        
-        console.log(`[tags/list] Direct SQLite query found ${directTags.length} tags`);
         
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         db.close();
@@ -174,8 +169,6 @@ export async function GET(request: NextRequest) {
             ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
           };
         });
-
-        console.log(`[tags/list] Returning ${tagsData.length} tags from direct SQLite, stats:`, byType);
 
         return NextResponse.json({
           success: true,
@@ -221,8 +214,6 @@ export async function GET(request: NextRequest) {
         ...(tag.tagType === 'DERIVED' ? { rank: rank ?? '' } : {}),
       };
     });
-
-    console.log(`[tags/list] Returning ${tagsData.length} tags, stats:`, byType);
 
     return NextResponse.json({
       success: true,

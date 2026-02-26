@@ -46,9 +46,6 @@ export async function ensurePrismaConnected(): Promise<void> {
   try {
     await prisma.$connect();
     globalForPrisma.prismaConnected = true;
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Prisma Client connected successfully');
-    }
   } catch (error) {
     console.error('Failed to connect Prisma Client:', error);
     globalForPrisma.prismaConnected = false;
