@@ -3071,17 +3071,17 @@ export default function AdminTagsPage() {
                     const durationSeconds = Math.round((Date.now() - simStartTime) / 1000);
                     const failureAnalysis = failures.length > 0 ? (() => {
                       const withAnalysis = failures.filter((f: { analysisData?: { wasNoisyCount: number } }) => f.analysisData);
-                      const withDiag = failures.filter((f: { diagnostic?: { correctRank: number; top1Confidence: number } }) => f.diagnostic);
+                      const withDiag = failures.filter((f) => f.diagnostic);
                       return {
                         failureCount: failures.length,
                         avgWasNoisyCount: withAnalysis.length > 0
                           ? Math.round((withAnalysis.reduce((s: number, f: { analysisData?: { wasNoisyCount: number } }) => s + (f.analysisData!.wasNoisyCount), 0) / withAnalysis.length) * 100) / 100
                           : null,
                         avgCorrectRank: withDiag.length > 0
-                          ? Math.round((withDiag.reduce((s: number, f: { diagnostic?: { correctRank: number } }) => s + (f.diagnostic!.correctRank), 0) / withDiag.length) * 100) / 100
+                          ? Math.round((withDiag.reduce((s: number, f) => s + ((f.diagnostic as { correctRank: number }).correctRank), 0) / withDiag.length) * 100) / 100
                           : null,
                         avgTop1Confidence: withDiag.length > 0
-                          ? Math.round((withDiag.reduce((s: number, f: { diagnostic?: { top1Confidence: number } }) => s + (f.diagnostic!.top1Confidence), 0) / withDiag.length) * 10000) / 10000
+                          ? Math.round((withDiag.reduce((s: number, f) => s + ((f.diagnostic as { top1Confidence: number }).top1Confidence), 0) / withDiag.length) * 10000) / 10000
                           : null,
                       };
                     })() : null;
