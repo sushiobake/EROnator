@@ -4,6 +4,9 @@ import type { WorkWeight, WorkProbability } from './types';
  * Scoring / Probability Model (Spec §4)
  */
 
+/** Math.exp のオーバーフロー防止。引数を ±700 にクリップ */
+const EXP_CLAMP = 700;
+
 /**
  * basePrior計算 (Spec §4.1)
  * basePrior(w) = exp(alpha * popularityTotal(w))
@@ -14,7 +17,8 @@ export function calculateBasePrior(
   alpha: number
 ): number {
   const popularityTotal = popularityBase + popularityPlayBonus;
-  return Math.exp(alpha * popularityTotal);
+  const arg = Math.max(-EXP_CLAMP, Math.min(EXP_CLAMP, alpha * popularityTotal));
+  return Math.exp(arg);
 }
 
 /**

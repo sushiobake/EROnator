@@ -87,6 +87,31 @@ export default function TagManager({ adminToken }: Props) {
   // まとめ質問セクションの開閉（デフォルトは閉じる）
   const [summaryCollapsed, setSummaryCollapsed] = useState(true);
 
+  // 特別質問（シリーズ・文字種・有名度・50音・50音2次・作者文字種）
+  const [specialQuestions, setSpecialQuestions] = useState<{
+    SERIES?: { questionText?: string };
+    TITLE_CHAR_TYPE?: { KANJI?: string; HIRAGANA_OR_KATAKANA?: string };
+    POPULARITY?: { questionText?: string; popularityThreshold?: number };
+    TITLE_SYLLABLE?: { ranges?: Array<{ id: string; label: string; questionText: string; chars: string[] }> };
+    TITLE_SYLLABLE_2?: {
+      branches?: Record<string, {
+        yesBranch?: { label: string; questionText: string; chars: string[] };
+        noBranch?: { label: string; questionText: string; chars: string[] };
+      }>;
+    };
+    AUTHOR_CHAR_TYPE?: { HIRAGANA_OR_KATAKANA?: string; KANJI_OR_ALPHA?: string };
+  } | null>(null);
+  const [specialQuestionsCollapsed, setSpecialQuestionsCollapsed] = useState(true);
+  const [editingSpecial, setEditingSpecial] = useState<{
+    type: string;
+    key?: string;
+    id?: string;
+    subKey?: 'questionText' | 'chars' | 'label';
+    parentId?: string;
+    branch?: 'yesBranch' | 'noBranch';
+  } | null>(null);
+  const [editingSpecialValue, setEditingSpecialValue] = useState('');
+
   // タグ読み込み
   const fetchTags = async () => {
     if (!adminToken) return;
@@ -228,6 +253,25 @@ export default function TagManager({ adminToken }: Props) {
     } catch (e) { console.error('Failed to fetch erotic tags:', e); }
   };
 
+  // 特別質問読み込み
+  const fetchSpecialQuestions = async () => {
+    if (!adminToken) return;
+    try {
+      const res = await fetch('/api/admin/special-questions', { headers: { 'x-eronator-admin-token': adminToken } });
+      const data = await res.json();
+      if (data.success) {
+        setSpecialQuestions({
+          SERIES: data.SERIES,
+          TITLE_CHAR_TYPE: data.TITLE_CHAR_TYPE,
+          POPULARITY: data.POPULARITY,
+          TITLE_SYLLABLE: data.TITLE_SYLLABLE,
+          TITLE_SYLLABLE_2: data.TITLE_SYLLABLE_2,
+          AUTHOR_CHAR_TYPE: data.AUTHOR_CHAR_TYPE,
+        });
+      }
+    } catch (e) { console.error('Failed to fetch special questions:', e); }
+  };
+
   useEffect(() => {
     fetchTags();
     fetchRanks();
@@ -236,6 +280,7 @@ export default function TagManager({ adminToken }: Props) {
     fetchSummaryQuestions();
     fetchVagueTags();
     fetchEroticTags();
+    fetchSpecialQuestions();
   }, [adminToken]);
 
   // 統合ランクを取得
@@ -682,26 +727,93 @@ export default function TagManager({ adminToken }: Props) {
     } catch (e) { console.error('Failed to toggle erotic:', e); }
   };
 
+  // 50音範囲の削除
+  const handleDeleteSyllableRange = async (rangeId: string) => {
+    if (!adminToken || !specialQuestions?.TITLE_SYLLABLE?.ranges) return;
+    if (!confirm(`「${specialQuestions.TITLE_SYLLABLE.ranges.find(r => r.id === rangeId)?.label ?? rangeId}」を削除しますか？`)) return;
+    try {
+      const updated = specialQuestions.TITLE_SYLLABLE.ranges.filter(r => r.id !== rangeId);
+      const res = await fetch('/api/admin/special-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({ type: 'TITLE_SYLLABLE', key: 'ranges', value: updated }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSpecialQuestions(prev => prev ? { ...prev, TITLE_SYLLABLE: data.TITLE_SYLLABLE } : null);
+        setEditingSpecial(null);
+        setEditingSpecialValue('');
+      } else alert(data.error || '削除に失敗しました');
+    } catch (e) {
+      console.error(e);
+      alert('削除に失敗しました');
+    }
+  };
+
+  // 特別質問の保存
+  const handleSaveSpecialQuestion = async () => {
+    if (!editingSpecial || !adminToken) return;
+    try {
+      const body: Record<string, unknown> = { type: editingSpecial.type };
+      if (editingSpecial.key) body.key = editingSpecial.key;
+      if (editingSpecial.id && editingSpecial.type === 'TITLE_SYLLABLE' && editingSpecial.subKey === 'chars') {
+        // 範囲の chars を更新: カンマ区切りをパースして ranges 全体を置換
+        const ranges = specialQuestions?.TITLE_SYLLABLE?.ranges ?? [];
+        const chars = editingSpecialValue.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+        const updated = ranges.map(r => r.id === editingSpecial.id ? { ...r, chars } : r);
+        body.key = 'ranges';
+        body.value = updated;
+      } else if (editingSpecial.id && editingSpecial.type === 'TITLE_SYLLABLE' && !editingSpecial.subKey) {
+        body.key = editingSpecial.id;
+      } else if (editingSpecial.type === 'POPULARITY' && editingSpecial.key === 'popularityThreshold') {
+        body.value = parseInt(editingSpecialValue, 10);
+      } else if (editingSpecial.type === 'TITLE_SYLLABLE' && editingSpecial.key === 'ranges') {
+        try {
+          body.value = JSON.parse(editingSpecialValue);
+        } catch {
+          alert('JSON形式が不正です');
+          return;
+        }
+      } else if (editingSpecial.type === 'TITLE_SYLLABLE_2' && editingSpecial.parentId && editingSpecial.branch && editingSpecial.subKey) {
+        body.key = `${editingSpecial.parentId}.${editingSpecial.branch}.${editingSpecial.subKey}`;
+        body.value = editingSpecial.subKey === 'chars'
+          ? editingSpecialValue.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean)
+          : editingSpecialValue;
+      } else if (editingSpecial.type === 'AUTHOR_CHAR_TYPE' && editingSpecial.key) {
+        body.key = editingSpecial.key;
+        body.value = editingSpecialValue;
+      } else {
+        body.value = editingSpecialValue;
+      }
+      const res = await fetch('/api/admin/special-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSpecialQuestions({
+          SERIES: data.SERIES,
+          TITLE_CHAR_TYPE: data.TITLE_CHAR_TYPE,
+          POPULARITY: data.POPULARITY,
+          TITLE_SYLLABLE: data.TITLE_SYLLABLE,
+          TITLE_SYLLABLE_2: data.TITLE_SYLLABLE_2,
+          AUTHOR_CHAR_TYPE: data.AUTHOR_CHAR_TYPE,
+        });
+        setEditingSpecial(null);
+        setEditingSpecialValue('');
+      } else {
+        alert(data.error || '保存に失敗しました');
+      }
+    } catch (e) {
+      console.error('Failed to save special question:', e);
+      alert('保存に失敗しました');
+    }
+  };
+
   return (
     <div>
-      {/* 統計 */}
-      <div style={{ 
-        display: 'flex', 
-        gap: '15px', 
-        marginBottom: '20px',
-        padding: '15px',
-        backgroundColor: '#f8f9fa',
-        borderRadius: '8px',
-        flexWrap: 'wrap'
-      }}>
-        <div><strong>全タグ:</strong> {stats.total}件</div>
-        <div style={{ color: RANK_TEXT.S }}><strong>S:</strong> {stats.S}</div>
-        <div style={{ color: RANK_TEXT.A }}><strong>A:</strong> {stats.A}</div>
-        <div style={{ color: RANK_TEXT.B }}><strong>B:</strong> {stats.B}</div>
-        <div style={{ color: RANK_TEXT.C }}><strong>C:</strong> {stats.C}</div>
-        <div style={{ color: '#666' }}><strong>未設定:</strong> {stats.N}</div>
-        <div style={{ color: RANK_TEXT.X }}><strong>X:</strong> {stats.X}</div>
-      </div>
+      <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>タグ＆質問リスト</h2>
 
       {/* 禁止タグ管理（折りたたみ） */}
       <details style={{ marginBottom: '20px' }}>
@@ -761,6 +873,305 @@ export default function TagManager({ adminToken }: Props) {
               </div>
             ))}
           </div>
+        </div>
+      </details>
+
+      {/* 特別質問（シリーズ・文字種・有名度・50音） */}
+      <details
+        open={!specialQuestionsCollapsed}
+        onToggle={e => setSpecialQuestionsCollapsed(!(e.target as HTMLDetailsElement).open)}
+        style={{ marginBottom: '20px' }}
+      >
+        <summary style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#e8f4fd', borderRadius: '4px' }}>
+          ⭐ 特別質問（シリーズ・文字種・有名度・50音・50音2次・作者文字種）
+        </summary>
+        <div style={{ padding: '15px', backgroundColor: '#f0f8ff', borderRadius: '0 0 8px 8px' }}>
+          {specialQuestions && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* SERIES */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>シリーズもの</div>
+                {editingSpecial?.type === 'SERIES' ? (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={editingSpecialValue}
+                      onChange={e => setEditingSpecialValue(e.target.value)}
+                      style={{ flex: 1, padding: '6px' }}
+                      placeholder="その作品は、シリーズものや総集編？"
+                    />
+                    <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                    <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => { setEditingSpecial({ type: 'SERIES' }); setEditingSpecialValue(specialQuestions.SERIES?.questionText ?? ''); }}
+                    style={{ cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}
+                  >
+                    {specialQuestions.SERIES?.questionText || '（未設定）'} ✏️
+                  </div>
+                )}
+              </div>
+
+              {/* TITLE_CHAR_TYPE */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>タイトル文字種（2択: 漢字 / ひらがなorカタカナ）</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {(['KANJI', 'HIRAGANA_OR_KATAKANA'] as const).map(k => (
+                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '140px' }}>{k === 'KANJI' ? '漢字' : 'ひらがなorカタカナ'}:</span>
+                      {editingSpecial?.type === 'TITLE_CHAR_TYPE' && editingSpecial.key === k ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingSpecialValue}
+                            onChange={e => setEditingSpecialValue(e.target.value)}
+                            style={{ flex: 1, padding: '6px' }}
+                          />
+                          <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                          <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                        </>
+                      ) : (
+                        <div
+                          onClick={() => { setEditingSpecial({ type: 'TITLE_CHAR_TYPE', key: k }); setEditingSpecialValue(specialQuestions.TITLE_CHAR_TYPE?.[k] ?? ''); }}
+                          style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}
+                        >
+                          {specialQuestions.TITLE_CHAR_TYPE?.[k] || '（未設定）'} ✏️
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* POPULARITY */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>有名度</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '80px' }}>質問文:</span>
+                    {editingSpecial?.type === 'POPULARITY' && !editingSpecial.key ? (
+                      <>
+                        <input
+                          type="text"
+                          value={editingSpecialValue}
+                          onChange={e => setEditingSpecialValue(e.target.value)}
+                          style={{ flex: 1, padding: '6px' }}
+                          placeholder="その作品は、かなり有名？"
+                        />
+                        <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                        <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                      </>
+                    ) : (
+                      <div
+                        onClick={() => { setEditingSpecial({ type: 'POPULARITY' }); setEditingSpecialValue(specialQuestions.POPULARITY?.questionText ?? ''); }}
+                        style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}
+                      >
+                        {specialQuestions.POPULARITY?.questionText || '（未設定）'} ✏️
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ width: '80px' }}>閾値:</span>
+                    {editingSpecial?.type === 'POPULARITY' && editingSpecial.key === 'popularityThreshold' ? (
+                      <>
+                        <input
+                          type="number"
+                          value={editingSpecialValue}
+                          onChange={e => setEditingSpecialValue(e.target.value)}
+                          style={{ width: '80px', padding: '6px' }}
+                        />
+                        <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                        <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                      </>
+                    ) : (
+                      <div
+                        onClick={() => { setEditingSpecial({ type: 'POPULARITY', key: 'popularityThreshold' }); setEditingSpecialValue(String(specialQuestions.POPULARITY?.popularityThreshold ?? 40)); }}
+                        style={{ cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd', width: '80px' }}
+                      >
+                        {specialQuestions.POPULARITY?.popularityThreshold ?? 40} ✏️
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* TITLE_SYLLABLE */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>50音分類（さ～わ行・あ～さ行・か～は行など）</div>
+                {((specialQuestions.TITLE_SYLLABLE?.ranges ?? []).length ? specialQuestions.TITLE_SYLLABLE!.ranges! : []).map((r) => (
+                  <div key={r.id} style={{ marginBottom: '12px', padding: '10px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}>
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>{r.label} (id: {r.id})</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '70px', fontSize: '12px' }}>質問文:</span>
+                        {editingSpecial?.type === 'TITLE_SYLLABLE' && editingSpecial.id === r.id && !editingSpecial.subKey ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editingSpecialValue}
+                              onChange={e => setEditingSpecialValue(e.target.value)}
+                              style={{ flex: 1, padding: '6px' }}
+                              placeholder={r.questionText}
+                            />
+                            <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                            <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                          </>
+                        ) : (
+                          <div
+                            onClick={() => { setEditingSpecial({ type: 'TITLE_SYLLABLE', key: r.id, id: r.id }); setEditingSpecialValue(r.questionText); }}
+                            style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: '#f9f9f9', borderRadius: '4px', border: '1px solid #ddd' }}
+                          >
+                            {r.questionText} ✏️
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <span style={{ width: '70px', fontSize: '12px', paddingTop: '6px' }}>対象文字:</span>
+                        {editingSpecial?.type === 'TITLE_SYLLABLE' && editingSpecial.id === r.id && editingSpecial.subKey === 'chars' ? (
+                          <>
+                            <input
+                              type="text"
+                              value={editingSpecialValue}
+                              onChange={e => setEditingSpecialValue(e.target.value)}
+                              style={{ flex: 1, padding: '6px', fontFamily: 'monospace' }}
+                              placeholder="ア,イ,ウ,エ,オ,..."
+                            />
+                            <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                            <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                          </>
+                        ) : (
+                          <div
+                            onClick={() => { setEditingSpecial({ type: 'TITLE_SYLLABLE', id: r.id, subKey: 'chars' }); setEditingSpecialValue((r.chars ?? []).join(',')); }}
+                            style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: '#f9f9f9', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }}
+                          >
+                            {(r.chars ?? []).join(',') || '（未設定）'} ✏️
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSyllableRange(r.id)}
+                        style={{ fontSize: '11px', padding: '2px 8px', color: '#c00', border: '1px solid #c00', borderRadius: '4px', background: 'white', cursor: 'pointer' }}
+                      >
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {(!specialQuestions.TITLE_SYLLABLE?.ranges?.length) && (
+                  <div style={{ color: '#999', fontSize: '12px' }}>config/specialQuestions.json で TITLE_SYLLABLE.ranges を設定してください</div>
+                )}
+              </div>
+
+              {/* TITLE_SYLLABLE_2 */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>50音2次（1次質問のYES/NO後の絞り込み）</div>
+                {specialQuestions.TITLE_SYLLABLE_2?.branches && Object.entries(specialQuestions.TITLE_SYLLABLE_2.branches).map(([parentId, branches]) => {
+                  const parentRange = specialQuestions.TITLE_SYLLABLE?.ranges?.find(r => r.id === parentId);
+                  const parentLabel = parentRange?.label ?? parentId;
+                  return (
+                    <div key={parentId} style={{ marginBottom: '12px', padding: '10px', backgroundColor: '#fafafa', borderRadius: '4px', border: '1px solid #ddd' }}>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>1次: {parentLabel} ({parentId})</div>
+                      {(['yesBranch', 'noBranch'] as const).map(branch => {
+                        const b = branch === 'yesBranch' ? branches.yesBranch : branches.noBranch;
+                        if (!b) return null;
+                        const branchLabel = branch === 'yesBranch' ? 'YES時' : 'NO時';
+                        return (
+                          <div key={branch} style={{ marginBottom: '8px', paddingLeft: '12px', borderLeft: '3px solid #ccc' }}>
+                            <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{branchLabel} ({b.label})</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '60px', fontSize: '11px' }}>質問文:</span>
+                                {editingSpecial?.type === 'TITLE_SYLLABLE_2' && editingSpecial.parentId === parentId && editingSpecial.branch === branch && editingSpecial.subKey === 'questionText' ? (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={editingSpecialValue}
+                                      onChange={e => setEditingSpecialValue(e.target.value)}
+                                      style={{ flex: 1, padding: '6px', fontSize: '12px' }}
+                                    />
+                                    <button onClick={handleSaveSpecialQuestion} style={{ padding: '4px 10px', fontSize: '12px' }}>保存</button>
+                                    <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }} style={{ fontSize: '12px' }}>キャンセル</button>
+                                  </>
+                                ) : (
+                                  <div
+                                    onClick={() => { setEditingSpecial({ type: 'TITLE_SYLLABLE_2', parentId, branch, subKey: 'questionText' }); setEditingSpecialValue(b.questionText); }}
+                                    style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }}
+                                  >
+                                    {b.questionText || '（未設定）'} ✏️
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '60px', fontSize: '11px' }}>対象文字:</span>
+                                {editingSpecial?.type === 'TITLE_SYLLABLE_2' && editingSpecial.parentId === parentId && editingSpecial.branch === branch && editingSpecial.subKey === 'chars' ? (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={editingSpecialValue}
+                                      onChange={e => setEditingSpecialValue(e.target.value)}
+                                      style={{ flex: 1, padding: '6px', fontSize: '12px', fontFamily: 'monospace' }}
+                                      placeholder="サ,シ,ス,..."
+                                    />
+                                    <button onClick={handleSaveSpecialQuestion} style={{ padding: '4px 10px', fontSize: '12px' }}>保存</button>
+                                    <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }} style={{ fontSize: '12px' }}>キャンセル</button>
+                                  </>
+                                ) : (
+                                  <div
+                                    onClick={() => { setEditingSpecial({ type: 'TITLE_SYLLABLE_2', parentId, branch, subKey: 'chars' }); setEditingSpecialValue((b.chars ?? []).join(',')); }}
+                                    style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd', fontSize: '11px' }}
+                                  >
+                                    {(b.chars ?? []).join(',') || '（未設定）'} ✏️
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+                {(!specialQuestions.TITLE_SYLLABLE_2?.branches || Object.keys(specialQuestions.TITLE_SYLLABLE_2.branches).length === 0) && (
+                  <div style={{ color: '#999', fontSize: '12px' }}>config/specialQuestions.json で TITLE_SYLLABLE_2.branches を設定してください</div>
+                )}
+              </div>
+
+              {/* AUTHOR_CHAR_TYPE */}
+              <div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>作者名の文字種（2択・情報量最大: ひらがなorカタカナ vs 漢字orアルファベット）</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {(['HIRAGANA_OR_KATAKANA', 'KANJI_OR_ALPHA'] as const).map(k => (
+                    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '180px' }}>{k === 'HIRAGANA_OR_KATAKANA' ? 'ひらがなorカタカナ' : '漢字orアルファベット'}:</span>
+                      {editingSpecial?.type === 'AUTHOR_CHAR_TYPE' && editingSpecial.key === k ? (
+                        <>
+                          <input
+                            type="text"
+                            value={editingSpecialValue}
+                            onChange={e => setEditingSpecialValue(e.target.value)}
+                            style={{ flex: 1, padding: '6px' }}
+                          />
+                          <button onClick={handleSaveSpecialQuestion} style={{ padding: '6px 12px' }}>保存</button>
+                          <button onClick={() => { setEditingSpecial(null); setEditingSpecialValue(''); }}>キャンセル</button>
+                        </>
+                      ) : (
+                        <div
+                          onClick={() => { setEditingSpecial({ type: 'AUTHOR_CHAR_TYPE', key: k }); setEditingSpecialValue(specialQuestions.AUTHOR_CHAR_TYPE?.[k] ?? ''); }}
+                          style={{ flex: 1, cursor: 'pointer', padding: '6px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}
+                        >
+                          {specialQuestions.AUTHOR_CHAR_TYPE?.[k] || '（未設定）'} ✏️
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </details>
 

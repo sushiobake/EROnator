@@ -1,6 +1,6 @@
 /**
  * Phase1: チェック待ちから1件取得し、振り分け判断のみ実行（allTags なし）
- * POST /api/admin/groq-check-phase1
+ * POST /api/admin/openai-check-phase1
  * OpenAI GPT-5-mini 使用
  */
 
@@ -102,7 +102,7 @@ export async function POST() {
 
     let content: string;
     try {
-      content = await callCheckApi(userContent, 'groq-check-phase1');
+      content = await callCheckApi(userContent, 'openai-check-phase1');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
@@ -117,8 +117,8 @@ export async function POST() {
       if (!jsonMatch) throw new Error('No JSON in response');
       parsed = JSON.parse(jsonMatch[0]) as typeof parsed;
     } catch (e) {
-      console.error('[groq-check-phase1] Parse error:', e);
-      console.error('[groq-check-phase1] Raw:', content.slice(0, 500));
+      console.error('[openai-check-phase1] Parse error:', e);
+      console.error('[openai-check-phase1] Raw:', content.slice(0, 500));
       return NextResponse.json(
         { error: 'Failed to parse AI response as JSON', raw: content.slice(0, 300) },
         { status: 502 }
@@ -156,7 +156,7 @@ export async function POST() {
       result: parsed.result,
     });
   } catch (error) {
-    console.error('[groq-check-phase1]', error);
+    console.error('[openai-check-phase1]', error);
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

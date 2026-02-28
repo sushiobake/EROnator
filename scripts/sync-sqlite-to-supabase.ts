@@ -192,6 +192,7 @@ async function main() {
               tagSource: rowToStr(row.tagSource),
               aiAnalyzed: rowToBool(row.aiAnalyzed),
               humanChecked: rowToBool(row.humanChecked),
+              titleReadingInitial: rowToStr(row.titleReadingInitial),
             },
             update: {
               title: row.title as string,
@@ -215,6 +216,7 @@ async function main() {
               tagSource: rowToStr(row.tagSource),
               aiAnalyzed: rowToBool(row.aiAnalyzed),
               humanChecked: rowToBool(row.humanChecked),
+              titleReadingInitial: rowToStr(row.titleReadingInitial),
             },
           })
         )

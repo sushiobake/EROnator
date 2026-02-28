@@ -12,7 +12,9 @@ export interface WorkResponse {
   title: string;
   authorName: string;
   productUrl: string;
-  thumbnailUrl?: string | null; // 許可ホスト判定後のみ返す
+  thumbnailUrl?: string | null;
+  reviewAverage?: number | null;
+  reviewCount?: number | null;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface QuestionResponse {
   /** 質問の出題種別（キャラ差分表示用） */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
   /** SPECIAL_QUESTION の種別 */
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';
 }
 
 /**

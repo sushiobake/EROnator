@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/server/db/client';
 import { resolveTagKeyForDisplayName } from '@/server/admin/resolveTagByDisplayName';
-import { analyzeWithCloudflareAi, analyzeWithHuggingFace, analyzeWithGroq } from '@/server/ai/cloudflareAi';
+import { analyzeWithOpenAi } from '@/server/ai/cloudflareAi';
 import { buildDynamicSystemPrompt, getTagsByRank } from '@/config/aiPrompt';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -35,7 +35,7 @@ function generateTagKey(displayName: string, tagType: 'DERIVED' | 'STRUCTURAL' =
   return tagType === 'STRUCTURAL' ? `char_${hash}` : `tag_${hash}`;
 }
 
-/** 作品＋リストを渡してAI分析。Cloudflare時は最小ペイロードでWorker呼び出し（workId/runId/commentHashで紐付け検証） */
+/** 作品＋リストを渡してAI分析。GPT（OpenAI API）のみ使用 */
 async function analyzeWork(
   work: { workId: string; commentText: string; title: string; workTags: Array<{ tag: { tagType: string; displayName: string } }> },
   lists: { officialTagNames: string[]; aList: string[]; bList: string[]; cList: string[] }
@@ -44,53 +44,7 @@ async function analyzeWork(
     .filter((wt) => wt.tag.tagType === 'OFFICIAL')
     .map((wt) => wt.tag.displayName);
   const systemPrompt = buildDynamicSystemPrompt(lists.officialTagNames, alreadyOnWorkOfficialNames);
-  const aiProvider = process.env.ERONATOR_AI_PROVIDER || 'auto';
-
-  if (aiProvider === 'groq') {
-    return await analyzeWithGroq(work.commentText, systemPrompt);
-  }
-  if (aiProvider === 'cloudflare' && process.env.CLOUDFLARE_WORKER_AI_URL) {
-    const commentHash = crypto.createHash('sha256').update(work.commentText, 'utf8').digest('hex');
-    return await analyzeWithCloudflareAi(
-      {
-        title: work.title,
-        commentText: work.commentText,
-        currentSTags: alreadyOnWorkOfficialNames,
-        workId: work.workId,
-        runId: crypto.randomUUID(),
-        commentHash,
-      },
-      undefined,
-      { filterLists: { s: lists.officialTagNames, a: lists.aList, b: lists.bList, c: lists.cList } }
-    );
-  }
-  if (aiProvider === 'huggingface') {
-    return await analyzeWithHuggingFace(work.commentText, systemPrompt);
-  }
-
-  if (process.env.GROQ_API_KEY) {
-    return await analyzeWithGroq(work.commentText, systemPrompt);
-  }
-  if (process.env.CLOUDFLARE_WORKER_AI_URL) {
-    const commentHash = crypto.createHash('sha256').update(work.commentText, 'utf8').digest('hex');
-    return await analyzeWithCloudflareAi(
-      {
-        title: work.title,
-        commentText: work.commentText,
-        currentSTags: alreadyOnWorkOfficialNames,
-        workId: work.workId,
-        runId: crypto.randomUUID(),
-        commentHash,
-      },
-      undefined,
-      { filterLists: { s: lists.officialTagNames, a: lists.aList, b: lists.bList, c: lists.cList } }
-    );
-  }
-  if (process.env.HUGGINGFACE_API_TOKEN) {
-    return await analyzeWithHuggingFace(work.commentText, systemPrompt);
-  }
-
-  throw new Error('No AI provider configured. Set GROQ_API_KEY, CLOUDFLARE_WORKER_AI_URL, or HUGGINGFACE_API_TOKEN');
+  return await analyzeWithOpenAi(work.commentText, systemPrompt);
 }
 
 // GET: 再抽出対象の作品一覧を取得

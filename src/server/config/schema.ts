@@ -45,8 +45,22 @@ const AlgoSchema = z.object({
   useBayesianUpdate: z.boolean().optional(),
   /**
    * ベイズ更新時の尤度の下限（確率0で殺さない）。0.02 なら尤度は [0.02, 0.98]。未設定時 0.02。
+   * bayesianEpsilonPhases が設定されている場合はフェーズ別に上書き。
    */
   bayesianEpsilon: z.number().min(0).max(0.5).optional(),
+  /**
+   * P4: フェーズ別イプシロン。EC（effectiveCandidates）に応じて epsilon を変える。
+   * 前半 EC>200 → early, 中盤 20<EC<=200 → mid, 後半 EC<=20 → late。
+   * 未設定時は bayesianEpsilon を全フェーズで使用。
+   */
+  bayesianEpsilonPhases: z
+    .object({
+      early: z.number().min(0).max(0.5),
+      mid: z.number().min(0).max(0.5),
+      late: z.number().min(0).max(0.5),
+    })
+    .strict()
+    .optional(),
 }).strict();
 
 const FlowSchema = z.object({
@@ -75,10 +89,22 @@ const FlowSchema = z.object({
    */
   titleInitialTopN: z.number().int().min(1).optional(),
   /**
-   * Special Question を挿入する質問番号（1-based）。例: [3, 5, 9, 10] で Q3, Q5, Q9, Q10。
-   * 未設定時は [3, 5, 9, 10]。
+   * Special Question を挿入する質問番号（1-based）。例: [3, 5, 9, 16] で Q3, Q5, Q9, Q16。
+   * 未設定時は [3, 5, 9, 16]。
    */
   specialQuestionSlotIndices: z.array(z.number().int().positive()).optional(),
+  /**
+   * 救済特別質問（Q20, Q24）: 絞り込めていない場合のみ TITLE_SYLLABLE_2 / AUTHOR_CHAR_TYPE を挿入。
+   * 未設定時は無効。
+   */
+  rescueSpecialCondition: z
+    .object({
+      slotIndices: z.array(z.number().int().positive()),
+      effectiveCandidatesMin: z.number().positive(),
+      confidenceMax: z.number().min(0).max(1),
+    })
+    .strict()
+    .optional(),
 }).strict();
 
 const DataQualitySchema = z.object({

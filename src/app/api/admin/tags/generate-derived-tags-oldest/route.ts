@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { resolveTagKeyForDisplayName } from '@/server/admin/resolveTagByDisplayName';
-import { analyzeWithConfiguredProvider } from '@/server/ai/cloudflareAi';
+import { analyzeWithOpenAi } from '@/server/ai/cloudflareAi';
 
 const SYSTEM_PROMPT = `あなたは成人向け同人誌のタグ生成AIです。
 作品コメントを読み、その作品に適した「準有名タグ」を生成してください。
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
           commentTextToUse = work.commentText.substring(0, MAX_COMMENT_LENGTH);
         }
 
-        const aiResult = await analyzeWithConfiguredProvider(commentTextToUse, SYSTEM_PROMPT);
+        const aiResult = await analyzeWithOpenAi(commentTextToUse, SYSTEM_PROMPT);
         const filteredTags = aiResult.derivedTags.filter((tag) => !officialNameSet.has(tag.displayName.toLowerCase()));
 
         if (filteredTags.length === 0) {

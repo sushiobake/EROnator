@@ -15,21 +15,18 @@ import { prisma } from '@/server/db/client';
  * パフォーマンス最適化: 部分的なWork型も受け取れるように修正
  */
 export function toWorkResponse(
-  work: Pick<Work, 'workId' | 'title' | 'authorName' | 'productUrl' | 'thumbnailUrl'>
+  work: Pick<Work, 'workId' | 'title' | 'authorName' | 'productUrl' | 'thumbnailUrl'> & { reviewAverage?: number | null; reviewCount?: number | null }
 ): WorkResponse {
   return {
     workId: work.workId,
     title: work.title,
     authorName: work.authorName,
-    productUrl: work.productUrl, // 必須（Spec §2.1）
+    productUrl: work.productUrl,
     thumbnailUrl: isAllowedThumbnailHost(work.thumbnailUrl)
       ? work.thumbnailUrl
-      : null, // 許可ホスト判定後のみ返す
-    // 以下は返さない（Data exposure policy）:
-    // - popularityBase, popularityPlayBonus
-    // - reviewCount, reviewAverage
-    // - sourcePayload
-    // - isAi（AI_GATE後は不要）
+      : null,
+    reviewAverage: work.reviewAverage ?? null,
+    reviewCount: work.reviewCount ?? null,
   };
 }
 

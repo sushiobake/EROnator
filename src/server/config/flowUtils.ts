@@ -22,19 +22,29 @@ export function getRevealThresholdForQuestion(
   return 0.4;
 }
 
-/** 動的延長時の最大質問数（confidence >= 0.3 のとき） */
-const EXTENDED_MAX_QUESTIONS = 35;
+/** 動的延長の上限（わからない回復・Q30 recovery のキャップ） */
+const MAX_QUESTIONS_CAP = 40;
 
-/** confidence がこの値以上なら maxQuestions を 35 まで延長 */
-const EXTEND_THRESHOLD = 0.3;
+export interface GetEffectiveMaxQuestionsOptions {
+  questionHistory?: Array<{ answer?: string }>;
+  effectiveCandidates?: number;
+  questionCount?: number;
+}
 
 /**
  * 有効な最大質問数を返す。
- * confidence >= 0.3 のとき 35 問まで延長、それ以外は config.flow.maxQuestions。
+ * - わからない1回につき +1 問
+ * - Q30 到達時かつ effectiveCandidates < 50 なら +5 問
+ * - 最大 40 問
  */
 export function getEffectiveMaxQuestions(
   baseMaxQuestions: number,
-  confidence: number
+  _confidence: number,
+  options?: GetEffectiveMaxQuestionsOptions
 ): number {
-  return confidence >= EXTEND_THRESHOLD ? EXTENDED_MAX_QUESTIONS : baseMaxQuestions;
+  const { questionHistory = [], effectiveCandidates = Infinity, questionCount = 0 } = options ?? {};
+  const unknownCount = questionHistory.filter(q => q.answer === 'UNKNOWN').length;
+  const recoveryBonus = (questionCount >= 30 && effectiveCandidates < 50) ? 5 : 0;
+  const total = baseMaxQuestions + unknownCount + recoveryBonus;
+  return Math.min(MAX_QUESTIONS_CAP, total);
 }

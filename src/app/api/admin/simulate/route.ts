@@ -23,7 +23,9 @@ import {
 } from '@/server/simulationPerf';
 import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
-import { getTitleCharType } from '@/server/utils/titleCharType';
+import { getTitleCharType, getTitleReadingInitialFromTitle } from '@/server/utils/titleCharType';
+import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
+import { getAuthorCharType } from '@/server/utils/authorCharType';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 
@@ -135,8 +137,17 @@ function getCorrectAnswer(
     specialQuestionType?: string;
     seriesTagKeys?: string[];
     titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
+    authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
+    popularityThreshold?: number;
+    syllableChars?: string[];
   },
-  targetWork: { title: string | null; authorName: string | null },
+  targetWork: {
+    title: string | null;
+    authorName: string | null;
+    popularityBase?: number | null;
+    popularityPlayBonus?: number | null;
+    titleReadingInitial?: string | null;
+  },
   targetTags: Set<string>,
   targetWorkTags: { displayName: string }[]
 ): string {
@@ -147,8 +158,38 @@ function getCorrectAnswer(
   }
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_CHAR_TYPE') {
     const targetCharType = getTitleCharType(targetWork.title ?? '');
-    const expectedCharType = question.titleCharType ?? 'KANJI';
+    const expectedCharType = (question as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType ?? 'KANJI';
+    if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
+      return (targetCharType === 'HIRAGANA' || targetCharType === 'KATAKANA') ? 'YES' : 'NO';
+    }
     return targetCharType === expectedCharType ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'POPULARITY') {
+    const threshold = (question as { popularityThreshold?: number }).popularityThreshold ?? 30;
+    const pop = (targetWork.popularityBase ?? 0) + (targetWork.popularityPlayBonus ?? 0);
+    return pop >= threshold ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE') {
+    const syllableChars = (question as { syllableChars?: string[] }).syllableChars ?? [];
+    const initials = getTitleReadingInitials(targetWork.titleReadingInitial);
+    const fallback = getTitleReadingInitialFromTitle(targetWork.title ?? '');
+    const toCheck: string[] = initials.length > 0 ? initials : fallback ? [fallback] : [];
+    return toCheck.some((c) => syllableChars.includes(c)) ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE_2') {
+    const syllableChars = (question as { syllableChars?: string[] }).syllableChars ?? [];
+    const initials = getTitleReadingInitials(targetWork.titleReadingInitial);
+    const fallback = getTitleReadingInitialFromTitle(targetWork.title ?? '');
+    const toCheck: string[] = initials.length > 0 ? initials : fallback ? [fallback] : [];
+    return toCheck.some((c) => syllableChars.includes(c)) ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'AUTHOR_CHAR_TYPE') {
+    const ct = getAuthorCharType(targetWork.authorName ?? '');
+    const expectedCharType = (question as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType ?? 'HIRAGANA_OR_KATAKANA';
+    if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
+      return (ct === 'HIRAGANA' || ct === 'KATAKANA') ? 'YES' : 'NO';
+    }
+    return (ct === 'KANJI' || ct === 'ALPHA') ? 'YES' : 'NO';
   }
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
     const summaryDisplayNames = question.summaryDisplayNames;
@@ -230,7 +271,7 @@ export async function POST(request: NextRequest) {
     getWorkTagMatrix();
     await ensureTagCacheLoaded();
 
-    // 正解作品を取得（タグの詳細情報も含む）
+    // 正解作品を取得（タグの詳細情報も含む。POPULARITY/TITLE_SYLLABLE用にpopularityPlayBonus, titleReadingInitialも取得）
     const targetWork = await prisma.work.findUnique({
       where: { workId: targetWorkId },
       select: {
@@ -239,6 +280,8 @@ export async function POST(request: NextRequest) {
         authorName: true,
         isAi: true,
         popularityBase: true,
+        popularityPlayBonus: true,
+        titleReadingInitial: true,
         reviewCount: true,
         reviewAverage: true,
         commentText: true,
@@ -341,7 +384,12 @@ export async function POST(request: NextRequest) {
       });
       const confidence = sorted[0]?.probability ?? 0;
       const topWorkId = sorted[0]?.workId ?? '';
-      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence)) break;
+      const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence, {
+        questionHistory,
+        effectiveCandidates,
+        questionCount,
+      })) break;
 
       // 次の質問を選択
       const question = await selectNextQuestion(
@@ -363,10 +411,10 @@ export async function POST(request: NextRequest) {
           });
           const revealWorkTitle = revealWork?.title ?? '(不明)';
           const isCorrect = forceRevealWorkId === targetWorkId;
-          questionCount++;
+          // REVEALは質問数に含めない（特別スロットを潰さないため）
           steps.push({
             qIndex: questionCount,
-            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？` },
+            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？`, specialQuestionType: undefined, hardConfirmType: undefined },
             answer: isCorrect ? 'CORRECT' : 'WRONG',
             wasNoisy: false,
             confidenceBefore: confidence,
@@ -424,9 +472,12 @@ export async function POST(request: NextRequest) {
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
         answer: actualAnswer,
         exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' }).specialQuestionType,
         seriesTagKeys: (question as { seriesTagKeys?: string[] }).seriesTagKeys,
-        titleCharType: (question as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
+        titleCharType: (question as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+        popularityThreshold: (question as { popularityThreshold?: number }).popularityThreshold,
+        syllableChars: (question as { syllableChars?: string[] }).syllableChars,
+        authorCharType: (question as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
       });
 
       // 回答処理
@@ -470,7 +521,7 @@ export async function POST(request: NextRequest) {
       }
 
       // ステップを記録（EXPLORE_TAG のとき exploreTagKind を付与し、シミュで種別がわかるようにする）
-      const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+      const stepEffectiveCandidates = calculateEffectiveCandidates(probabilities);
       steps.push({
         qIndex,
         question: {
@@ -489,7 +540,7 @@ export async function POST(request: NextRequest) {
         top1WorkId: topWorkId,
         top1Probability: confidence,
         tagCoverage,
-        effectiveCandidates,
+        effectiveCandidates: stepEffectiveCandidates,
         preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighP : undefined,
       });
 
@@ -506,13 +557,14 @@ export async function POST(request: NextRequest) {
           const revealWorkTitle = revealWork?.title ?? '(不明)';
           const isCorrect = revealWorkId === targetWorkId;
 
-          // REVEALステップを追加
-          questionCount++;
+          // REVEALステップを追加（REVEALは質問数に含めない）
           steps.push({
             qIndex: questionCount,
             question: {
               kind: 'REVEAL',
               displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
+              specialQuestionType: undefined,
+              hardConfirmType: undefined,
             },
             answer: isCorrect ? 'CORRECT' : 'WRONG',
             wasNoisy: false,
@@ -573,10 +625,10 @@ export async function POST(request: NextRequest) {
         });
         const revealWorkTitle = revealWork?.title ?? '(不明)';
         const isCorrect = forceRevealId === targetWorkId;
-        questionCount++;
+        // REVEALは質問数に含めない
         steps.push({
           qIndex: questionCount,
-          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？` },
+          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？`, specialQuestionType: undefined, hardConfirmType: undefined },
           answer: isCorrect ? 'CORRECT' : 'WRONG',
           wasNoisy: false,
           confidenceBefore: forceRevealConf,
@@ -949,7 +1001,7 @@ async function runSimulation(
   includePerf = false
 ): Promise<(SimulationResult & { perfSummary?: Record<string, number> }) | null> {
   try {
-    // 正解作品を取得（タグの詳細情報も含む）
+    // 正解作品を取得（タグの詳細情報も含む。POPULARITY/TITLE_SYLLABLE用にpopularityPlayBonus, titleReadingInitialも取得）
     const targetWork = await prisma.work.findUnique({
       where: { workId: targetWorkId },
       select: {
@@ -958,6 +1010,8 @@ async function runSimulation(
         authorName: true,
         isAi: true,
         popularityBase: true,
+        popularityPlayBonus: true,
+        titleReadingInitial: true,
         reviewCount: true,
         reviewAverage: true,
         commentText: true,
@@ -1067,7 +1121,12 @@ async function runSimulation(
       });
       const confidence = sorted[0]?.probability ?? 0;
       const topWorkId = sorted[0]?.workId ?? '';
-      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence)) break;
+      const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+      if (questionCount >= getEffectiveMaxQuestions(config.flow.maxQuestions, confidence, {
+        questionHistory,
+        effectiveCandidates,
+        questionCount,
+      })) break;
 
       const question = await selectNextQuestion(
         weights,
@@ -1083,10 +1142,10 @@ async function runSimulation(
         if (forceRevealWorkId) {
           const revealWorkTitle = workTitleMap.get(forceRevealWorkId) ?? '(不明)';
           const isCorrect = forceRevealWorkId === targetWorkId;
-          questionCount++;
+          // REVEALは質問数に含めない
           steps.push({
             qIndex: questionCount,
-            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？` },
+            question: { kind: 'REVEAL', displayText: `(強制) この作品は「${revealWorkTitle}」ですか？`, specialQuestionType: undefined, hardConfirmType: undefined },
             answer: isCorrect ? 'CORRECT' : 'WRONG',
             wasNoisy: false,
             confidenceBefore: confidence,
@@ -1141,9 +1200,12 @@ async function runSimulation(
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
         answer: actualAnswer,
         exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' }).specialQuestionType,
         seriesTagKeys: (question as { seriesTagKeys?: string[] }).seriesTagKeys,
-        titleCharType: (question as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
+        titleCharType: (question as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+        popularityThreshold: (question as { popularityThreshold?: number }).popularityThreshold,
+        syllableChars: (question as { syllableChars?: string[] }).syllableChars,
+        authorCharType: (question as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
       });
 
       // タグのp値（確率ベースカバレッジ）を計算（回答処理前のprobabilitiesで計算）
@@ -1185,6 +1247,7 @@ async function runSimulation(
           hardConfirmType: question.hardConfirmType,
           hardConfirmValue: question.hardConfirmValue,
           exploreTagKind: question.kind === 'EXPLORE_TAG' ? (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind : undefined,
+          specialQuestionType: question.kind === 'SPECIAL_QUESTION' ? (question as { specialQuestionType?: string }).specialQuestionType : undefined,
         },
         answer: actualAnswer,
         wasNoisy,
@@ -1203,12 +1266,14 @@ async function runSimulation(
         if (revealWorkId) {
           const revealWorkTitle = workTitleMap.get(revealWorkId) ?? '(不明)';
           const isCorrect = revealWorkId === targetWorkId;
-          questionCount++;
+          // REVEALは質問数に含めない
           steps.push({
             qIndex: questionCount,
             question: {
               kind: 'REVEAL',
               displayText: `断定: この作品は「${revealWorkTitle}」ですか？`,
+              specialQuestionType: undefined,
+              hardConfirmType: undefined,
             },
             answer: isCorrect ? 'CORRECT' : 'WRONG',
             wasNoisy: false,
@@ -1260,10 +1325,10 @@ async function runSimulation(
       if (forceRevealId) {
         const revealWorkTitle = workTitleMap.get(forceRevealId) ?? '(不明)';
         const isCorrect = forceRevealId === targetWorkId;
-        questionCount++;
+        // REVEALは質問数に含めない
         steps.push({
           qIndex: questionCount,
-          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？` },
+          question: { kind: 'REVEAL', displayText: `(maxQuestions強制) この作品は「${revealWorkTitle}」ですか？`, specialQuestionType: undefined, hardConfirmType: undefined },
           answer: isCorrect ? 'CORRECT' : 'WRONG',
           wasNoisy: false,
           confidenceBefore: forceRevealConf,

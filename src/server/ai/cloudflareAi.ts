@@ -1,13 +1,6 @@
 /**
- * Cloudflare Workers AI統合
- * 
- * 注意: Cloudflare Workers AIはCloudflare Workers環境でのみ動作します。
- * Next.jsアプリから直接使用するには、Cloudflare Workersを作成してREST APIとして公開する必要があります。
- * 
- * 代替案:
- * 1. Cloudflare Workersを作成してAIエンドポイントを公開
- * 2. Hugging Face Inference APIを使用（無料枠あり）
- * 3. OpenAI APIを使用（有料だが確実）
+ * AI分析モジュール（OpenAI/GPT のみ）
+ * reanalyze, tags/analyze 等で使用
  */
 
 import { filterDerivedTags, selectTopTags } from './derivedTagFilter';
@@ -36,606 +29,140 @@ export interface AiAnalysisResult {
   validationFailed?: boolean;
 }
 
-/** Worker に送る最小ペイロード（リストはWorker内に埋め込み。タイトル・コメント・現状Sのみ送る） */
-export interface CloudflarePayload {
-  title?: string;
-  commentText: string;
-  currentSTags: string[];
-  /** 紐付け検証用（reanalyze で送ると Worker がそのまま返す。不一致なら結果を破棄） */
-  workId?: string;
-  runId?: string;
-  commentHash?: string;
-}
-
-/** Worker で useAppPrompt 時にフィルタ・rank再配置に使うリスト（省略時はWorker埋め込みリスト） */
-export interface CloudflareFilterLists {
-  s: string[];
-  a: string[];
-  b: string[];
-  c: string[];
-}
-
 /**
- * Cloudflare Workers AI経由で分析を実行
- * ・payload を渡すと「タイトル・コメント・現状S・S/A/B/C一覧」だけ送り、Worker内の固定指示で分析（推奨）
- * ・commentText + systemPrompt を渡すと従来どおり長文プロンプトを送る
- * ・options.filterLists を渡すと Worker 側でそのリストでフィルタ・rank再配置する
- * ・options.currentSTags を渡すと Worker が additionalSTags に既存Sを含めない（既存Sをまた選ばない）
+ * OpenAI API（GPT）経由で分析を実行
+ * reanalyze, tags/analyze 等で使用
  */
-export async function analyzeWithCloudflareAi(
-  commentTextOrPayload: string | CloudflarePayload,
-  systemPromptOrUndefined?: string,
-  options?: { filterLists?: CloudflareFilterLists; currentSTags?: string[] }
-): Promise<AiAnalysisResult> {
-  const cloudflareWorkerUrl = process.env.CLOUDFLARE_WORKER_AI_URL;
-  if (!cloudflareWorkerUrl) {
-    throw new Error('CLOUDFLARE_WORKER_AI_URL is not set. Please create a Cloudflare Worker and set the URL.');
-  }
-
-  const isPayload = typeof commentTextOrPayload === 'object' && commentTextOrPayload !== null && 'currentSTags' in (commentTextOrPayload as CloudflarePayload) && Array.isArray((commentTextOrPayload as CloudflarePayload).currentSTags);
-  const body = isPayload
-    ? (commentTextOrPayload as CloudflarePayload)
-    : {
-        commentText: commentTextOrPayload as string,
-        systemPrompt: systemPromptOrUndefined ?? '',
-        ...(options?.filterLists && { filterLists: options.filterLists }),
-        ...(options?.currentSTags && { currentSTags: options.currentSTags }),
-      };
-
-  const debug = process.env.DEBUG_CLOUDFLARE_AI === '1';
-
-  try {
-    const response = await fetch(cloudflareWorkerUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.CLOUDFLARE_AI_TOKEN || ''}`,
-        'Cache-Control': 'no-store',
-      },
-      body: JSON.stringify(body),
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error('[Cloudflare AI] Non-OK response:', response.status, response.statusText, text.substring(0, 500));
-      // 5024 (JSON Mode couldn't be met) 等でバッチが止まらないよう、throw せず needsReview の空結果を返す
-      let data: Record<string, unknown> = {};
-      try {
-        data = JSON.parse(text) as Record<string, unknown>;
-      } catch {
-        // ignore
-      }
-      const fallback: AiAnalysisResult = {
-        derivedTags: [],
-        additionalSTags: [],
-        aTags: [],
-        bTags: [],
-        cTags: [],
-        characterTags: [],
-        needsReview: true,
-      };
-      if (Array.isArray(data.additionalSTags)) fallback.additionalSTags = data.additionalSTags.filter((x): x is string => typeof x === 'string');
-      if (Array.isArray(data.aTags)) fallback.aTags = data.aTags.filter((x): x is string => typeof x === 'string');
-      if (Array.isArray(data.bTags)) fallback.bTags = data.bTags.filter((x): x is string => typeof x === 'string');
-      if (Array.isArray(data.cTags)) fallback.cTags = data.cTags.filter((x): x is string => typeof x === 'string');
-      if (data.needsReview === true) fallback.needsReview = true;
-      return fallback;
-    }
-
-    const data = await response.json();
-
-    // 紐付け検証: 送った workId/runId/commentHash がそのまま返っているか（Worker がエコーする）
-    const sentWorkId = isPayload ? (body as CloudflarePayload).workId : undefined;
-    const sentRunId = isPayload ? (body as CloudflarePayload).runId : undefined;
-    const sentCommentHash = isPayload ? (body as CloudflarePayload).commentHash : undefined;
-    const hasBinding = sentWorkId != null && sentRunId != null && sentCommentHash != null;
-    const echoedWorkId = data.workId;
-    const echoedRunId = data.runId;
-    const echoedCommentHash = data.commentHash;
-    const bindingMismatch = hasBinding && (
-      echoedWorkId !== sentWorkId || echoedRunId !== sentRunId || echoedCommentHash !== sentCommentHash
-    );
-    if (bindingMismatch) {
-      console.warn('[Cloudflare AI] Binding mismatch - discarding result. Sent workId=%s runId=%s commentHash=%s vs echoed workId=%s runId=%s commentHash=%s',
-        sentWorkId, sentRunId, sentCommentHash, echoedWorkId, echoedRunId, echoedCommentHash);
-    }
-
-    const toStrArr = (v: unknown): string[] =>
-      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map(s => s.trim()).filter(Boolean) : [];
-
-    const additionalSTags = toStrArr(data.additionalSTags);
-    const aTags = toStrArr(data.aTags);
-    const bTags = toStrArr(data.bTags);
-    const cTags = toStrArr(data.cTags);
-    const hasNewFormat =
-      'additionalSTags' in data || 'aTags' in data || 'bTags' in data || 'cTags' in data;
-
-    let derivedTags: AiAnalysisResult['derivedTags'] = [];
-    // タグ取得では confidence は無視。1 固定（型・DB 互換用のみ）
-    const tagConfidence = 1;
-    if (data.derivedTags && Array.isArray(data.derivedTags)) {
-      derivedTags = data.derivedTags.map((t: { displayName: string; confidence?: number; category?: string | null; source?: string; rank?: string }) => ({
-        displayName: t.displayName,
-        confidence: typeof t.confidence === 'number' ? t.confidence : tagConfidence,
-        category: t.category ?? null,
-        source: t.source === 'matched' || t.source === 'suggested' ? t.source : undefined,
-        rank: t.rank ?? undefined,
-      }));
-    } else if (!hasNewFormat && Array.isArray(data.matchedTags)) {
-      derivedTags = (data.matchedTags as Array<{ displayName: string; confidence?: number; category?: string | null; rank?: string }>).map((t) => ({
-        displayName: t.displayName,
-        confidence: typeof t.confidence === 'number' ? t.confidence : tagConfidence,
-        category: t.category ?? null,
-        source: 'matched' as const,
-        rank: t.rank ?? undefined,
-      }));
-      if (Array.isArray(data.suggestedTags)) {
-        derivedTags = derivedTags.concat(
-          (data.suggestedTags as Array<{ displayName: string; confidence?: number; category?: string | null }>).map((t) => ({
-            displayName: t.displayName,
-            confidence: typeof t.confidence === 'number' ? t.confidence : tagConfidence,
-            category: t.category ?? null,
-            source: 'suggested' as const,
-            rank: undefined as string | undefined,
-          }))
-        );
-      }
-    }
-
-    const result: AiAnalysisResult = {
-      derivedTags: bindingMismatch ? [] : derivedTags,
-      characterTags: bindingMismatch ? [] : (data.characterTags || []),
-    };
-    if (hasNewFormat && !bindingMismatch) {
-      result.additionalSTags = additionalSTags;
-      result.aTags = aTags;
-      result.bTags = bTags;
-      result.cTags = cTags;
-    }
-    if (data.needsReview === true || bindingMismatch) result.needsReview = true;
-    if (bindingMismatch) result.validationFailed = true;
-    if (data.usage && typeof data.usage === 'object') {
-      result.usage = data.usage as Record<string, unknown>;
-    }
-    return result;
-  } catch (error) {
-    console.error('Error calling Cloudflare Workers AI:', error);
-    throw error;
-  }
-}
-
-/**
- * Hugging Face Inference API経由で分析を実行（OpenAI互換エンドポイント）
- * Step 1: 公式どおりの入口で疎通確認
- * 
- * @param commentText 作品コメント
- * @param systemPrompt システムプロンプト
- * @returns 分析結果
- */
-async function analyzeWithHuggingFaceOpenAICompatible(
-  commentText: string,
-  systemPrompt: string,
-  modelName: string = 'HuggingFaceTB/SmolLM3-3B:hf-inference'
-): Promise<AiAnalysisResult> {
-  const apiToken = process.env.HUGGINGFACE_API_TOKEN;
-
-  if (!apiToken) {
-    throw new Error('HUGGINGFACE_API_TOKEN is not set. Please set it in .env.local');
-  }
-
-  // OpenAI互換エンドポイント
-  const apiUrl = 'https://router.huggingface.co/v1/chat/completions';
-
-  // プロンプトを構築
-  const prompt = `${systemPrompt}\n\n作品コメント:\n${commentText}\n\nJSON形式で出力してください:`;
-
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiToken}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt,
-          },
-          {
-            role: 'user',
-            content: `作品コメント:\n${commentText}\n\nJSON形式で出力してください:`,
-          },
-        ],
-        max_tokens: 2000, // JSON出力には十分。推論プロセスが出ても対応可能
-        temperature: 0.7,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[AI Debug] Hugging Face API error response:', {
-        endpoint: apiUrl,
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries()),
-        body: errorText,
-      });
-
-      // 401/403エラーは権限/トークン/アカウントの問題
-      if (response.status === 401 || response.status === 403) {
-        throw new Error(
-          `権限/トークン/アカウントの問題の可能性があります。\n` +
-          `ステータス: ${response.status} ${response.statusText}\n` +
-          `エラー: ${errorText}`
-        );
-      }
-
-      throw new Error(`Hugging Face API error: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-
-    // OpenAI互換形式のレスポンスからテキストを抽出
-    const text = data.choices?.[0]?.message?.content || '';
-    
-    if (!text) {
-      throw new Error('AIからの応答が空です');
-    }
-
-    // 推論プロセス（<think>、<reasoning>など）を除去してJSONを抽出
-    let cleanedText = text;
-    
-    // 方法1: <think>...</think>タグを除去（閉じタグがある場合）
-    cleanedText = cleanedText.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    // <reasoning>タグを除去
-    cleanedText = cleanedText.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
-    // <redacted_reasoning>タグを除去
-    cleanedText = cleanedText.replace(/<think>[\s\S]*?<\/redacted_reasoning>/gi, '');
-    
-    // 前後の空白を除去
-    cleanedText = cleanedText.trim();
-
-    // 方法2: JSONの開始位置（最初の{）を探して、それ以降を取得
-    // これにより、<think>タグが閉じられていない場合でもJSONを抽出できる
-    const jsonStartIndex = cleanedText.indexOf('{');
-    if (jsonStartIndex !== -1 && jsonStartIndex > 0) {
-      cleanedText = cleanedText.substring(jsonStartIndex);
-    }
-    
-    // デバッグログ: クリーンアップ後のテキストを出力
-    // JSONを抽出（複数のパターンに対応）
-    let jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      // プロンプト部分を除去して再試行
-      const promptRemoved = cleanedText.replace(/^.*?\{/, '{');
-      jsonMatch = promptRemoved.match(/\{[\s\S]*\}/);
-    }
-
-    if (!jsonMatch) {
-      console.error('[AI Debug] Failed to extract JSON.');
-      console.error('[AI Debug] Original text (first 1000 chars):', text.substring(0, 1000));
-      console.error('[AI Debug] Cleaned text (first 1000 chars):', cleanedText.substring(0, 1000));
-      throw new Error('AIからの応答からJSONを抽出できませんでした');
-    }
-
-    // JSONをパース（不完全なJSONの修復を試みる）
-    let parsed;
-    try {
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      console.warn('[AI Debug] JSON parse failed, attempting to repair truncated JSON...');
-      
-      // 不完全なJSONを修復する試み
-      // finish_reason: "length" の場合、JSONが途中で切れている可能性が高い
-      let repairedJson = jsonMatch[0];
-      
-      // derivedTagsの配列が途中で切れている場合の修復
-      // パターン: "category": "属性 で切れている → "category": "属性"} で閉じる
-      if (repairedJson.includes('"derivedTags"')) {
-        // 最後の完全なオブジェクトの位置を探す
-        const lastCompleteObject = repairedJson.lastIndexOf('}');
-        if (lastCompleteObject !== -1) {
-          // 最後の完全なオブジェクトまでを取得
-          const truncated = repairedJson.substring(0, lastCompleteObject + 1);
-          
-          // derivedTagsの配列を閉じる
-          if (!truncated.includes('"characterTags"')) {
-            repairedJson = truncated + '], "characterTags": []}';
-          } else {
-            repairedJson = truncated + ']}';
-          }
-          
-          try {
-            parsed = JSON.parse(repairedJson);
-          } catch (repairError) {
-            console.error('[AI Debug] JSON repair failed:', repairError);
-            throw parseError; // 元のエラーを投げる
-          }
-        } else {
-          throw parseError;
-        }
-      } else {
-        throw parseError;
-      }
-    }
-
-    // バリデーション: AIの出力を整形
-    const rawDerivedTags = Array.isArray(parsed.derivedTags)
-      ? parsed.derivedTags
-          .filter((tag: any) => tag && tag.displayName && typeof tag.confidence === 'number')
-          .map((tag: any) => ({
-            displayName: String(tag.displayName).trim(),
-            confidence: Math.max(0, Math.min(1, tag.confidence)), // 0-1の範囲に制限
-            category: tag.category ? String(tag.category) : null,
-          }))
-      : [];
-
-    // 後処理フィルタを適用
-    const filterResult = filterDerivedTags(rawDerivedTags, 5);
-
-    // 厳選: 上位5件を選択（confidence 50%以上）
-    // ※DBには5件保存、ゲーム使用時は上位2件のみ使用
-    const derivedTags = selectTopTags(filterResult.passed, 5);
-
-    const characterTags = Array.isArray(parsed.characterTags)
-      ? parsed.characterTags
-          .filter((name: any) => name && typeof name === 'string')
-          .slice(0, 1) // 最大1件
-          .map((name: any) => String(name))
-      : [];
-
-    return {
-      derivedTags,
-      characterTags,
-    };
-  } catch (error) {
-    console.error('[AI Debug] Error with OpenAI-compatible endpoint:', error);
-    throw error;
-  }
-}
-
-/**
- * Hugging Face Inference API経由で分析を実行
- * 
- * 注意: 無料モデルは初回リクエスト時に起動時間（10-30秒）がかかる場合があります。
- * 
- * @param commentText 作品コメント
- * @param systemPrompt システムプロンプト
- * @returns 分析結果
- */
-export async function analyzeWithHuggingFace(
+export async function analyzeWithOpenAi(
   commentText: string,
   systemPrompt: string
 ): Promise<AiAnalysisResult> {
-  // Hugging Face Inference APIを使用
-  // router.huggingface.coが推奨エンドポイント
-  const apiToken = process.env.HUGGINGFACE_API_TOKEN;
-
-  if (!apiToken) {
-    throw new Error('HUGGINGFACE_API_TOKEN is not set. Please set it in .env.local');
-  }
-
-  // Step 1: router.huggingface.co（推奨エンドポイント）を試す
-  // 複数のモデルを順番に試す
-  const modelsToTry = [
-    process.env.HUGGINGFACE_MODEL_NAME || 'elyza/ELYZA-japanese-Llama-2-7b-instruct',
-    'HuggingFaceTB/SmolLM3-3B',
-    'meta-llama/Llama-3.2-3B-Instruct',
-  ];
-
-  for (const modelName of modelsToTry) {
-    try {
-      // router.huggingface.co用の形式: モデル名に`:hf-inference`を追加
-      const modelNameWithSuffix = modelName.includes(':') ? modelName : `${modelName}:hf-inference`;
-      return await analyzeWithHuggingFaceOpenAICompatible(
-        commentText,
-        systemPrompt,
-        modelNameWithSuffix
-      );
-    } catch (error) {
-      console.warn(`[AI Debug] Model ${modelName} failed:`, error instanceof Error ? error.message : String(error));
-      // 次のモデルを試す
-      continue;
-    }
-  }
-
-  // すべてのモデルが失敗した場合
-  throw new Error(
-    `すべてのHugging Faceモデルが失敗しました。\n` +
-    `試したモデル: ${modelsToTry.join(', ')}\n` +
-    `HUGGINGFACE_API_TOKENが正しく設定されているか確認してください。\n` +
-    `エンドポイント: https://router.huggingface.co/v1/chat/completions`
-  );
-}
-
-/**
- * Groq API経由で分析を実行（超高速・無料枠大）
- * 
- * @param commentText 作品コメント
- * @param systemPrompt システムプロンプト
- * @returns 分析結果
- */
-export async function analyzeWithGroq(
-  commentText: string,
-  systemPrompt: string
-): Promise<AiAnalysisResult> {
-  const apiKey = process.env.GROQ_API_KEY;
-
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error('GROQ_API_KEY is not set. Please set it in .env.local');
+    throw new Error('OPENAI_API_KEY is not set');
+  }
+  const model = process.env.OPENAI_CHECK_MODEL || 'gpt-4o-mini';
+  const endpoint = 'https://api.openai.com/v1/chat/completions';
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `【作品コメント】\n${commentText}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('[OpenAI] API error:', response.status, errorBody.slice(0, 300));
+    throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`);
   }
 
-  // Groqで使用するモデル（Llama 3.3が日本語対応で高品質）
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-  const endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error('OpenAI returned empty content');
+  }
 
+  return parseAiAnalysisResult(content);
+}
+
+function parseAiAnalysisResult(content: string): AiAnalysisResult {
+  let parsed: Record<string, unknown>;
   try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `【作品コメント】\n${commentText}` },
-        ],
-        temperature: 0.3,
-        max_tokens: 1024,
-      }),
-    });
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON found in response');
+    parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+  } catch (parseError) {
+    console.error('[OpenAI] JSON parse error:', parseError);
+    throw new Error(`Failed to parse JSON from OpenAI response: ${parseError}`);
+  }
 
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('[Groq] API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorBody,
-      });
-      throw new Error(`Groq API error: ${response.status} ${response.statusText} - ${errorBody}`);
-    }
+  const toStrArr = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').map((s) => s.trim()).filter(Boolean) : [];
+  const hasNewFormat =
+    'additionalSTags' in parsed || 'aTags' in parsed || 'bTags' in parsed || 'cTags' in parsed;
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('Groq API returned empty content');
-    }
-
-    // JSONをパース
-    let parsed: any;
-    try {
-      // JSON部分を抽出
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-      parsed = JSON.parse(jsonMatch[0]);
-    } catch (parseError) {
-      console.error('[Groq] JSON parse error:', parseError);
-      console.error('[Groq] Raw content:', content);
-      throw new Error(`Failed to parse JSON from Groq response: ${parseError}`);
-    }
-
-    const toStrArr = (v: unknown): string[] =>
-      Array.isArray(v) ? v.filter((x: unknown): x is string => typeof x === 'string').map(s => s.trim()).filter(Boolean) : [];
-    const hasNewFormat =
-      'additionalSTags' in parsed || 'aTags' in parsed || 'bTags' in parsed || 'cTags' in parsed;
-
-    if (hasNewFormat) {
-      const characterTags = parsed.characterName && typeof parsed.characterName === 'string'
+  if (hasNewFormat) {
+    const characterTags =
+      parsed.characterName && typeof parsed.characterName === 'string'
         ? [parsed.characterName]
         : Array.isArray(parsed.characterTags)
-          ? parsed.characterTags.filter((n: unknown) => typeof n === 'string').slice(0, 1).map((n: unknown) => String(n))
+          ? (parsed.characterTags as unknown[]).filter((n): n is string => typeof n === 'string').slice(0, 1)
           : [];
-      return {
-        derivedTags: [],
-        additionalSTags: toStrArr(parsed.additionalSTags),
-        aTags: toStrArr(parsed.aTags),
-        bTags: toStrArr(parsed.bTags),
-        cTags: toStrArr(parsed.cTags),
-        characterTags,
-        ...(parsed.needsReview === true && { needsReview: true }),
-      };
-    }
-
-    // 旧形式: matchedTags（rank付き）+ suggestedTags + characterName + needsReview
-    const matchedTags = Array.isArray(parsed.matchedTags)
-      ? parsed.matchedTags
-          .filter((tag: any) => tag && tag.displayName)
-          .map((tag: any) => ({
-            displayName: String(tag.displayName).trim(),
-            confidence: typeof tag.confidence === 'number' ? Math.max(0, Math.min(1, tag.confidence)) : 0.9,
-            category: tag.category ? String(tag.category) : null,
-            source: 'matched' as const,
-            rank: tag.rank === 'A' || tag.rank === 'B' || tag.rank === 'C' ? tag.rank : undefined,
-          }))
-      : [];
-
-    const suggestedTags = Array.isArray(parsed.suggestedTags)
-      ? parsed.suggestedTags
-          .filter((tag: any) => tag && tag.displayName)
-          .map((tag: any) => ({
-            displayName: String(tag.displayName).trim(),
-            confidence: typeof tag.confidence === 'number' ? Math.max(0, Math.min(1, tag.confidence)) : 0.85,
-            category: tag.category ? String(tag.category) : null,
-            source: 'suggested' as const,
-            rank: undefined as string | undefined,
-          }))
-      : [];
-
-    // 旧形式との互換性（derivedTagsがある場合）
-    const legacyTags = Array.isArray(parsed.derivedTags)
-      ? parsed.derivedTags
-          .filter((tag: any) => tag && tag.displayName && typeof tag.confidence === 'number')
-          .map((tag: any) => ({
-            displayName: String(tag.displayName).trim(),
-            confidence: Math.max(0, Math.min(1, tag.confidence)),
-            category: tag.category ? String(tag.category) : null,
-            source: (tag.source || 'suggested') as 'matched' | 'suggested',
-          }))
-      : [];
-
-    // 全タグを結合（新形式優先、旧形式はフォールバック）
-    const rawDerivedTags = matchedTags.length > 0 || suggestedTags.length > 0
-      ? [...matchedTags, ...suggestedTags]
-      : legacyTags;
-
-    // 後処理フィルタを適用
-    const filterResult = filterDerivedTags(rawDerivedTags, 5);
-
-    // 厳選: 上位5件を選択
-    const derivedTags = selectTopTags(filterResult.passed, 5);
-
-    // キャラクター名（新形式: characterName, 旧形式: characterTags）
-    let characterTags: string[] = [];
-    if (parsed.characterName && typeof parsed.characterName === 'string') {
-      characterTags = [parsed.characterName];
-    } else if (Array.isArray(parsed.characterTags)) {
-      characterTags = parsed.characterTags
-        .filter((name: any) => name && typeof name === 'string')
-        .slice(0, 1)
-        .map((name: any) => String(name));
-    }
-
-    const needsReview = parsed.needsReview === true;
-
     return {
-      derivedTags,
+      derivedTags: [],
+      additionalSTags: toStrArr(parsed.additionalSTags),
+      aTags: toStrArr(parsed.aTags),
+      bTags: toStrArr(parsed.bTags),
+      cTags: toStrArr(parsed.cTags),
       characterTags,
-      ...(needsReview && { needsReview: true }),
+      ...(parsed.needsReview === true && { needsReview: true }),
     };
-  } catch (error) {
-    console.error('[Groq] Error:', error);
-    throw error;
   }
-}
 
-/**
- * 環境変数に従ってプロバイダを選択して分析を実行
- * 優先: ERONATOR_AI_PROVIDER 指定 > auto 時は Cloudflare > Groq > HuggingFace
- * （Cloudflare で進める場合は CLOUDFLARE_WORKER_AI_URL を設定）
- */
-export async function analyzeWithConfiguredProvider(
-  commentText: string,
-  systemPrompt: string
-): Promise<AiAnalysisResult> {
-  const provider = (process.env.ERONATOR_AI_PROVIDER || 'auto').toLowerCase();
-  if (provider === 'cloudflare' || (provider === 'auto' && process.env.CLOUDFLARE_WORKER_AI_URL)) {
-    return await analyzeWithCloudflareAi(commentText, systemPrompt);
+  // 旧形式
+  const matchedTags = Array.isArray(parsed.matchedTags)
+    ? (parsed.matchedTags as Array<{ displayName: string; confidence?: number; category?: string | null; rank?: string }>)
+        .filter((tag) => tag && tag.displayName)
+        .map((tag) => ({
+          displayName: String(tag.displayName).trim(),
+          confidence: typeof tag.confidence === 'number' ? Math.max(0, Math.min(1, tag.confidence)) : 0.9,
+          category: tag.category ?? null,
+          source: 'matched' as const,
+          rank: tag.rank === 'A' || tag.rank === 'B' || tag.rank === 'C' ? tag.rank : undefined,
+        }))
+    : [];
+
+  const suggestedTags = Array.isArray(parsed.suggestedTags)
+    ? (parsed.suggestedTags as Array<{ displayName: string; confidence?: number; category?: string | null }>)
+        .filter((tag) => tag && tag.displayName)
+        .map((tag) => ({
+          displayName: String(tag.displayName).trim(),
+          confidence: typeof tag.confidence === 'number' ? Math.max(0, Math.min(1, tag.confidence)) : 0.85,
+          category: tag.category ?? null,
+          source: 'suggested' as const,
+          rank: undefined as string | undefined,
+        }))
+    : [];
+
+  const legacyTags = Array.isArray(parsed.derivedTags)
+    ? (parsed.derivedTags as Array<{ displayName: string; confidence?: number; category?: string | null; source?: string }>)
+        .filter((tag) => tag && tag.displayName && typeof tag.confidence === 'number')
+        .map((tag) => ({
+          displayName: String(tag.displayName).trim(),
+          confidence: Math.max(0, Math.min(1, tag.confidence!)),
+          category: tag.category ?? null,
+          source: (tag.source || 'suggested') as 'matched' | 'suggested',
+        }))
+    : [];
+
+  const rawDerivedTags =
+    matchedTags.length > 0 || suggestedTags.length > 0 ? [...matchedTags, ...suggestedTags] : legacyTags;
+  const filterResult = filterDerivedTags(rawDerivedTags, 5);
+  const derivedTags = selectTopTags(filterResult.passed, 5);
+
+  let characterTags: string[] = [];
+  if (parsed.characterName && typeof parsed.characterName === 'string') {
+    characterTags = [parsed.characterName];
+  } else if (Array.isArray(parsed.characterTags)) {
+    characterTags = (parsed.characterTags as unknown[])
+      .filter((name): name is string => typeof name === 'string')
+      .slice(0, 1);
   }
-  if (provider === 'groq' || (provider === 'auto' && process.env.GROQ_API_KEY)) {
-    return await analyzeWithGroq(commentText, systemPrompt);
-  }
-  if (provider === 'huggingface' || (provider === 'auto' && process.env.HUGGINGFACE_API_TOKEN)) {
-    return await analyzeWithHuggingFace(commentText, systemPrompt);
-  }
-  throw new Error(
-    'No AI provider configured. Set ERONATOR_AI_PROVIDER=cloudflare and CLOUDFLARE_WORKER_AI_URL, or GROQ_API_KEY, or HUGGINGFACE_API_TOKEN'
-  );
+
+  return {
+    derivedTags,
+    characterTags,
+    ...(parsed.needsReview === true && { needsReview: true }),
+  };
 }

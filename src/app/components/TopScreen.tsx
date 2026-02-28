@@ -12,9 +12,12 @@ import { useMediaQuery } from './useMediaQuery';
 
 interface TopScreenProps {
   onPlay: () => void;
+  onRecommend?: () => void;
+  streamerMode?: boolean;
+  onToggleStreamerMode?: () => void;
 }
 
-export function TopScreen({ onPlay }: TopScreenProps) {
+export function TopScreen({ onPlay, onRecommend, streamerMode, onToggleStreamerMode }: TopScreenProps) {
   const isMobile = useMediaQuery(768);
   const subSize = isMobile ? 15 : 13;
   const [workCount, setWorkCount] = useState<number | null>(null);
@@ -97,23 +100,43 @@ export function TopScreen({ onPlay }: TopScreenProps) {
         <div style={{ marginTop: isMobile ? 12 : 14 }}>
           <button
             type="button"
-            disabled
+            onClick={onRecommend}
             style={{
               padding: isMobile ? '14px 32px' : '16px 44px',
               minHeight: isMobile ? 48 : 52,
               fontSize: isMobile ? 17 : 16,
               fontWeight: 700,
-              cursor: 'not-allowed',
-              backgroundColor: 'rgba(255,255,255,0.7)',
-              color: 'var(--color-text-muted)',
-              border: '3px solid var(--color-border-light)',
+              cursor: 'pointer',
+              backgroundColor: 'rgba(255,255,255,0.9)',
+              color: 'var(--color-text)',
+              border: '3px solid var(--color-border)',
               borderRadius: 'var(--radius-lg)',
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}
           >
-            推薦モードをプレイする（18歳以上）※近日実装
+            推薦モード（18歳以上）
           </button>
         </div>
+        {onToggleStreamerMode && (
+          <div style={{ marginTop: isMobile ? 10 : 12 }}>
+            <button
+              type="button"
+              onClick={onToggleStreamerMode}
+              style={{
+                padding: '8px 20px',
+                fontSize: isMobile ? 14 : 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                backgroundColor: streamerMode ? '#7c3aed' : 'rgba(255,255,255,0.7)',
+                color: streamerMode ? '#fff' : 'var(--color-text-muted)',
+                border: streamerMode ? '2px solid #7c3aed' : '2px solid var(--color-border-light)',
+                borderRadius: 'var(--radius-lg)',
+              }}
+            >
+              {streamerMode ? '🔴 配信者モード ON' : '配信者モード'}
+            </button>
+          </div>
+        )}
         {isMobile && appVersion && (
           <p style={{ margin: 0, marginTop: 14, fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>
             {appVersion}

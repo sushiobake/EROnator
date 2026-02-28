@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
-import { analyzeWithConfiguredProvider } from '@/server/ai/cloudflareAi';
+import { analyzeWithOpenAi } from '@/server/ai/cloudflareAi';
 
 const DEFAULT_SYSTEM_PROMPT = `あなたは成人向け同人誌のタグ生成AIです。
 作品コメントを読み、その作品に適した「準有名タグ」を生成してください。
@@ -33,11 +33,7 @@ const DEFAULT_SYSTEM_PROMPT = `あなたは成人向け同人誌のタグ生成A
 - 余計なテキストは一切出力しない`;
 
 function getProviderName(): string {
-  const p = (process.env.ERONATOR_AI_PROVIDER || 'auto').toLowerCase();
-  if (p === 'cloudflare' || (p === 'auto' && process.env.CLOUDFLARE_WORKER_AI_URL)) return 'cloudflare';
-  if (p === 'groq' || (p === 'auto' && process.env.GROQ_API_KEY)) return 'groq';
-  if (p === 'huggingface' || (p === 'auto' && process.env.HUGGINGFACE_API_TOKEN)) return 'huggingface';
-  return 'none';
+  return process.env.OPENAI_API_KEY ? 'openai' : 'none';
 }
 
 /** GET: 現在のAIプロバイダ名だけ返す（UI表示用） */
@@ -108,7 +104,7 @@ export async function POST(request: NextRequest) {
       const commentPreview = comment.slice(0, 200) + (comment.length > 200 ? '…' : '');
       const workStart = Date.now();
       try {
-        const aiResult = await analyzeWithConfiguredProvider(comment, systemPrompt);
+        const aiResult = await analyzeWithOpenAi(comment, systemPrompt);
         const elapsedMs = Date.now() - workStart;
         if (aiResult.usage) usageAccum.push(aiResult.usage);
         results.push({

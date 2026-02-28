@@ -14,6 +14,7 @@ import { FailList, FailListVerticalList } from './components/FailList';
 import { DebugPanel } from './components/DebugPanel';
 import { Stage, type CharacterVariant } from './components/Stage';
 import { useMediaQuery } from './components/useMediaQuery';
+import { RecommendMode } from './components/RecommendMode';
 
 type GameState =
   | 'TOP'
@@ -22,7 +23,23 @@ type GameState =
   | 'REVEAL'
   | 'SUCCESS'
   | 'FAIL_LIST'
-  | 'ALMOST_SUCCESS';
+  | 'ALMOST_SUCCESS'
+  | 'RECOMMEND';
+
+/** 配信者モード用: 露骨な質問テキストを抽象化 */
+function sanitizeQuestionText(text: string): string {
+  const eroticWords = [
+    'おっぱい', '巨乳', '貧乳', '爆乳', '中出し', '口内射精', 'フェラ', 'パイズリ',
+    'アナル', '潮吹き', '絶頂', 'オナニー', '手コキ', '足コキ', '母乳', 'ふたなり',
+    '触手', '調教', '緊縛', '陵辱', '痴漢', '露出', '寝取られ', '催眠',
+    'ランジェリー', '水着', 'メイド', 'ナース', 'バニー',
+  ];
+  let sanitized = text;
+  for (const word of eroticWords) {
+    sanitized = sanitized.replaceAll(word, '〇〇');
+  }
+  return sanitized;
+}
 
 /** 質問種別に応じてキャラ画像バリアントを返す。通常→question固定、エロ→embarrassing/very_embarrassingをランダム */
 function getQuestionCharacterVariant(question: { exploreTagKind?: string; kind?: string } | null): CharacterVariant {
@@ -38,6 +55,7 @@ interface Question {
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   displayText: string;
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
 }
 
 interface Work {
@@ -143,6 +161,8 @@ export default function Home() {
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [questionCharacterVariant, setQuestionCharacterVariant] = useState<CharacterVariant>('usually');
   const [isThinking, setIsThinking] = useState(false);
+  const [effectiveCandidates, setEffectiveCandidates] = useState<number | null>(null);
+  const [streamerMode, setStreamerMode] = useState(false);
   const questionShownAtRef = useRef<number>(0);
 
   /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 400ms（切り替え安定化） */
@@ -152,6 +172,13 @@ export default function Home() {
 
   useEffect(() => {
     setIsClient(true);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'stream') {
+      setStreamerMode(true);
+      document.cookie = 'eronator_streamer=1;path=/;max-age=86400';
+    } else if (document.cookie.includes('eronator_streamer=1')) {
+      setStreamerMode(true);
+    }
     let de = localStorage.getItem('eronator.debugEnabled') === '1';
     const isPreviewWithToken =
       process.env.NODE_ENV === 'production' &&
@@ -211,6 +238,14 @@ export default function Home() {
     localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
   }, [isClient, debugPanelOpen]);
 
+  useEffect(() => {
+    if (streamerMode) {
+      document.body.classList.add('streamer-mode');
+    } else {
+      document.body.classList.remove('streamer-mode');
+    }
+  }, [streamerMode]);
+
   /** 実機Safariでthinking画像が遅延表示される不具合対策：ゲーム画面表示前にプリロード */
   useEffect(() => {
     if (!isClient) return;
@@ -265,6 +300,7 @@ export default function Home() {
       setQuestion(data.question);
       setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));
       setQuestionCount(data.sessionState.questionCount);
+      setEffectiveCandidates(data.effectiveCandidates ?? null);
       setDebugData(data.debug || null);
       setState('QUIZ');
     } catch (error) {
@@ -306,6 +342,7 @@ export default function Home() {
 
       const data = await response.json();
       setDebugData(data.debug || null);
+      if (data.effectiveCandidates != null) setEffectiveCandidates(data.effectiveCandidates);
 
       if (data.state === 'REVEAL') {
         setRevealWork(data.work);
@@ -495,10 +532,22 @@ export default function Home() {
     }
   };
 
+  if (state === 'RECOMMEND') {
+    return <RecommendMode onBack={() => setState('TOP')} />;
+  }
+
   if (state === 'TOP') {
     return (
       <>
-        <TopScreen onPlay={handleTopPlay} />
+        <TopScreen onPlay={handleTopPlay} onRecommend={() => setState('RECOMMEND')} streamerMode={streamerMode} onToggleStreamerMode={() => {
+          const next = !streamerMode;
+          setStreamerMode(next);
+          if (next) {
+            document.cookie = 'eronator_streamer=1;path=/;max-age=86400';
+          } else {
+            document.cookie = 'eronator_streamer=;path=/;max-age=0';
+          }
+        }} />
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
@@ -511,8 +560,28 @@ export default function Home() {
     );
   }
 
+  const getConfidenceLevel = (ec: number | null): 'early' | 'mid' | 'late' | 'closing' => {
+    if (ec == null || ec > 500) return 'early';
+    if (ec > 50) return 'mid';
+    if (ec > 10) return 'late';
+    return 'closing';
+  };
+  const confidenceLevel = getConfidenceLevel(effectiveCandidates);
+
+  const thinkingTexts: Record<string, string> = {
+    early: '考え中…',
+    mid: 'なんとなく見えてきた…',
+    late: 'おっ……これは……！',
+    closing: 'わかったかも……！',
+  };
+  const thinkingVariants: Record<string, CharacterVariant> = {
+    early: 'thinking',
+    mid: 'thinking',
+    late: 'question',
+    closing: 'question',
+  };
   const thinkingSpeech = (
-    <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>考え中…</p>
+    <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{thinkingTexts[confidenceLevel]}</p>
   );
 
   if (state === 'AI_GATE') {
@@ -557,7 +626,7 @@ export default function Home() {
           />
         )}
         <Stage
-          characterVariant={isThinking ? 'thinking' : questionCharacterVariant}
+          characterVariant={isThinking ? thinkingVariants[confidenceLevel] : questionCharacterVariant}
           characterSpeech={
             isThinking
               ? thinkingSpeech
@@ -568,7 +637,7 @@ export default function Home() {
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
                       {questionCount + 1}
                     </span>
-                    {question.displayText}
+                    {streamerMode ? sanitizeQuestionText(question.displayText) : question.displayText}
                   </p>
                 </div>
               )
@@ -647,6 +716,7 @@ export default function Home() {
             onRestart={handleRestart}
             mobileListBelow={isMobile}
             sessionId={sessionId}
+            questionCount={questionCount}
           />
         </Stage>
       </>
@@ -685,6 +755,7 @@ export default function Home() {
             onRestart={handleRestart}
             successTitle="それか～～～！次回は当てるからね！"
             recommendTitle="そんなあなたには…おすすめもあるわ！"
+            questionCount={questionCount}
             mobileListBelow={isMobile}
             sessionId={sessionId}
           />

@@ -353,7 +353,7 @@ export async function PUT(
         });
       }
 
-      const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+      const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'];
       const folder =
         typeof bodyFolder === 'string' && validFolders.includes(bodyFolder) ? bodyFolder : null;
       const gameEnabledFolders = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
@@ -426,7 +426,7 @@ export async function PATCH(
     const { workId } = await params;
     const body = await request.json().catch(() => ({}));
     const manualTaggingFolder = typeof body.manualTaggingFolder === 'string' ? body.manualTaggingFolder : null;
-    const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'];
+    const validFolders = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'];
     if (!manualTaggingFolder || !validFolders.includes(manualTaggingFolder)) {
       return NextResponse.json({ error: 'Invalid manualTaggingFolder' }, { status: 400 });
     }

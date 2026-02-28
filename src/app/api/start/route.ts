@@ -10,7 +10,7 @@ import {
   filterWorksByAiGate,
   selectNextQuestion,
 } from '@/server/game/engine';
-import { normalizeWeights, calculateConfidence } from '@/server/algo/scoring';
+import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
       exploreTagKind: (firstQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
       specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
       seriesTagKeys: (firstQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
-      titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
+      titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
     });
 
     // 返却（最小限の情報のみ）
@@ -165,13 +165,14 @@ export async function POST(request: NextRequest) {
       ? await buildDebugPayload(session, probabilities, confidence, undefined, undefined)
       : undefined;
 
+    const effectiveCandidates = calculateEffectiveCandidates(probabilities);
     const payload = {
       sessionId,
       state: 'QUIZ',
       question: questionResponse,
       sessionState,
+      effectiveCandidates,
       ...(debug ? { debug } : {}),
-      // 内部状態は返さない（Data exposure policy）
     };
 
     return new NextResponse(JSON.stringify(payload), {

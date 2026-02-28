@@ -1,13 +1,15 @@
 /**
  * 複数作品の Phase1 + Phase2 連続チェック
- * POST /api/admin/groq-check-batch?count=10
+ * POST /api/admin/openai-check-batch?count=10
  * チェック待ちから先頭 count 件を取得し、Phase1 → (問題ありなら Phase2) を実行。
  * 結果を CheckBatchRun に保存して返す。
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import pLimit from 'p-limit';
 import { prisma } from '@/server/db/client';
 import { callCheckApi } from '@/server/checkAiClient';
+import { parseAiJson } from '@/server/ai/parseAiJson';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,6 +17,8 @@ const root = path.resolve(process.cwd());
 const INSTRUCTION_P1 = path.join(root, 'docs', 'check-instruction-api1-batch.md');
 const INSTRUCTION_P2 = path.join(root, 'docs', 'check-instruction-api2-batch.md');
 const BATCH_SIZE = 8; // mini で 8件（10件だと empty content になるため）
+/** AI API 同時呼び出し数 */
+const API_CONCURRENCY = 15;
 
 function loadInstruction(p: string): string {
   if (!fs.existsSync(p)) throw new Error(`Not found: ${p}`);
@@ -44,6 +48,10 @@ export async function POST(request: NextRequest) {
 
     const countParam = request.nextUrl.searchParams.get('count') || '10';
     const count = Math.min(100, Math.max(1, parseInt(countParam, 10) || 10));
+    const concurrencyParam = request.nextUrl.searchParams.get('concurrency');
+    const apiConcurrency = concurrencyParam
+      ? Math.min(15, Math.max(1, parseInt(concurrencyParam, 10) || 15))
+      : API_CONCURRENCY;
 
     const works = await prisma.work.findMany({
       where: {
@@ -56,7 +64,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (works.length === 0) {
-      return NextResponse.json({ error: 'チェック待ちの作品がありません' }, { status: 404 });
+      const encoder = new TextEncoder();
+      const emptyStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({ type: 'done', success: true, count: 0, results: [] }) + '\n'));
+          controller.close();
+        },
+      });
+      return new Response(emptyStream, {
+        headers: { 'Content-Type': 'application/x-ndjson', 'Transfer-Encoding': 'chunked' },
+      });
     }
 
     const tagRanks = loadTagRanks();
@@ -114,12 +131,22 @@ export async function POST(request: NextRequest) {
           };
         };
         try {
+          type Phase1Batch = { results: Phase1Item[] };
+          const chunks: Array<{ chunkStart: number; chunk: (typeof works)[0][] }> = [];
           for (let chunkStart = 0; chunkStart < works.length; chunkStart += BATCH_SIZE) {
-            const chunk = works.slice(chunkStart, chunkStart + BATCH_SIZE);
-            const worksPayload = chunk.map(toPayload1);
-            const payload1 = { works: worksPayload };
+            chunks.push({
+              chunkStart,
+              chunk: works.slice(chunkStart, chunkStart + BATCH_SIZE),
+            });
+          }
 
-            const userContent1 = `${inst1}
+          const apiLimit = pLimit(apiConcurrency);
+          const chunkResults = await Promise.all(
+            chunks.map(({ chunkStart, chunk }) =>
+              apiLimit(async (): Promise<{ success: true; chunkStart: number; phase1Items: Phase1Item[] } | { success: false; chunkStart: number; chunk: (typeof works)[0][]; error: string }> => {
+                const worksPayload = chunk.map(toPayload1);
+                const payload1 = { works: worksPayload };
+                const userContent1 = `${inst1}
 
 ---
 
@@ -129,60 +156,66 @@ ${JSON.stringify(payload1, null, 2)}
 
 上記の works 配列の各作品をチェックし、results 配列（works と同じ順序・件数）で返せ。`;
 
-            let content1: string;
-            try {
-              content1 = await callCheckApi(userContent1, 'groq-check-batch-p1');
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              send({ type: 'error', error: `Phase1 失敗 (${chunk.map((w) => w.workId).join(',')}): ${msg}` });
-              controller.close();
-              return;
-            }
-
-            type Phase1Batch = { results: Phase1Item[] };
-            let parsed1Batch: Phase1Batch;
-            try {
-              const jsonMatch = content1.match(/\{[\s\S]*\}/);
-              if (!jsonMatch) throw new Error('No JSON in response');
-              parsed1Batch = JSON.parse(jsonMatch[0]) as Phase1Batch;
-              if (!Array.isArray(parsed1Batch.results) || parsed1Batch.results.length !== chunk.length) {
-                throw new Error(`results length mismatch: expected ${chunk.length}, got ${parsed1Batch.results?.length ?? 0}`);
-              }
-            } catch (e) {
-              send({ type: 'error', error: `Phase1 パース失敗: ${e instanceof Error ? e.message : String(e)}`, raw: content1.slice(0, 300) });
-              controller.close();
-              return;
-            }
-
-            const phase1Items: Phase1Item[] = chunk.map((work, idx) => {
-              const p = parsed1Batch.results[idx];
-              return {
-                workId: p?.workId || work.workId,
-                title: p?.title || work.title,
-                result: p?.result || 'タグ済',
-                checkReasoning: p?.checkReasoning,
-                issues: p?.issues,
-                tagChanges: {
-                  added: [],
-                  removed: p?.tagChanges?.removed ?? [],
-                },
-              };
-            });
-
-            const needsPhase2 = phase1Items.filter((item) => item.result === '人間による確認が必要');
-            if (needsPhase2.length > 0) {
-              const worksForP2 = needsPhase2.map((item) => {
-                const work = chunk.find((w) => w.workId === item.workId)!;
-                const p1 = toPayload1(work);
-                return {
-                  ...p1,
-                  api1Issues: item.issues ?? [],
-                  api1CheckReasoning: item.checkReasoning,
+                const parsePhase1 = (raw: string): Phase1Batch => {
+                  const jsonMatch1 = raw.match(/\{[\s\S]*\}/);
+                  if (!jsonMatch1) throw new Error('No JSON in response');
+                  const { data } = parseAiJson<Phase1Batch>(jsonMatch1[0]);
+                  if (!Array.isArray(data.results) || data.results.length !== chunk.length) {
+                    throw new Error(`results length mismatch: expected ${chunk.length}, got ${data.results?.length ?? 0}`);
+                  }
+                  return data;
                 };
-              });
-              const payload2 = { allTags, works: worksForP2 };
 
-              const userContent2 = `${inst2}
+                let content1: string;
+                try {
+                  content1 = await callCheckApi(userContent1, 'openai-check-batch-p1');
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  return { success: false, chunkStart, chunk, error: msg };
+                }
+
+                let parsed1Batch: Phase1Batch;
+                try {
+                  parsed1Batch = parsePhase1(content1);
+                } catch (parseErr) {
+                  try {
+                    content1 = await callCheckApi(userContent1, 'openai-check-batch-p1');
+                    parsed1Batch = parsePhase1(content1);
+                  } catch (retryErr) {
+                    const msg = retryErr instanceof Error ? retryErr.message : String(retryErr);
+                    console.warn(`[openai-check-batch] Phase1 チャンク失敗 (リトライ済) workIds=${chunk.map((w) => w.workId).join(',')}:`, msg);
+                    return { success: false, chunkStart, chunk, error: msg };
+                  }
+                }
+
+                const phase1Items: Phase1Item[] = chunk.map((work, idx) => {
+                  const p = parsed1Batch.results[idx];
+                  return {
+                    workId: p?.workId || work.workId,
+                    title: p?.title || work.title,
+                    result: p?.result || 'タグ済',
+                    checkReasoning: p?.checkReasoning,
+                    issues: p?.issues,
+                    tagChanges: {
+                      added: [],
+                      removed: p?.tagChanges?.removed ?? [],
+                    },
+                  };
+                });
+
+                const needsPhase2 = phase1Items.filter((item) => item.result === '人間による確認が必要');
+                if (needsPhase2.length > 0) {
+                  const worksForP2 = needsPhase2.map((item) => {
+                    const work = chunk.find((w) => w.workId === item.workId)!;
+                    const p1 = toPayload1(work);
+                    return {
+                      ...p1,
+                      api1Issues: item.issues ?? [],
+                      api1CheckReasoning: item.checkReasoning,
+                    };
+                  });
+                  const payload2 = { allTags, works: worksForP2 };
+                  const userContent2 = `${inst2}
 
 ---
 
@@ -192,45 +225,58 @@ ${JSON.stringify(payload2, null, 2)}
 
 上記の works 配列の各作品について、API1 が指摘した api1Issues に従い、不足タグの追加提案を出し、results 配列（works と同じ順序・件数）で返せ。`;
 
-              let content2: string | undefined;
-              try {
-                content2 = await callCheckApi(userContent2, 'groq-check-batch-p2');
-              } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                for (const item of needsPhase2) {
-                  item.issues = [...(item.issues || []), `Phase2 失敗: ${msg}`];
-                }
-              }
+                  let content2: string | undefined;
+                  try {
+                    content2 = await callCheckApi(userContent2, 'openai-check-batch-p2');
+                  } catch (e) {
+                    const msg = e instanceof Error ? e.message : String(e);
+                    for (const item of needsPhase2) {
+                      item.issues = [...(item.issues || []), `Phase2 失敗: ${msg}`];
+                    }
+                  }
 
-              if (content2) {
-                type Phase2Result = { workId?: string; tagChanges?: { added?: string[] }; tagSuggestions?: { newProposal?: string } };
-                type Phase2Batch = { results: Phase2Result[] };
-                try {
-                  const jsonMatch = content2.match(/\{[\s\S]*\}/);
-                  if (jsonMatch) {
-                    const parsed2Batch = JSON.parse(jsonMatch[0]) as Phase2Batch;
-                    if (Array.isArray(parsed2Batch.results)) {
-                      for (let i = 0; i < needsPhase2.length && i < parsed2Batch.results.length; i++) {
-                        const item = needsPhase2[i];
-                        const p2 = parsed2Batch.results[i];
-                        if (p2 && p2.workId === item.workId) {
-                          item.tagChanges = {
-                            added: p2.tagChanges?.added ?? [],
-                            removed: item.tagChanges?.removed ?? [],
-                          };
-                          if (p2.tagSuggestions?.newProposal?.trim()) {
-                            (item as Record<string, unknown>).newProposal = p2.tagSuggestions.newProposal.trim();
+                  if (content2) {
+                    type Phase2Result = { workId?: string; tagChanges?: { added?: string[] }; tagSuggestions?: { newProposal?: string } };
+                    type Phase2Batch = { results: Phase2Result[] };
+                    try {
+                      const jsonMatch2 = content2.match(/\{[\s\S]*\}/);
+                      if (jsonMatch2) {
+                        const { data: parsed2Batch } = parseAiJson<Phase2Batch>(jsonMatch2[0]);
+                        if (Array.isArray(parsed2Batch.results)) {
+                          for (let i = 0; i < needsPhase2.length && i < parsed2Batch.results.length; i++) {
+                            const item = needsPhase2[i];
+                            const p2 = parsed2Batch.results[i];
+                            if (p2 && p2.workId === item.workId) {
+                              item.tagChanges = {
+                                added: p2.tagChanges?.added ?? [],
+                                removed: item.tagChanges?.removed ?? [],
+                              };
+                              if (p2.tagSuggestions?.newProposal?.trim()) {
+                                (item as Record<string, unknown>).newProposal = p2.tagSuggestions.newProposal.trim();
+                              }
+                            }
                           }
                         }
                       }
+                    } catch {
+                      /* Phase2 パース失敗: そのまま has_issues で扱う */
                     }
                   }
-                } catch {
-                  /* Phase2 パース失敗: そのまま has_issues で扱う */
                 }
-              }
-            }
 
+                return { success: true, chunkStart, phase1Items };
+              })
+            )
+          );
+
+          for (const r of chunkResults) {
+            if (!r.success) {
+              send({ type: 'chunkError', workIds: r.chunk.map((w) => w.workId), error: r.error });
+            }
+          }
+
+          const successfulChunks = chunkResults.filter((r): r is { success: true; chunkStart: number; phase1Items: Phase1Item[] } => r.success);
+          for (const { phase1Items } of successfulChunks.sort((a, b) => a.chunkStart - b.chunkStart)) {
             for (const item of phase1Items) {
               results.push(item);
               send({ type: 'progress', done: results.length, total: totalWorks, workId: item.workId, result: item.result });
@@ -357,7 +403,7 @@ ${JSON.stringify(payload2, null, 2)}
         );
       }
     } catch (e) {
-      console.warn('[groq-check-batch] CheckBatchRun insert failed (table may not exist):', e);
+      console.warn('[openai-check-batch] CheckBatchRun insert failed (table may not exist):', e);
     }
 
     send({
@@ -379,7 +425,7 @@ ${JSON.stringify(payload2, null, 2)}
       headers: { 'Content-Type': 'application/x-ndjson', 'Transfer-Encoding': 'chunked' },
     });
   } catch (error) {
-    console.error('[groq-check-batch]', error);
+    console.error('[openai-check-batch]', error);
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

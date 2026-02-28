@@ -1,6 +1,6 @@
 /**
  * タグ管理・インポートページ
- * /admin/tags
+ * /admin で表示（/admin/tags は /admin にリダイレクト）
  * ProgressPanel / AdminProgressProvider は admin/layout.tsx で提供
  */
 
@@ -12,6 +12,9 @@ import ImportWorkflow from '../components/ImportWorkflow';
 import ManualTagging from '../components/ManualTagging';
 import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
+import ChangelogTab from './tabs/ChangelogTab';
+import ConfigTab from './tabs/ConfigTab';
+import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
 
@@ -56,7 +59,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'config' | 'import' | 'manual' | 'simulate' | 'history' | 'changelog';
+type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'history' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
@@ -105,7 +108,9 @@ export default function AdminTagsPage() {
   const [debugEnabled, setDebugEnabled] = useState(false);
 
   const fieldDesc = (key: string) => (
-    <small style={{ display: 'block', color: '#666', marginTop: '0.25rem' }}>設定キー: {key}</small>
+    <small style={{ display: 'block', marginTop: '0.25rem' }}>
+      設定キー: <code style={{ padding: '0.15em 0.4em', backgroundColor: '#e8e8e8', borderRadius: '4px', fontWeight: 600, fontFamily: 'monospace' }}>{key}</code>
+    </small>
   );
 
   // タグリスト用のstate
@@ -263,13 +268,6 @@ export default function AdminTagsPage() {
     diagnostic?: unknown;
     analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
   } | null>(null);
-
-  // 更新履歴編集タブ用
-  const [appInfoVersion, setAppInfoVersion] = useState('');
-  const [appInfoChangelog, setAppInfoChangelog] = useState<Array<{ date: string; text: string }>>([]);
-  const [appInfoLoading, setAppInfoLoading] = useState(false);
-  const [appInfoSaving, setAppInfoSaving] = useState(false);
-  const [appInfoMessage, setAppInfoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // サービスプレイ履歴タブ用
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1050,17 +1048,6 @@ export default function AdminTagsPage() {
         const stored = localStorage.getItem('eronator.debugEnabled') === '1';
         setDebugEnabled(stored);
       }
-    } else if (activeTab === 'changelog' && adminToken) {
-      setAppInfoLoading(true);
-      setAppInfoMessage(null);
-      fetch('/api/admin/app-info', { headers: { 'x-eronator-admin-token': adminToken } })
-        .then(res => res.ok ? res.json() : Promise.reject(new Error('取得失敗')))
-        .then((data: { version: string; changelog: Array<{ date: string; text: string }> }) => {
-          setAppInfoVersion(data.version ?? '');
-          setAppInfoChangelog(data.changelog ?? []);
-        })
-        .catch(() => setAppInfoMessage({ type: 'error', text: '取得に失敗しました' }))
-        .finally(() => setAppInfoLoading(false));
     } else if (activeTab === 'tags') {
       void handleLoadBannedTags(); // 禁止タグは認証不要で常に取得
       if (adminToken) void handleLoadTags();
@@ -1435,41 +1422,33 @@ export default function AdminTagsPage() {
 
   return (
     <>
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <h1>管理画面</h1>
-      <p style={{ color: '#666', marginBottom: '2rem' }}>
-        作品データベース管理、タグ管理、設定変更、作品インポートを行います。
-      </p>
+    <div style={{ padding: '2rem', maxWidth: '1680px', margin: '0 auto' }}>
+      <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>
+        <strong>管理画面</strong> — 作品データベース管理、タグ管理、設定変更、作品インポートを行います。
+      </div>
 
-      {/* 管理トークンを入力*/}
-      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
-        <h2>アクセス認証</h2>
-        <div style={{ marginBottom: '1rem' }}>
-          <label>
-            <strong>管理トークン:</strong>
-            <br />
-            <input
-              type="password"
-              value={adminToken}
-              onChange={handleTokenChange}
-              placeholder="ERONATOR_ADMIN_TOKEN の値を入力"
-              style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-            />
-          </label>
-          <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-            .env.local の <code>ERONATOR_ADMIN_TOKEN</code> の値を入力してください
-          </p>
-        </div>
+      {/* 管理トークンを入力 */}
+      <section style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>アクセス認証</span>
+        <input
+          type="password"
+          value={adminToken}
+          onChange={handleTokenChange}
+          placeholder="ERONATOR_ADMIN_TOKEN の値を入力"
+          style={{ flex: '1', minWidth: '200px', maxWidth: '400px', padding: '0.4rem 0.6rem', fontSize: '0.9rem' }}
+        />
+        <span style={{ fontSize: '0.8rem', color: '#888' }}>.env.local の ERONATOR_ADMIN_TOKEN</span>
       </section>
 
       {/* タブナビゲーション */}
       <div style={{ borderBottom: '2px solid #ddd', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
           <button
             onClick={() => setActiveTab('works')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'works' ? '#0070f3' : 'transparent',
               color: activeTab === 'works' ? 'white' : '#666',
               border: 'none',
@@ -1483,8 +1462,9 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('tags')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'tags' ? '#0070f3' : 'transparent',
               color: activeTab === 'tags' ? 'white' : '#666',
               border: 'none',
@@ -1498,8 +1478,9 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('summary')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'summary' ? '#0070f3' : 'transparent',
               color: activeTab === 'summary' ? 'white' : '#666',
               border: 'none',
@@ -1511,25 +1492,11 @@ export default function AdminTagsPage() {
             まとめ質問
           </button>
           <button
-            onClick={() => setActiveTab('config')}
-            style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
-              backgroundColor: activeTab === 'config' ? '#0070f3' : 'transparent',
-              color: activeTab === 'config' ? 'white' : '#666',
-              border: 'none',
-              borderBottom: activeTab === 'config' ? '3px solid #0070f3' : '3px solid transparent',
-              cursor: 'pointer',
-              fontWeight: activeTab === 'config' ? 'bold' : 'normal',
-            }}
-          >
-            コンフィグ
-          </button>
-          <button
             onClick={() => setActiveTab('import')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'import' ? '#0070f3' : 'transparent',
               color: activeTab === 'import' ? 'white' : '#666',
               border: 'none',
@@ -1538,13 +1505,14 @@ export default function AdminTagsPage() {
               fontWeight: activeTab === 'import' ? 'bold' : 'normal',
             }}
           >
-            作品インポート
+            作品＆コメント取得
           </button>
           <button
             onClick={() => setActiveTab('manual')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'manual' ? '#28a745' : 'transparent',
               color: activeTab === 'manual' ? 'white' : '#666',
               border: 'none',
@@ -1553,13 +1521,30 @@ export default function AdminTagsPage() {
               fontWeight: activeTab === 'manual' ? 'bold' : 'normal',
             }}
           >
-            人力タグ付け
+            タグ付け＆タグチェック
+          </button>
+          <button
+            onClick={() => setActiveTab('initial')}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'initial' ? '#0d9488' : 'transparent',
+              color: activeTab === 'initial' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'initial' ? '3px solid #0d9488' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'initial' ? 'bold' : 'normal',
+            }}
+          >
+            作品頭文字
           </button>
           <button
             onClick={() => setActiveTab('simulate')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'simulate' ? '#ff6600' : 'transparent',
               color: activeTab === 'simulate' ? 'white' : '#666',
               border: 'none',
@@ -1571,10 +1556,27 @@ export default function AdminTagsPage() {
             シミュレーション
           </button>
           <button
+            onClick={() => setActiveTab('config')}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'config' ? '#0070f3' : 'transparent',
+              color: activeTab === 'config' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'config' ? '3px solid #0070f3' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'config' ? 'bold' : 'normal',
+            }}
+          >
+            コンフィグ
+          </button>
+          <button
             onClick={() => setActiveTab('history')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'history' ? '#6b21a8' : 'transparent',
               color: activeTab === 'history' ? 'white' : '#666',
               border: 'none',
@@ -1583,13 +1585,14 @@ export default function AdminTagsPage() {
               fontWeight: activeTab === 'history' ? 'bold' : 'normal',
             }}
           >
-            サービスプレイ履歴
+            本番プレイ履歴
           </button>
           <button
             onClick={() => setActiveTab('changelog')}
             style={{
-              padding: '0.75rem 1.5rem',
-              fontSize: '1rem',
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
               backgroundColor: activeTab === 'changelog' ? '#059669' : 'transparent',
               color: activeTab === 'changelog' ? 'white' : '#666',
               border: 'none',
@@ -1607,6 +1610,7 @@ export default function AdminTagsPage() {
       {/* タブコンテンツ 作品DB */}
       {activeTab === 'works' && (
         <>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>作品DB</h2>
           {/* メイン: 作品一覧（DB読み込みまたはファイル読み込み）*/}
           {parseResult && parseResult.success && parseResult.works && (
             <section style={{ marginBottom: '2rem' }}>
@@ -2407,667 +2411,18 @@ export default function AdminTagsPage() {
 
       {/* タブコンテンツ コンフィグ */}
       {activeTab === 'config' && (
-        <section style={{ marginBottom: '2rem' }}>
-          <h2>設定変更</h2>
-          <p style={{ color: '#666', marginBottom: '2rem' }}>
-            開発環境でのみ利用可能です。設定変更後は開発サーバーを停止して再起動してください。
-          </p>
-
-          {configLoading ? (
-            <div style={{ padding: '2rem', textAlign: 'center' }}>
-              <p>読み込み中...</p>
-            </div>
-          ) : !config ? (
-            <div style={{ padding: '2rem', textAlign: 'center' }}>
-              <p style={{ color: 'red' }}>設定を読み込めませんでした。</p>
-              <button onClick={loadConfig} style={{ marginTop: '1rem', padding: '0.5rem 1rem' }}>
-                再読み込み
-              </button>
-            </div>
-          ) : (
-            <>
-              {configMessage && (
-                <div
-                  style={{
-                    padding: '1rem',
-                    marginBottom: '1rem',
-                    backgroundColor: configMessage.type === 'success' ? '#d4edda' : '#f8d7da',
-                    color: configMessage.type === 'success' ? '#155724' : '#721c24',
-                    border: `1px solid ${configMessage.type === 'success' ? '#c3e6cb' : '#f5c6cb'}`,
-                    borderRadius: '4px',
-                  }}
-                >
-                  {configMessage.text}
-                </div>
-              )}
-
-              {/* 目次 */}
-              <nav style={{ marginBottom: '2rem', padding: '1rem 1.25rem', border: '1px solid #ccc', borderRadius: '6px', backgroundColor: '#fafafa' }} aria-label="設定セクション一覧">
-                <h3 style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem' }}>設定のどこを変えたい？</h3>
-                <ul style={{ margin: 0, paddingLeft: '1.25rem', columns: 2, columnGap: '2rem', listStyle: 'disc' }}>
-                  <li><a href="#config-debug" style={{ color: '#0066cc' }}>デバッグ表示</a></li>
-                  <li><a href="#config-reveal" style={{ color: '#0066cc' }}>答え合わせ・確認質問のタイミング</a></li>
-                  <li><a href="#config-algo" style={{ color: '#0066cc' }}>アルゴリズム（重み・タグ選択・スケール）</a></li>
-                  <li><a href="#config-flow" style={{ color: '#0066cc' }}>ゲームの流れ（質問数・頭文字など）</a></li>
-                  <li><a href="#config-data" style={{ color: '#0066cc' }}>データ品質（タグの出題条件）</a></li>
-                  <li><a href="#config-popularity" style={{ color: '#0066cc' }}>人気度</a></li>
-                </ul>
-              </nav>
-
-              {/* デバッグ設定 */}
-              <section id="config-debug" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9' }}>
-                <h3>デバッグ設定</h3>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={debugEnabled}
-                      onChange={(e) => handleDebugToggle(e.target.checked)}
-                      style={{ marginRight: '0.5rem', width: '18px', height: '18px', cursor: 'pointer' }}
-                    />
-                    <strong>デバッグパネルを表示する</strong>
-                  </label>
-                  <p style={{ marginTop: '0.5rem', marginLeft: '1.75rem', fontSize: '0.9rem', color: '#666' }}>
-                    チェックを入れると、ゲーム画面にデバッグパネルが表示されます。
-                    <br />
-                    デバッグパネルには、内部状態（確信度、候補数、重みの変化など）が表示されます。
-                  </p>
-                </div>
-              </section>
-
-              {/* 答え合わせ・確認質問 */}
-              <section id="config-reveal" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>答え合わせ・確認質問のタイミング</h3>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>「この作品で合ってる？」をいつ出すか、その前に「〇〇あるかしら？」や頭文字・作者をいつ挟むかを決めます。</p>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>答え合わせを出す確信度のしきい値</strong>
-                    {fieldDesc('revealThreshold')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」と答え合わせするタイミング。候補の確信度がこの値以上になると答え合わせに進みます。0～1（例: 0.7＝70%）</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={config.confirm.revealThreshold}
-                      onChange={(e) => updateConfig(['confirm', 'revealThreshold'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグで直接聞く質問を挟む確信度の範囲</strong>
-                    {fieldDesc('confidenceConfirmBand')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「〇〇あるかしら？」のような確認質問を、確信度がこの範囲（最小～最大）のときに出します。範囲外だと通常のタグ質問だけになります。</span>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        value={config.confirm.confidenceConfirmBand[0]}
-                        onChange={(e) => {
-                          const newBand: [number, number] = [parseFloat(e.target.value), config.confirm.confidenceConfirmBand[1]];
-                          updateConfig(['confirm', 'confidenceConfirmBand'], newBand);
-                        }}
-                        style={{ flex: 1, padding: '0.5rem' }}
-                      />
-                      <span style={{ lineHeight: '2.5rem' }}>～</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="1"
-                        value={config.confirm.confidenceConfirmBand[1]}
-                        onChange={(e) => {
-                          const newBand: [number, number] = [config.confirm.confidenceConfirmBand[0], parseFloat(e.target.value)];
-                          updateConfig(['confirm', 'confidenceConfirmBand'], newBand);
-                        }}
-                        style={{ flex: 1, padding: '0.5rem' }}
-                      />
-                    </div>
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>必ず確認質問を出す質問番号</strong>
-                    {fieldDesc('qForcedIndices')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>指定した質問番号では、確信度に関係なく「確認質問」を1問挟みます。カンマ区切り（例: 6,10,17）</span>
-                    <input
-                      type="text"
-                      value={config.confirm.qForcedIndices.join(',')}
-                      onChange={(e) => {
-                        const values = e.target.value.split(',').map(v => parseInt(v.trim())).filter(v => !isNaN(v));
-                        updateConfig(['confirm', 'qForcedIndices'], values);
-                      }}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグで直接聞く質問（やわらかめ）の下限確信度</strong>
-                    {fieldDesc('softConfidenceMin')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確信度がこの値以上のとき、「〇〇あるかしら？」のようなタグ確認質問を出します。0～1。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={config.confirm.softConfidenceMin}
-                      onChange={(e) => updateConfig(['confirm', 'softConfidenceMin'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>頭文字・作者で聞く質問（きっぱり）の下限確信度</strong>
-                    {fieldDesc('hardConfidenceMin')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確信度がこの値以上のとき、「タイトルの頭文字は〇かしら？」「作者は〇〇かしら？」のような直接質問を出します。0～1。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={config.confirm.hardConfidenceMin}
-                      onChange={(e) => updateConfig(['confirm', 'hardConfidenceMin'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-              </section>
-
-              {/* アルゴリズム（スコア・重み・タグ選択・スケール） */}
-              <section id="config-algo" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>アルゴリズム（重みの更新・質問の選び方・効かせ方）</h3>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>回答でスコアをどう更新するか、次にどのタグを出すか、1問の効きをどれくらいにするかを決めます。失敗が多いときは「質問の選び方」の useIG を OFF にしたり、ベイズの bayesianEpsilon を大きくすると改善しやすいです。</p>
-
-                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>重みの更新（回答でスコアをどう変えるか）</h4>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>回答によるスコアの動き方（強さ）</strong>
-                    {fieldDesc('beta')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>YES/NOに応じて候補の重みをどれくらい強く変えるか。大きいほど1問の影響が強く、収束が早くなりがちです。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      value={config.algo.beta}
-                      onChange={(e) => updateConfig(['algo', 'beta'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>人気度をスコアに混ぜる割合</strong>
-                    {fieldDesc('alpha')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>再生数など「人気」をスコアにどれだけ反映するか。0～1。0だと人気はほぼ無視されます。</span>
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      max="1"
-                      value={config.algo.alpha}
-                      onChange={(e) => updateConfig(['algo', 'alpha'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグの「ある/ない」を決めるしきい値</strong>
-                    {fieldDesc('derivedConfidenceThreshold')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>作品ごとのタグの確信度がこの値以上なら「そのタグあり」として扱います。0～1。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={config.algo.derivedConfidenceThreshold}
-                      onChange={(e) => updateConfig(['algo', 'derivedConfidenceThreshold'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>答え合わせで外れたときのスコアの下げ幅</strong>
-                    {fieldDesc('revealPenalty')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」でNOだった候補のスコアを、どれくらい割り引くか。0～1。大きいほど外れ候補が早く沈みます。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="1"
-                      value={config.algo.revealPenalty}
-                      onChange={(e) => updateConfig(['algo', 'revealPenalty'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-
-                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>次の質問の選び方（どのタグを出すか・IG／p値）</h4>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグを出題する「p値」の範囲</strong>
-                    {fieldDesc('explorePValueMin / explorePValueMax')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>この範囲外のp値のタグは出題しません。未設定時はフィルタなし。例: 0.1～0.9</span>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="number"
-                        step="0.05"
-                        min="0"
-                        max="1"
-                        placeholder="0.1"
-                        value={config.algo.explorePValueMin ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateConfig(['algo', 'explorePValueMin'], v === '' ? undefined : parseFloat(v));
-                        }}
-                        style={{ width: '80px', padding: '0.5rem' }}
-                      />
-                      <span>～</span>
-                      <input
-                        type="number"
-                        step="0.05"
-                        min="0"
-                        max="1"
-                        placeholder="0.9"
-                        value={config.algo.explorePValueMax ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          updateConfig(['algo', 'explorePValueMax'], v === '' ? undefined : parseFloat(v));
-                        }}
-                        style={{ width: '80px', padding: '0.5rem' }}
-                      />
-                    </div>
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.algo.explorePValueFallbackEnabled !== false}
-                      onChange={(e) => updateConfig(['algo', 'explorePValueFallbackEnabled'], e.target.checked)}
-                    />
-                    <strong>p値範囲内のタグが無いとき、頭文字・作者質問に切り替える</strong>
-                    {fieldDesc('explorePValueFallbackEnabled')}
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.algo.useIGForExploreSelection !== false}
-                      onChange={(e) => updateConfig(['algo', 'useIGForExploreSelection'], e.target.checked)}
-                    />
-                    <strong>タグ質問を「情報利得(IG)」で選ぶ</strong>
-                    {fieldDesc('useIGForExploreSelection')}
-                  </label>
-                  <p style={{ marginTop: '0.35rem', marginLeft: '1.5rem', fontSize: '0.9rem', color: '#555', lineHeight: '1.5' }}>
-                    ON（推奨）：1問で候補が一番分かれるタグを選びます。正答が多いと早く絞れますが、ノイズで1問間違えると確度が大きく崩れやすいです。
-                    <br />
-                    OFF：p値が0.5に近い（どちらとも言いにくい）タグを選びます。1問の効きは穏やかで、ノイズに強くなりやすい代わりに収束はやや遅れます。失敗が多いときはOFFを試してください。
-                  </p>
-                </div>
-
-                <h4 style={{ marginTop: '1.5rem', marginBottom: '0.5rem', fontSize: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.25rem' }}>回答の効かせ方（1問あたりのスケール）</h4>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>まとめ質問の回答強度スケール</strong>
-                    {fieldDesc('summaryQuestionStrengthScale')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>まとめ質問（「学校が舞台？」など）のYES/NOが確度に与える影響の倍率。1＝通常タグと同程度、0.6＝控えめ。未設定時0.6。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      placeholder="0.6"
-                      value={config.algo.summaryQuestionStrengthScale ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateConfig(['algo', 'summaryQuestionStrengthScale'], v === '' ? undefined : parseFloat(v));
-                      }}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>通常タグ質問の回答強度スケール</strong>
-                    {fieldDesc('exploreTagStrengthScale')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>まとめ以外のタグ質問（通常・エロ・抽象）のYES/NOが確度に与える影響の倍率。1＝変更なし。未設定時1。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      placeholder="1"
-                      value={config.algo.exploreTagStrengthScale ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateConfig(['algo', 'exploreTagStrengthScale'], v === '' ? undefined : parseFloat(v));
-                      }}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>SOFT確認の回答強度スケール</strong>
-                    {fieldDesc('softConfirmStrengthScale')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「〇〇あるかしら？」のようなSOFT確認質問のYES/NOが確度に与える影響の倍率。1＝変更なし。未設定時1。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      placeholder="1"
-                      value={config.algo.softConfirmStrengthScale ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateConfig(['algo', 'softConfirmStrengthScale'], v === '' ? undefined : parseFloat(v));
-                      }}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={config.algo.useBayesianUpdate !== false}
-                      onChange={(e) => updateConfig(['algo', 'useBayesianUpdate'], e.target.checked)}
-                    />
-                    <strong>タグ・確認質問の重み更新をベイズ（事後確率）で行う</strong>
-                    {fieldDesc('useBayesianUpdate')}
-                  </label>
-                  <span style={{ display: 'block', marginTop: '0.35rem', marginLeft: '1.5rem', fontSize: '0.9rem', color: '#666' }}>OFFにすると従来の強度×betaで更新。未設定時はON（ベイズ使用）。</span>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>ベイズ更新時の尤度の下限（bayesianEpsilon）</strong>
-                    {fieldDesc('bayesianEpsilon')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>確率0で重みを殺さないための下限。尤度は [epsilon, 1-epsilon] にクランプされます。0～0.5。未設定時0.02。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="0.5"
-                      placeholder="0.02"
-                      value={config.algo.bayesianEpsilon ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateConfig(['algo', 'bayesianEpsilon'], v === '' ? undefined : parseFloat(v));
-                      }}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-              </section>
-
-              {/* ゲームの流れ */}
-              <section id="config-flow" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>ゲームの流れ（質問数・失敗時・頭文字の範囲など）</h3>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>1ゲームの最大質問数、答え合わせを連続で外してよい回数、失敗時に表示する候補数、まとめ質問の優先度、頭文字・作者を何位までから選ぶかなどを決めます。</p>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>1ゲームの最大質問数</strong>
-                    {fieldDesc('maxQuestions')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>この回数まで質問したらゲーム終了（正解が出なくても終了）します。</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={config.flow.maxQuestions}
-                      onChange={(e) => updateConfig(['flow', 'maxQuestions'], parseInt(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>答え合わせを連続で外してよい回数</strong>
-                    {fieldDesc('maxRevealMisses')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「この作品で合ってる？」をこの回数だけ連続で外すと、答え合わせは打ち切られて質問に戻ります。</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={config.flow.maxRevealMisses}
-                      onChange={(e) => updateConfig(['flow', 'maxRevealMisses'], parseInt(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>失敗時に表示する候補の数</strong>
-                    {fieldDesc('failListN')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>質問数オーバーなどでゲーム失敗のとき、上位何件の候補を「惜しかった作品」として表示するか。</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={config.flow.failListN}
-                      onChange={(e) => updateConfig(['flow', 'failListN'], parseInt(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>確認質問を挟む「候補数しきい値」の計算用</strong>
-                    {fieldDesc('effectiveConfirmThresholdParams')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補数に応じて確認質問を出すかどうかを決める式のパラメータ。通常はそのままで問題ありません。min・max・divisor の3つ。</span>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
-                      <div style={{ flex: 1 }}>
-                        <label>
-                          最小:
-                          <input
-                            type="number"
-                            min="1"
-                            value={config.flow.effectiveConfirmThresholdParams.min}
-                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'min'], parseInt(e.target.value))}
-                            style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-                          />
-                        </label>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label>
-                          最大:
-                          <input
-                            type="number"
-                            min="1"
-                            value={config.flow.effectiveConfirmThresholdParams.max}
-                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'max'], parseInt(e.target.value))}
-                            style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-                          />
-                        </label>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label>
-                          割る数:
-                          <input
-                            type="number"
-                            min="1"
-                            value={config.flow.effectiveConfirmThresholdParams.divisor}
-                            onChange={(e) => updateConfig(['flow', 'effectiveConfirmThresholdParams', 'divisor'], parseInt(e.target.value))}
-                            style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem' }}
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>連続でNOが続いたとき「当たり狙い」にする回数</strong>
-                    {fieldDesc('consecutiveNoForAtari')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>直近の回答がこの回数だけ連続NOのとき、次の1問は当たりやすいタグを選びます。単調さを和らげます。未設定時は3。</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={config.flow.consecutiveNoForAtari ?? 3}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        updateConfig(['flow', 'consecutiveNoForAtari'], v === '' ? undefined : parseInt(v) || 3);
-                      }}
-                      placeholder="3"
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>まとめ質問を優先して選ぶ確率</strong>
-                    {fieldDesc('summaryPreferRatio')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>0～1。この確率で「まとめ質問だけ」に絞ってから1問選びます。0なら優先なし。0.3なら30%の確率でまとめが多く出ます。まとめがなかなか出ないときは0.3～0.5程度に上げて試してください。</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max="1"
-                      value={config.flow.summaryPreferRatio ?? 0}
-                      onChange={(e) => updateConfig(['flow', 'summaryPreferRatio'], e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                      placeholder="0"
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>頭文字・作者を聞くとき、候補の上位何件から選ぶか</strong>
-                    {fieldDesc('titleInitialTopN')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>「タイトルの頭文字は〇かしら？」「作者は〇〇かしら？」を、確度の高い順に何件目の作品までから選ぶか。1＝1位だけ（従来どおり）。2や3にすると頭文字のバリエーションが増えますが、正解がその範囲に入っていないと正解の頭文字を一度も聞けず終わるリスクがあります。推奨は2か3。</span>
-                    <input
-                      type="number"
-                      min="1"
-                      value={config.flow.titleInitialTopN ?? 1}
-                      onChange={(e) => updateConfig(['flow', 'titleInitialTopN'], e.target.value === '' ? undefined : parseInt(e.target.value) || 1)}
-                      placeholder="1"
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-              </section>
-
-              {/* データ品質（タグの出題条件） */}
-              <section id="config-data" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>データ品質（タグの出題条件）</h3>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>タグを「出題候補」にするときの条件です。極端に少ない作品にしかないタグや、ほぼ全員が持つタグを出題から外すために使います。</p>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>「何人持ってるタグを出すか」の決め方</strong>
-                    {fieldDesc('minCoverageMode')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>RATIO＝割合でしきい値、WORKS＝作品数でしきい値、AUTO＝自動。通常は WORKS のままで問題ありません。</span>
-                    <select
-                      value={config.dataQuality.minCoverageMode}
-                      onChange={(e) => updateConfig(['dataQuality', 'minCoverageMode'], e.target.value)}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    >
-                      <option value="RATIO">割合でしきい値（RATIO）</option>
-                      <option value="WORKS">作品数でしきい値（WORKS）</option>
-                      <option value="AUTO">自動（AUTO）</option>
-                    </select>
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグを出題する「最小の割合」</strong>
-                    {fieldDesc('minCoverageRatio')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補作品中、この割合以上の作品が持っているタグだけ出題します。RATIOモードのとき使います。0～1。空なら無効。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="1"
-                      value={config.dataQuality.minCoverageRatio ?? ''}
-                      onChange={(e) => updateConfig(['dataQuality', 'minCoverageRatio'], e.target.value === '' ? null : parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>タグを出題する「最小の作品数」</strong>
-                    {fieldDesc('minCoverageWorks')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>候補作品中、この件数以上の作品が持っているタグだけ出題します。WORKSモードのとき使います。空なら無効。</span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={config.dataQuality.minCoverageWorks ?? ''}
-                      onChange={(e) => updateConfig(['dataQuality', 'minCoverageWorks'], e.target.value === '' ? null : parseInt(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-              </section>
-
-              {/* 人気度 */}
-              <section id="config-popularity" style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>人気度</h3>
-                <p style={{ color: '#666', marginBottom: '1rem' }}>正解したときの「人気」の扱いです。現状はボーナス0で、スコアにはアルゴリズムの alpha で混ぜる形です。</p>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label>
-                    <strong>正解したときに人気スコアへ加えるボーナス</strong>
-                    {fieldDesc('playBonusOnSuccess')}
-                    <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.9rem' }}>答え合わせで正解した作品に、人気スコアをどれだけ足すか。0なら加算なし。</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={config.popularity.playBonusOnSuccess}
-                      onChange={(e) => updateConfig(['popularity', 'playBonusOnSuccess'], parseFloat(e.target.value))}
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                    />
-                  </label>
-                </div>
-              </section>
-
-              <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-                <h3>注意事項</h3>
-                <ul style={{ marginLeft: '1.5rem' }}>
-                  <li>設定変更後は開発サーバーを再起動してください（<code>npm run dev</code>を停止して再起動）</li>
-                  <li>バリデーションエラーがある場合は保存されません</li>
-                  <li>保存前に自動的にバックアップが作成されます（<code>config/mvpConfig.json.bak</code>）</li>
-                  <li>このページは開発環境でのみ利用できます</li>
-                </ul>
-              </div>
-
-              <div style={{ marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid #ddd' }}>
-                <button
-                  onClick={handleConfigSave}
-                  disabled={configSaving}
-                  style={{
-                    padding: '0.75rem 2rem',
-                    fontSize: '1rem',
-                    backgroundColor: configSaving ? '#ccc' : '#0070f3',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: configSaving ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {configSaving ? '保存中...' : '設定を保存'}
-                </button>
-                <button
-                  onClick={loadConfig}
-                  disabled={configSaving}
-                  style={{
-                    padding: '0.75rem 2rem',
-                    fontSize: '1rem',
-                    marginLeft: '1rem',
-                    backgroundColor: '#666',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: configSaving ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  リセット
-                </button>
-              </div>
-            </>
-          )}
-        </section>
+        <ConfigTab
+          config={config}
+          configLoading={configLoading}
+          configSaving={configSaving}
+          configMessage={configMessage}
+          debugEnabled={debugEnabled}
+          loadConfig={loadConfig}
+          handleConfigSave={handleConfigSave}
+          handleDebugToggle={handleDebugToggle}
+          updateConfig={updateConfig}
+          fieldDesc={fieldDesc}
+        />
       )}
 
       {/* タブコンテンツ 作品インポート */}
@@ -3586,10 +2941,15 @@ export default function AdminTagsPage() {
         </section>
       )}
 
+      {/* タブコンテンツ 作品頭文字 */}
+      {activeTab === 'initial' && (
+        <TitleReadingInitialTab adminToken={adminToken} />
+      )}
+
       {/* タブコンテンツ シミュレーション */}
       {activeTab === 'simulate' && (
         <section style={{ marginBottom: '2rem' }}>
-          <h2>シミュレーション</h2>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>シミュレーション</h2>
           <p style={{ color: '#666', marginBottom: '0.5rem' }}>
             指定した作品を「正解」として自動でゲームをプレイし、アルゴリズムの精度を検証します。
           </p>
@@ -3661,13 +3021,20 @@ export default function AdminTagsPage() {
                   const simStartTime = Date.now();
                   setProgress('simulate', { done: 0, total: 1, phase: '準備中...', startTime: simStartTime });
                   try {
+                    if (!adminToken) {
+                      alert('管理トークンを入力してください');
+                      setSimBatchLoading(false);
+                      return;
+                    }
                     // チャンク実行: 進捗を逐次更新するため、workIds を取得して分割実行
-                    const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}`);
+                    const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}`, {
+                      headers: { 'x-eronator-admin-token': adminToken },
+                    });
                     if (!idsRes.ok) throw new Error('サンプル取得に失敗しました');
                     const { workIds } = (await idsRes.json()) as { workIds: string[] };
                     const totalTrials = workIds.length * simTrialsPerWork;
                     setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中', startTime: simStartTime });
-                    const CHUNK_SIZE = 4;
+                    const CHUNK_SIZE = 10;
                     const allResults: Array<{ workId: string; title: string; success: boolean; questionCount: number; outcome: string; steps?: unknown; workDetails?: unknown; diagnostic?: unknown; analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number }; errorMessage?: string; perfSummary?: Record<string, number> }> = [];
                     let doneCount = 0;
                     let totalWorksInDb = 0;
@@ -3675,7 +3042,7 @@ export default function AdminTagsPage() {
                       const chunk = workIds.slice(i, i + CHUNK_SIZE);
                       const response = await fetch('/api/admin/simulate', {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                         body: JSON.stringify({
                           workIds: chunk,
                           ambiguityLevel: simAmbiguityLevel,
@@ -3787,7 +3154,7 @@ export default function AdminTagsPage() {
                     try {
                       const response = await fetch('/api/admin/simulate', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                         body: JSON.stringify({
                           targetWorkId: simResult.targetWorkId,
                           ambiguityLevel: simAmbiguityLevel,
@@ -3822,40 +3189,64 @@ export default function AdminTagsPage() {
                 </button>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                <div>
-                  <strong>正解作品:</strong><br />
-                  {simResult.targetWorkTitle}
-                </div>
-                <div>
-                  <strong>最終結果:</strong><br />
-                  {simResult.finalWorkTitle || '(なし)'}
-                </div>
-                <div>
-                  <strong>質問数:</strong> {simResult.questionCount}問
-                </div>
-                <div>
-                  <strong>結果:</strong> {simResult.outcome}
-                </div>
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                <span>{(simResult as { success?: boolean }).success ? '成功' : '失敗'} | <strong>作品:</strong> {simResult.targetWorkTitle} | <strong>最終:</strong> {simResult.finalWorkTitle || '(なし)'} | <strong>結果:</strong> {simResult.outcome}</span>
+              </div>
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                質問数: {simResult.questionCount}問
                 {((simResult as { diagnostic?: { correctRank?: number }; analysisData?: { correctRank?: number } }).diagnostic?.correctRank ?? (simResult as { analysisData?: { correctRank?: number } }).analysisData?.correctRank) != null && (
-                  <div>
-                    <strong>正解の順位:</strong><br />
-                    {(() => {
+                  <>
+                    {' | '}
+                    正解の順位: {(() => {
                       const rank = (simResult as { diagnostic?: { correctRank?: number }; analysisData?: { correctRank?: number } }).diagnostic?.correctRank ?? (simResult as { analysisData?: { correctRank?: number } }).analysisData?.correctRank;
                       return rank === -1 ? '候補外' : `${rank}位`;
                     })()}
-                  </div>
-                )}
-                {simResult.errorMessage && (
-                  <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.9rem' }}>
-                    <strong>エラー:</strong> {simResult.errorMessage}
-                  </div>
+                  </>
                 )}
               </div>
+              {simResult.errorMessage && (
+                <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.85rem' }}>
+                  <strong>エラー:</strong> {simResult.errorMessage}
+                </div>
+              )}
+              {(simResult as { workDetails?: { tags?: Array<{ tagKey?: string; displayName: string; tagType?: string }> } }).workDetails?.tags && (simResult as { workDetails?: { tags?: Array<{ displayName: string }> } }).workDetails!.tags!.length > 0 && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>作品のタグ:</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.25rem' }}>
+                    {((simResult as { workDetails?: { tags?: Array<{ tagKey?: string; displayName: string; tagType?: string }> } }).workDetails!.tags!)
+                      .sort((a, b) => {
+                        const order = { OFFICIAL: 0, DERIVED: 1, STRUCTURAL: 2 };
+                        return (order[(a.tagType ?? '') as keyof typeof order] ?? 3) - (order[(b.tagType ?? '') as keyof typeof order] ?? 3);
+                      })
+                      .map((t, i) => {
+                        const wasAsked = simResult.steps?.some((s: { question?: { tagKey?: string; displayText?: string } }) =>
+                          (s.question?.tagKey === t.tagKey) || (s.question?.displayText?.includes(t.displayName))
+                        );
+                        return (
+                          <span
+                            key={t.tagKey ?? t.displayName ?? i}
+                            style={{
+                              padding: '0.15rem 0.4rem',
+                              borderRadius: '4px',
+                              fontSize: '0.8rem',
+                              background: t.tagType === 'OFFICIAL' ? RANK_BG.S : t.tagType === 'DERIVED' ? RANK_BG.B : RANK_BG.X,
+                              color: t.tagType === 'OFFICIAL' ? RANK_TEXT.S : t.tagType === 'DERIVED' ? RANK_TEXT.B : RANK_TEXT.X,
+                              border: wasAsked ? '2px solid #4caf50' : '1px solid #ccc',
+                              fontWeight: wasAsked ? 'bold' : 'normal',
+                            }}
+                            title={wasAsked ? '質問で使用' : undefined}
+                          >
+                            {t.displayName}{wasAsked && ' ✓'}
+                          </span>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
               {/* 計測結果（開こうとしたら開ける・デフォルト閉じ） */}
               {simResult.perfSummary && (
-                <div style={{ marginBottom: '1rem' }}>
+                <div style={{ marginBottom: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={() => setSimPerfExpanded(!simPerfExpanded)}
@@ -3894,7 +3285,7 @@ export default function AdminTagsPage() {
               )}
 
               {/* ステップ詳細 & 作品詳細 */}
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   onClick={() => setSimExpandedSteps(!simExpandedSteps)}
                   style={{
@@ -4078,14 +3469,14 @@ export default function AdminTagsPage() {
                                       {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
                                     </span>
                                   )}
-                                  {step.question.kind === 'HARD_CONFIRM' && step.question.hardConfirmType && (
+                                  {step.question.kind === 'HARD_CONFIRM' && (step.question as { hardConfirmType?: string }).hardConfirmType && (
                                     <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                      {step.question.hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
+                                      {(step.question as { hardConfirmType?: string }).hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
                                     </span>
                                   )}
-                                  {step.question.kind === 'SPECIAL_QUESTION' && step.question.specialQuestionType && (
+                                  {step.question.kind === 'SPECIAL_QUESTION' && (step.question as { specialQuestionType?: string }).specialQuestionType && (
                                     <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                      {step.question.specialQuestionType === 'SERIES' ? 'シリーズ' : step.question.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.question.specialQuestionType}
+                                      {(step.question as { specialQuestionType?: string }).specialQuestionType === 'SERIES' ? 'シリーズ' : (step.question as { specialQuestionType?: string }).specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : (step.question as { specialQuestionType?: string }).specialQuestionType}
                                     </span>
                                   )}
                                 </span>
@@ -4175,7 +3566,7 @@ export default function AdminTagsPage() {
                     try {
                       const response = await fetch('/api/admin/simulate', {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                         body: JSON.stringify({ result: simBatchResult }),
                       });
                       if (!response.ok) throw new Error('Failed to save');
@@ -4437,7 +3828,7 @@ export default function AdminTagsPage() {
                   <div
                     style={{
                       background: simResultModal.success ? '#e8f5e9' : '#ffebee',
-                      padding: '1.5rem',
+                      padding: '1rem',
                       borderRadius: '8px',
                       maxWidth: '95vw',
                       maxHeight: '90vh',
@@ -4446,9 +3837,9 @@ export default function AdminTagsPage() {
                     }}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <h3 style={{ margin: 0, fontSize: '1.2rem' }}>
-                        {simResultModal.success ? '成功' : '失敗'} - {simResultModal.outcome}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+                        {simResultModal.success ? '成功' : '失敗'} - {simResultModal.outcome} | 作品: {simResultModal.targetWorkTitle}
                       </h3>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
@@ -4459,7 +3850,7 @@ export default function AdminTagsPage() {
                             try {
                               const response = await fetch('/api/admin/simulate', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                                 body: JSON.stringify({
                                   targetWorkId: simResultModal.targetWorkId,
                                   ambiguityLevel: simAmbiguityLevel,
@@ -4506,19 +3897,50 @@ export default function AdminTagsPage() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ marginBottom: '0.5rem' }}><strong>作品:</strong> {simResultModal.targetWorkTitle}</div>
-                    <div style={{ marginBottom: '0.5rem' }}><strong>質問数:</strong> {simResultModal.questionCount}問</div>
-                    {(() => {
-                      const rank = (simResultModal.diagnostic as { correctRank?: number })?.correctRank ?? simResultModal.analysisData?.correctRank;
-                      if (rank == null) return null;
-                      return (
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>正解の順位:</strong> {rank === -1 ? '候補外' : `${rank}位`}
+                    <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                      質問数: {simResultModal.questionCount}問
+                      {(() => {
+                        const rank = (simResultModal.diagnostic as { correctRank?: number })?.correctRank ?? simResultModal.analysisData?.correctRank;
+                        if (rank == null) return null;
+                        return ` | 正解の順位: ${rank === -1 ? '候補外' : `${rank}位`}`;
+                      })()}
+                    </div>
+                    {(simResultModal.workDetails as { tags?: Array<{ tagKey?: string; displayName: string; tagType?: string }> })?.tags && (simResultModal.workDetails as { tags: Array<{ tagKey?: string; displayName: string; tagType?: string }> }).tags.length > 0 && (
+                      <div style={{ marginBottom: '0.5rem' }}>
+                        <strong>作品のタグ:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.25rem' }}>
+                          {((simResultModal.workDetails as { tags: Array<{ tagKey?: string; displayName: string; tagType?: string }> }).tags)
+                            .sort((a, b) => {
+                              const order = { OFFICIAL: 0, DERIVED: 1, STRUCTURAL: 2 };
+                              return (order[(a.tagType ?? '') as keyof typeof order] ?? 3) - (order[(b.tagType ?? '') as keyof typeof order] ?? 3);
+                            })
+                            .map((t, i) => {
+                              const wasAsked = simResultModal.steps?.some((s: { question?: { tagKey?: string; displayText?: string } }) =>
+                                (s.question?.tagKey === t.tagKey) || (s.question?.displayText?.includes(t.displayName))
+                              );
+                              return (
+                                <span
+                                  key={t.tagKey ?? t.displayName ?? i}
+                                  style={{
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.8rem',
+                                    background: t.tagType === 'OFFICIAL' ? RANK_BG.S : t.tagType === 'DERIVED' ? RANK_BG.B : RANK_BG.X,
+                                    color: t.tagType === 'OFFICIAL' ? RANK_TEXT.S : t.tagType === 'DERIVED' ? RANK_TEXT.B : RANK_TEXT.X,
+                                    border: wasAsked ? '2px solid #4caf50' : '1px solid #ccc',
+                                    fontWeight: wasAsked ? 'bold' : 'normal',
+                                  }}
+                                  title={wasAsked ? '質問で使用' : undefined}
+                                >
+                                  {t.displayName}{wasAsked && ' ✓'}
+                                </span>
+                              );
+                            })}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
                     {simResultModal.analysisData && (
-                      <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff', borderRadius: '4px', fontSize: '0.9rem' }}>
+                      <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fff', borderRadius: '4px', fontSize: '0.85rem' }}>
                         <strong>分析:</strong> wasNoisy={simResultModal.analysisData.wasNoisyCount}回
                         {simResultModal.analysisData.noisyRatio != null && ` (noisyRatio=${(simResultModal.analysisData.noisyRatio * 100).toFixed(1)}%)`}
                         , correctRank={simResultModal.analysisData.correctRank}, top1Confidence={(simResultModal.analysisData.top1Confidence * 100).toFixed(1)}%
@@ -4526,12 +3948,12 @@ export default function AdminTagsPage() {
                       </div>
                     )}
                     {simResultModal.errorMessage && (
-                      <div style={{ marginBottom: '1rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.9rem' }}>
+                      <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#ffebee', borderRadius: '4px', fontSize: '0.85rem' }}>
                         <strong>エラー:</strong> {simResultModal.errorMessage}
                       </div>
                     )}
                     {simResultModal.perfSummary && (
-                      <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ marginBottom: '0.5rem' }}>
                         <button
                           type="button"
                           onClick={() => setSimModalPerfExpanded(!simModalPerfExpanded)}
@@ -4546,10 +3968,10 @@ export default function AdminTagsPage() {
                         )}
                       </div>
                     )}
-                    <div style={{ marginTop: '1rem' }}>
+                    <div style={{ marginTop: '0.5rem' }}>
                       <strong>過程</strong>
                       <div style={{ 
-                        marginTop: '0.5rem',
+                        marginTop: '0.35rem',
                         maxHeight: '3200px',
                         overflowY: 'auto',
                         background: '#fff',
@@ -4598,14 +4020,14 @@ export default function AdminTagsPage() {
                                           {EXPLORE_TAG_KIND_LABEL[step.question.exploreTagKind]}
                                         </span>
                                       )}
-                                      {step.question.kind === 'HARD_CONFIRM' && step.question.hardConfirmType && (
+                                      {step.question.kind === 'HARD_CONFIRM' && (step.question as { hardConfirmType?: string }).hardConfirmType && (
                                         <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                          {step.question.hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
+                                          {(step.question as { hardConfirmType?: string }).hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
                                         </span>
                                       )}
-                                      {step.question.kind === 'SPECIAL_QUESTION' && step.question.specialQuestionType && (
+                                      {step.question.kind === 'SPECIAL_QUESTION' && (step.question as { specialQuestionType?: string }).specialQuestionType && (
                                         <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                          {step.question.specialQuestionType === 'SERIES' ? 'シリーズ' : step.question.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.question.specialQuestionType}
+                                          {(step.question as { specialQuestionType?: string }).specialQuestionType === 'SERIES' ? 'シリーズ' : (step.question as { specialQuestionType?: string }).specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : (step.question as { specialQuestionType?: string }).specialQuestionType}
                                         </span>
                                       )}
                                     </span>
@@ -4649,7 +4071,7 @@ export default function AdminTagsPage() {
       {/* サービスプレイ履歴タブ */}
       {activeTab === 'history' && (
         <section style={{ marginTop: '1rem' }}>
-          <h2 style={{ marginBottom: '1rem' }}>サービスプレイ履歴</h2>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>本番プレイ履歴</h2>
           <p style={{ color: '#666', marginBottom: '1rem' }}>
             1プレイ＝1レコード。質問列・回答・結果・時刻を保存。滞在時間・FANZAクリックを表示するには本番へデプロイが必要です。
           </p>
@@ -4936,9 +4358,9 @@ export default function AdminTagsPage() {
                                         {EXPLORE_TAG_KIND_LABEL[step.exploreTagKind] ?? step.exploreTagKind}
                                       </span>
                                     )}
-                                    {step.specialQuestionType && (
+                                    {(step as { specialQuestionType?: string }).specialQuestionType && (
                                       <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                        {step.specialQuestionType === 'SERIES' ? 'シリーズ' : step.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : step.specialQuestionType}
+                                        {(step as { specialQuestionType?: string }).specialQuestionType === 'SERIES' ? 'シリーズ' : (step as { specialQuestionType?: string }).specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : (step as { specialQuestionType?: string }).specialQuestionType}
                                       </span>
                                     )}
                                   </span>
@@ -5037,173 +4459,7 @@ export default function AdminTagsPage() {
       )}
 
       {/* 更新履歴編集タブ */}
-      {activeTab === 'changelog' && (
-        <section style={{ marginTop: '1rem' }}>
-          <h2 style={{ marginBottom: '1rem' }}>更新履歴編集</h2>
-          <p style={{ color: '#666', marginBottom: '1rem' }}>
-            トップ画面に表示するバージョン情報と更新履歴を編集できます。保存すると config/appInfo.json に反映されます。
-          </p>
-          {appInfoMessage && (
-            <div
-              style={{
-                marginBottom: '1rem',
-                padding: '0.75rem',
-                backgroundColor: appInfoMessage.type === 'success' ? '#d4edda' : '#f8d7da',
-                color: appInfoMessage.type === 'success' ? '#155724' : '#721c24',
-                borderRadius: '4px',
-              }}
-            >
-              {appInfoMessage.text}
-            </div>
-          )}
-          {appInfoLoading ? (
-            <p>読み込み中...</p>
-          ) : (
-            <div style={{ maxWidth: 640 }}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
-                  バージョン表示
-                </label>
-                <input
-                  type="text"
-                  value={appInfoVersion}
-                  onChange={(e) => setAppInfoVersion(e.target.value)}
-                  placeholder="ERONATOR β (v0.91)"
-                  style={{
-                    width: '100%',
-                    padding: '0.5rem 0.75rem',
-                    fontSize: '1rem',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
-                  更新履歴（日付・本文。新しいほど上に表示。追加は最上位に挿入）
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {appInfoChangelog.map((entry, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                      <input
-                        type="text"
-                        value={entry.date}
-                        onChange={(e) => {
-                          const next = [...appInfoChangelog];
-                          next[i] = { ...next[i], date: e.target.value };
-                          setAppInfoChangelog(next);
-                        }}
-                        placeholder="2026-02-19"
-                        style={{
-                          width: 120,
-                          flexShrink: 0,
-                          padding: '0.4rem 0.5rem',
-                          fontSize: '0.9rem',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                        }}
-                      />
-                      <textarea
-                        value={entry.text}
-                        onChange={(e) => {
-                          const next = [...appInfoChangelog];
-                          next[i] = { ...next[i], text: e.target.value };
-                          setAppInfoChangelog(next);
-                        }}
-                        placeholder="更新内容（複数行可）"
-                        rows={2}
-                        style={{
-                          flex: 1,
-                          minHeight: 52,
-                          padding: '0.4rem 0.5rem',
-                          fontSize: '0.9rem',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          resize: 'vertical',
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setAppInfoChangelog(appInfoChangelog.filter((_, j) => j !== i))}
-                        style={{
-                          padding: '0.4rem 0.6rem',
-                          backgroundColor: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem',
-                        }}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setAppInfoChangelog([{ date: new Date().toISOString().split('T')[0], text: '' }, ...appInfoChangelog])}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: '#059669',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      alignSelf: 'flex-start',
-                    }}
-                  >
-                    + 行を追加
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!adminToken) return;
-                  setAppInfoSaving(true);
-                  setAppInfoMessage(null);
-                  try {
-                    const res = await fetch('/api/admin/app-info', {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'x-eronator-admin-token': adminToken,
-                      },
-                      body: JSON.stringify({
-                        version: appInfoVersion,
-                        changelog: appInfoChangelog.filter(e => e.date.trim() || e.text.trim()),
-                      }),
-                    });
-                    const data = await res.json();
-                    if (res.ok && data.success) {
-                      setAppInfoMessage({ type: 'success', text: '保存しました' });
-                    } else {
-                      setAppInfoMessage({ type: 'error', text: data.error || '保存に失敗しました' });
-                    }
-                  } catch {
-                    setAppInfoMessage({ type: 'error', text: '保存に失敗しました' });
-                  } finally {
-                    setAppInfoSaving(false);
-                  }
-                }}
-                disabled={appInfoSaving}
-                style={{
-                  padding: '0.6rem 1.5rem',
-                  backgroundColor: appInfoSaving ? '#ccc' : '#059669',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: appInfoSaving ? 'not-allowed' : 'pointer',
-                  fontSize: '1rem',
-                }}
-              >
-                {appInfoSaving ? '保存中...' : '保存'}
-              </button>
-            </div>
-          )}
-        </section>
-      )}
+      {activeTab === 'changelog' && <ChangelogTab adminToken={adminToken} />}
     </div>
       </>
   );

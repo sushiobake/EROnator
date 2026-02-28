@@ -13,6 +13,9 @@ export type JobProgress = {
   startTime?: number;
   round?: number;
   roundTotal?: number;
+  currentWorkId?: string;
+  detail?: string;
+  errorCount?: number;
 };
 
 export type ProgressState = {

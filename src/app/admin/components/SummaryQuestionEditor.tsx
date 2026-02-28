@@ -278,7 +278,7 @@ export default function SummaryQuestionEditor({ adminToken }: Props) {
 
   return (
     <section style={{ marginBottom: '2rem' }}>
-      <h2>まとめ質問の編集</h2>
+      <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>まとめ質問</h2>
       <p style={{ color: '#666', marginBottom: '1rem' }}>
         上で「編集するまとめ」を選び、タグは下の一覧からクリックで内包タグに追加。S（公式）・A（採用）・B（派生）で区分、Xは非表示。
       </p>

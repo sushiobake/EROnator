@@ -1,6 +1,6 @@
 /**
  * Phase2: 問題ありから1件取得し、追加提案（added/newProposal）を出力して人間確認へ
- * POST /api/admin/groq-check-phase2
+ * POST /api/admin/openai-check-phase2
  * OpenAI GPT-5-mini 使用
  */
 
@@ -150,7 +150,7 @@ export async function POST() {
 
     let content: string;
     try {
-      content = await callCheckApi(userContent, 'groq-check-phase2');
+      content = await callCheckApi(userContent, 'openai-check-phase2');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
@@ -169,8 +169,8 @@ export async function POST() {
       if (!jsonMatch) throw new Error('No JSON in response');
       parsed = JSON.parse(jsonMatch[0]) as typeof parsed;
     } catch (e) {
-      console.error('[groq-check-phase2] Parse error:', e);
-      console.error('[groq-check-phase2] Raw:', content.slice(0, 500));
+      console.error('[openai-check-phase2] Parse error:', e);
+      console.error('[openai-check-phase2] Raw:', content.slice(0, 500));
       return NextResponse.json(
         { error: 'Failed to parse AI response as JSON', raw: content.slice(0, 300) },
         { status: 502 }
@@ -223,7 +223,7 @@ export async function POST() {
       newProposal,
     });
   } catch (error) {
-    console.error('[groq-check-phase2]', error);
+    console.error('[openai-check-phase2]', error);
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

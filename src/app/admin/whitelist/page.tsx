@@ -109,11 +109,11 @@ export default function WhitelistPage() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto' }}>
       <h1>🏷️ 準有名タグ ホワイトリスト</h1>
       
       <div style={{ marginBottom: '20px' }}>
-        <Link href="/admin/tags" style={{ color: '#0066cc' }}>← タグ管理に戻る</Link>
+        <Link href="/admin" style={{ color: '#0066cc' }}>← タグ管理に戻る</Link>
         <span style={{ margin: '0 10px' }}>|</span>
         <Link href="/admin/reanalyze" style={{ color: '#0066cc' }}>DERIVED再抽出</Link>
       </div>

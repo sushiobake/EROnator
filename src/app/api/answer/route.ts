@@ -10,10 +10,9 @@ import {
   calculateConfidence,
   calculateEffectiveCandidates,
 } from '@/server/algo/scoring';
-import { processAnswer, selectNextQuestion } from '@/server/game/engine';
+import { processAnswer, handleAnswerResponse } from '@/server/game/engine';
 import { applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { getMvpConfig } from '@/server/config/loader';
-import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { WorkResponse, QuestionResponse, SessionStateResponse } from '@/server/api/types';
@@ -83,13 +82,8 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    // 回答処理前に重みのスナップショットを保存（修正機能用）
-    const t2 = Date.now();
-    await SessionManager.saveWeightsSnapshot(
-      sessionId,
-      currentQuestion.qIndex,
-      weights
-    );
+    // 重みのスナップショットは handleAnswerResponse の sessionUpdates に含め、1回の updateSession で保存する
+    // （saveWeightsSnapshot を別呼び出しすると楽観的ロックで version がずれ、2回目の updateSession が SESSION_CONFLICT になる）
 
     // 回答処理（まとめ質問のときは strength ±0.6 と summaryDisplayNames を使用）
     const questionData = {
@@ -102,7 +96,10 @@ export async function POST(request: NextRequest) {
       summaryDisplayNames: currentQuestion.summaryDisplayNames,
       specialQuestionType: currentQuestion.specialQuestionType,
       seriesTagKeys: currentQuestion.seriesTagKeys,
-      titleCharType: (currentQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
+      titleCharType: (currentQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+      popularityThreshold: (currentQuestion as { popularityThreshold?: number }).popularityThreshold,
+      syllableChars: (currentQuestion as { syllableChars?: string[] }).syllableChars,
+      authorCharType: (currentQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
     };
 
     const t3 = Date.now();
@@ -151,177 +148,62 @@ export async function POST(request: NextRequest) {
       weights: snapshotWeights,
     }];
 
-    // REVEAL判定（一度外した作品は候補から外し、確度順で未出の先頭をREVEAL）
-    const tReveal = Date.now();
-    const revealThreshold = getRevealThresholdForQuestion(newQuestionCount - 1, config.confirm.revealThreshold);
-    if (confidence >= revealThreshold) {
-      const sorted = [...probabilities].sort((a, b) => {
-        if (a.probability !== b.probability) {
-          return b.probability - a.probability;
-        }
-        return a.workId.localeCompare(b.workId);
-      });
-      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
-      const revealWorkId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? null;
-
-      if (revealWorkId) {
-        const topWork = await prisma.work.findUnique({
-          where: { workId: revealWorkId },
-          select: {
-            workId: true,
-            title: true,
-            authorName: true,
-            isAi: true,
-            productUrl: true,
-            thumbnailUrl: true,
-          },
-        });
-
-        if (topWork) {
-          const workResponse = toWorkResponse(topWork);
-          await SessionManager.updateSession(sessionId, {
-            weights: weightsMap,
-            questionCount: newQuestionCount,
-            weightsHistory: newWeightsHistory,
-            questionHistory: historyWithAnswer,
-          }, session);
-
-          // デバッグペイロード構築（3重ロック成立時のみ）
-          let debug;
-          if (allowed && session && beforeState) {
-            const touchedTagKeys: string[] = [];
-            if (currentQuestion.tagKey) {
-              touchedTagKeys.push(currentQuestion.tagKey);
-            }
-            const updatedSessionForDebug = {
-              ...session,
-              questionCount: session.questionCount + 1,
-              weights: weightsMap,
-            };
-            debug = await buildDebugPayload(
-              updatedSessionForDebug,
-              probabilities,
-              confidence,
-              beforeState,
-              {
-                questionId: currentQuestion.tagKey || undefined,
-                answerValue: choice,
-                touchedTagKeys,
-              }
-            );
-          }
-
-          return NextResponse.json({
-            state: 'REVEAL',
-            work: workResponse,
-            ...(debug ? { debug } : {}),
-          });
-        }
-      }
-    }
-
-    // REVEAL失敗回数上限のみ FAIL_LIST（maxQuestions は強制 REVEAL にする）
-    if (session.revealMissCount >= (config.flow.maxRevealMisses as number)) {
-      await SessionManager.updateSession(sessionId, {
-        weights: weightsMap,
-        questionCount: newQuestionCount,
-        weightsHistory: newWeightsHistory,
-        questionHistory: historyWithAnswer,
-      }, session);
-      try {
-        await createPlayHistory(
-          { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
-          'FAIL_LIST'
-        );
-      } catch (e) {
-        console.error('[PlayHistory] create FAIL_LIST failed:', e);
-      }
-      return NextResponse.json({
-        state: 'FAIL_LIST',
-      });
-    }
-
-    // maxQuestions 到達時は確度に関係なく強制 REVEAL（既出は候補から外す）
-    // confidence >= 0.3 のときは 35 問まで延長
-    const effectiveMax = getEffectiveMaxQuestions(config.flow.maxQuestions as number, confidence);
-    if (session.questionCount + 1 >= effectiveMax) {
-      const sorted = [...probabilities].sort((a, b) => {
-        if (a.probability !== b.probability) return b.probability - a.probability;
-        return a.workId.localeCompare(b.workId);
-      });
-      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
-      const forceRevealId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId;
-      if (forceRevealId) {
-        const topWork = await prisma.work.findUnique({
-          where: { workId: forceRevealId },
-          select: {
-            workId: true,
-            title: true,
-            authorName: true,
-            isAi: true,
-            productUrl: true,
-            thumbnailUrl: true,
-          },
-        });
-        if (topWork) {
-          await SessionManager.updateSession(sessionId, {
-            weights: weightsMap,
-            questionCount: newQuestionCount,
-            weightsHistory: newWeightsHistory,
-            questionHistory: historyWithAnswer,
-          }, session);
-          return NextResponse.json({
-            state: 'REVEAL',
-            work: toWorkResponse(topWork),
-            forcedReveal: true, // maxQuestions 到達のため強制
-          });
-        }
-      }
-    }
-
-    // 次の質問を選択（回答付き履歴を渡して連続NO判定に使う）
-    const t4 = Date.now();
-    const nextQuestion = await selectNextQuestion(
+    // 回答後の応答を決定（engine に集約）
+    const result = await handleAnswerResponse(
+      session,
+      currentQuestion,
       updatedWeights,
       probabilities,
-      session.questionCount + 1,
+      confidence,
       historyWithAnswer,
+      weightsMap,
+      newQuestionCount,
+      newWeightsHistory,
       config
     );
-    if (!nextQuestion) {
-      // 質問が無い → 強制 REVEAL または FAIL_LIST（いずれも1回だけセッション更新）
-      await SessionManager.updateSession(sessionId, {
-        weights: weightsMap,
-        questionCount: newQuestionCount,
-        weightsHistory: newWeightsHistory,
-        questionHistory: historyWithAnswer,
-      }, session);
-      const sorted = [...probabilities].sort((a, b) => {
-        if (a.probability !== b.probability) return b.probability - a.probability;
-        return a.workId.localeCompare(b.workId);
+
+    // セッション更新（全パターン共通）
+    await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+
+    // REVEAL: 作品を取得して返却
+    if (result.state === 'REVEAL' && result.revealWorkId) {
+      const topWork = await prisma.work.findUnique({
+        where: { workId: result.revealWorkId },
+        select: {
+          workId: true,
+          title: true,
+          authorName: true,
+          isAi: true,
+          productUrl: true,
+          thumbnailUrl: true,
+          reviewAverage: true,
+          reviewCount: true,
+        },
       });
-      const rejectedSet = new Set(session.revealRejectedWorkIds ?? []);
-      const forceRevealId = sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId;
-      if (forceRevealId) {
-        const topWork = await prisma.work.findUnique({
-          where: { workId: forceRevealId },
-          select: {
-            workId: true,
-            title: true,
-            authorName: true,
-            isAi: true,
-            productUrl: true,
-            thumbnailUrl: true,
-          },
-        });
-        if (topWork) {
-          return NextResponse.json({
-            state: 'REVEAL',
-            work: toWorkResponse(topWork),
-            forcedReveal: true, // 次の質問が null のため強制
-          });
+      if (topWork) {
+        let debug;
+        if (allowed && session && beforeState) {
+          const touchedTagKeys: string[] = [];
+          if (currentQuestion.tagKey) touchedTagKeys.push(currentQuestion.tagKey);
+          debug = await buildDebugPayload(
+            { ...session, questionCount: session.questionCount + 1, weights: weightsMap },
+            probabilities,
+            confidence,
+            beforeState,
+            { questionId: currentQuestion.tagKey || undefined, answerValue: choice, touchedTagKeys }
+          );
         }
+        return NextResponse.json({
+          state: 'REVEAL',
+          work: toWorkResponse(topWork),
+          ...(result.forcedReveal ? { forcedReveal: true } : {}),
+          ...(debug ? { debug } : {}),
+        });
       }
+    }
+
+    // FAIL_LIST: PlayHistory 作成して返却
+    if (result.state === 'FAIL_LIST') {
       try {
         await createPlayHistory(
           { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
@@ -333,90 +215,53 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ state: 'FAIL_LIST' });
     }
 
-    // 次の質問の qIndex は「今答えた質問 + 1」（1問目=1, 2問目=2）。newQuestionCount は「回答数」なので 2問目でも 1 になり誤って qIndex が被る
-    const nextQIndex = currentQuestion.qIndex + 1;
-    const newHistory = [...historyWithAnswer, {
-      qIndex: nextQIndex,
-      kind: nextQuestion.kind,
-      tagKey: nextQuestion.tagKey,
-      hardConfirmType: nextQuestion.hardConfirmType,
-      hardConfirmValue: nextQuestion.hardConfirmValue,
-      displayText: nextQuestion.displayText,
-      isSummaryQuestion: nextQuestion.isSummaryQuestion,
-      summaryQuestionId: nextQuestion.summaryQuestionId,
-      summaryDisplayNames: nextQuestion.summaryDisplayNames,
-      exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-      specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
-      seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
-      titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
-    }];
-    const weightsHistoryWithNext = [...newWeightsHistory, {
-      qIndex: nextQIndex,
-      weights: weightsMap,
-    }];
-    const t5 = Date.now();
-    await SessionManager.updateSession(sessionId, {
-      weights: weightsMap,
-      questionCount: newQuestionCount,
-      questionHistory: newHistory,
-      weightsHistory: weightsHistoryWithNext,
-    }, {
-      ...session,
-      questionCount: newQuestionCount,
-      weights: weightsMap,
-      weightsHistory: weightsHistoryWithNext,
-    });
-
-    // 返却（最小限の情報のみ）
-    const questionResponse: QuestionResponse = {
-      kind: nextQuestion.kind,
-      displayText: nextQuestion.displayText,
-      tagKey: nextQuestion.tagKey, // 最小限（質問プール全体は返さない）
-      hardConfirmType: nextQuestion.hardConfirmType,
-      hardConfirmValue: nextQuestion.hardConfirmValue,
-      exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-      specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
-    };
-
-    const sessionState: SessionStateResponse = {
-      questionCount: session.questionCount + 1,
-      confidence, // P(top1)のみ（詳細内訳は返さない）
-    };
-
-    // デバッグペイロード構築（3重ロック成立時のみ）
-    // パフォーマンス最適化: セッション再取得を削除（既に取得済みのsessionを使用）
-    let debug;
-    if (allowed && session && beforeState) {
-      const touchedTagKeys: string[] = [];
-      if (currentQuestion.tagKey) {
-        touchedTagKeys.push(currentQuestion.tagKey);
-      }
-      // セッション状態を更新（デバッグ用）
-      const updatedSessionForDebug = {
-        ...session,
-        questionCount: session.questionCount + 1,
-        weights: weightsMap,
+    // QUIZ: 次の質問を返却
+    if (result.state === 'QUIZ' && result.nextQuestion) {
+      const nextQuestion = result.nextQuestion;
+      const questionResponse: QuestionResponse = {
+        kind: nextQuestion.kind,
+        displayText: nextQuestion.displayText,
+        tagKey: nextQuestion.tagKey,
+        hardConfirmType: nextQuestion.hardConfirmType,
+        hardConfirmValue: nextQuestion.hardConfirmValue,
+        exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
       };
-      debug = await buildDebugPayload(
-        updatedSessionForDebug,
-        probabilities,
-        confidence,
-        beforeState,
-        {
-          questionId: currentQuestion.tagKey || undefined,
-          answerValue: choice,
-          touchedTagKeys,
-        }
-      );
+      const sessionState: SessionStateResponse = {
+        questionCount: session.questionCount + 1,
+        confidence: result.confidence ?? confidence,
+      };
+      let debug;
+      if (allowed && session && beforeState) {
+        const touchedTagKeys: string[] = [];
+        if (currentQuestion.tagKey) touchedTagKeys.push(currentQuestion.tagKey);
+        debug = await buildDebugPayload(
+          { ...session, questionCount: session.questionCount + 1, weights: weightsMap },
+          probabilities,
+          confidence,
+          beforeState,
+          { questionId: currentQuestion.tagKey || undefined, answerValue: choice, touchedTagKeys }
+        );
+      }
+      return NextResponse.json({
+        state: 'QUIZ',
+        question: questionResponse,
+        sessionState,
+        effectiveCandidates,
+        ...(debug ? { debug } : {}),
+      });
     }
 
-    return NextResponse.json({
-      state: 'QUIZ',
-      question: questionResponse,
-      sessionState,
-      ...(debug ? { debug } : {}),
-      // 内部確率・重み・候補全量は返さない（Data exposure policy）
-    });
+    // フォールバック（REVEAL で work が見つからなかった等）
+    try {
+      await createPlayHistory(
+        { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
+        'FAIL_LIST'
+      );
+    } catch (e) {
+      console.error('[PlayHistory] create FAIL_LIST failed:', e);
+    }
+    return NextResponse.json({ state: 'FAIL_LIST' });
   } catch (error) {
     console.error('Error in /api/answer:', error);
     return handleApiError(error);

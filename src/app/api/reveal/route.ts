@@ -2,6 +2,7 @@
  * /api/reveal: REVEAL回答（Yes/No）
  * Yes → SUCCESS
  * No → ペナルティ適用＋missCount加算＋QUIZへ戻る
+ * 判定ロジックは engine.handleRevealResponse に集約
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,8 +11,7 @@ import {
   normalizeWeights,
   calculateConfidence,
 } from '@/server/algo/scoring';
-import { applyRevealPenalty } from '@/server/algo/weightUpdate';
-import { selectNextQuestion } from '@/server/game/engine';
+import { handleRevealResponse } from '@/server/game/engine';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
@@ -26,9 +26,8 @@ import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
   try {
-    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
-    
+
     const body = await request.json();
     const { sessionId, answer } = body; // "YES" or "NO"
 
@@ -48,7 +47,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // セッション取得
     const session = await SessionManager.getSession(sessionId);
     if (!session) {
       throw new ApiError(
@@ -60,39 +58,29 @@ export async function POST(request: NextRequest) {
 
     const config: MvpConfig = getMvpConfig();
 
-    // 重みを取得
     const weights = Object.entries(session.weights).map(([workId, weight]) => ({
       workId,
       weight,
     }));
-
-    // 正規化してtop1を取得
     const probabilities = normalizeWeights(weights);
-    const sorted = [...probabilities].sort((a, b) => {
-      if (a.probability !== b.probability) {
-        return b.probability - a.probability;
-      }
-      return a.workId.localeCompare(b.workId);
-    });
-    const topWorkId = sorted[0]?.workId;
 
-    if (!topWorkId) {
-      throw new ApiError(
-        400,
-        '候補作品が見つかりませんでした',
-        'No top work found'
-      );
-    }
+    const result = await handleRevealResponse(
+      session,
+      answer,
+      weights,
+      probabilities,
+      config
+    );
 
-    if (answer === 'YES') {
-      // SUCCESS
+    // SUCCESS: DB更新・recommended構築・PlayHistory・レスポンス
+    if (result.state === 'SUCCESS' && result.topWorkId) {
+      const topWorkId = result.topWorkId;
       const topWork = await prisma.work.findUnique({
         where: { workId: topWorkId },
         include: { workTags: { select: { tagKey: true } } },
       });
 
       if (topWork) {
-        // popularityPlayBonus更新（SUCCESS時のみ、環境変数で無効化可能）
         if (process.env.DISABLE_POPULARITY_PLAY_BONUS !== '1') {
           await prisma.work.update({
             where: { workId: topWorkId },
@@ -102,19 +90,19 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // デバッグペイロード構築（3重ロック成立時のみ）
-        // SUCCESS時は before/after の差分は不要（初期状態からの表示のみ）
         const allowed = isDebugAllowed(request);
         const debug = allowed && session
           ? await buildDebugPayload(session, probabilities, calculateConfidence(probabilities), undefined, undefined)
           : undefined;
 
-        // REVEAL分析構築（確度・タグ整合度）
         const revealAnalysis = allowed && session
           ? await buildRevealAnalysis(session, topWorkId, probabilities)
           : undefined;
 
-        // 推奨作品: 最大5件・同一作者は1本まで（正解作品の作者は除外）、確度順。似てる度は正解作品とのタグ一致で算出
+        const sorted = [...probabilities].sort((a, b) => {
+          if (a.probability !== b.probability) return b.probability - a.probability;
+          return a.workId.localeCompare(b.workId);
+        });
         const correctAuthor = topWork.authorName ?? '';
         const correctTagKeys = (topWork.workTags ?? []).map(wt => wt.tagKey);
         const candidateProbs = sorted.slice(1).filter(p => p.workId !== topWorkId);
@@ -135,14 +123,10 @@ export async function POST(request: NextRequest) {
           seenAuthors.add(w.authorName);
           const recTagKeys = (w.workTags ?? []).map(wt => wt.tagKey);
           const matchRate = computeTagBasedMatchRate(correctTagKeys, recTagKeys);
-          recommended.push({
-            work: toWorkResponse(w),
-            matchRate,
-          });
+          recommended.push({ work: toWorkResponse(w), matchRate });
         }
         const recommendedWorks = recommended.map(({ work, matchRate }) => ({ ...work, matchRate }));
 
-        // プレイ履歴: 1プレイ＝1レコード（SUCCESS）
         try {
           await createPlayHistory(session, 'SUCCESS', topWorkId);
         } catch (e) {
@@ -157,91 +141,29 @@ export async function POST(request: NextRequest) {
           ...(revealAnalysis ? { revealAnalysis } : {}),
         });
       }
-    } else {
-      // NO: ペナルティ適用
-      const penalizedWeights = applyRevealPenalty(
-        weights,
-        topWorkId,
-        config.algo.revealPenalty
-      );
+    }
 
-      // 重みを更新
-      await SessionManager.updateWeights(sessionId, penalizedWeights);
+    // FAIL_LIST / QUIZ: セッション更新を適用
+    if (result.sessionUpdates) {
+      await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+    }
 
-      // REVEAL拒否WorkIdを追加（再REVEAL防止）
-      await SessionManager.addRejectedWorkId(sessionId, topWorkId);
-
-      // missCountをインクリメント
-      await SessionManager.incrementRevealMissCount(sessionId);
-
+    // FAIL_LIST
+    if (result.state === 'FAIL_LIST') {
       const updatedSession = await SessionManager.getSession(sessionId);
-      if (!updatedSession) {
-        throw new ApiError(
-          500,
-          'セッションの更新に失敗しました。もう一度お試しください。',
-          'Session update failed'
-        );
-      }
-
-      // FAIL_LIST判定
-      if (updatedSession.revealMissCount >= (config.flow.maxRevealMisses as number)) {
+      if (updatedSession) {
         try {
           await createPlayHistory(updatedSession, 'FAIL_LIST');
         } catch (e) {
           console.error('[PlayHistory] create FAIL_LIST failed:', e);
         }
-        return NextResponse.json({
-          state: 'FAIL_LIST',
-        });
       }
+      return NextResponse.json({ state: 'FAIL_LIST' });
+    }
 
-      // QUIZに戻る（次の質問を選択）。REVEAL失敗直後は頭文字・作者を優先する
-      const updatedProbabilities = normalizeWeights(penalizedWeights);
-      const nextQuestion = await selectNextQuestion(
-        penalizedWeights,
-        updatedProbabilities,
-        updatedSession.questionCount,
-        updatedSession.questionHistory,
-        config,
-        { afterRevealWrong: true }
-      );
-
-      if (!nextQuestion) {
-        // 質問が無い → FAIL_LIST
-        return NextResponse.json({
-          state: 'FAIL_LIST',
-        });
-      }
-
-      // 質問履歴に追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
-      const newQIndex = updatedSession.questionCount + 1;
-      await SessionManager.addQuestionHistory(sessionId, {
-        qIndex: newQIndex,
-        kind: nextQuestion.kind,
-        tagKey: nextQuestion.tagKey,
-        hardConfirmType: nextQuestion.hardConfirmType,
-        hardConfirmValue: nextQuestion.hardConfirmValue,
-        displayText: nextQuestion.displayText,
-        isSummaryQuestion: nextQuestion.isSummaryQuestion,
-        summaryQuestionId: nextQuestion.summaryQuestionId,
-        summaryDisplayNames: nextQuestion.summaryDisplayNames,
-        exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
-        seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
-        titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA' }).titleCharType,
-      });
-
-      // questionCountをインクリメント
-      await SessionManager.incrementQuestionCount(sessionId);
-
-      // weightsHistoryにスナップショットを保存（修正機能用）
-      // REVEALで「いいえ」と答えた後も「修正する」で戻れるようにする
-      await SessionManager.saveWeightsSnapshot(
-        sessionId,
-        newQIndex,
-        penalizedWeights
-      );
-
+    // QUIZ
+    if (result.state === 'QUIZ' && result.nextQuestion) {
+      const nextQuestion = result.nextQuestion;
       const questionResponse: QuestionResponse = {
         kind: nextQuestion.kind,
         displayText: nextQuestion.displayText,
@@ -251,37 +173,33 @@ export async function POST(request: NextRequest) {
         exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
         specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
       };
-
-      const confidence = calculateConfidence(updatedProbabilities);
+      const updatedSession = await SessionManager.getSession(sessionId);
+      const confidence = result.confidence ?? (updatedSession ? calculateConfidence(normalizeWeights(Object.entries(updatedSession.weights).map(([workId, weight]) => ({ workId, weight })))) : 0);
       const sessionState: SessionStateResponse = {
-        questionCount: updatedSession.questionCount,
+        questionCount: updatedSession?.questionCount ?? session.questionCount + 1,
         confidence,
       };
 
-      // デバッグペイロード構築（3重ロック成立時のみ）
-      // REVEAL No の場合は before/after を取得
       const allowed = isDebugAllowed(request);
       let debug;
-      if (allowed && updatedSession) {
-        // Before状態を取得（ペナルティ適用前）
+      if (allowed && updatedSession && result.sessionUpdates) {
         const beforeWeights = weights;
         const beforeProbabilities = probabilities;
         const beforeConfidence = calculateConfidence(beforeProbabilities);
-        const beforeState = {
+        const beforeState: BeforeState = {
           session,
           weights: beforeWeights,
           probabilities: beforeProbabilities,
           confidence: beforeConfidence,
         };
+        const penalizedWeights = Object.entries(result.sessionUpdates.weights).map(([workId, weight]) => ({ workId, weight }));
+        const penalizedProbs = normalizeWeights(penalizedWeights);
         debug = await buildDebugPayload(
           updatedSession,
-          updatedProbabilities,
+          penalizedProbs,
           confidence,
           beforeState,
-          {
-            answerValue: 'NO',
-            touchedTagKeys: [], // REVEAL No はタグに影響しない
-          }
+          { answerValue: 'NO', touchedTagKeys: [] }
         );
       }
 
@@ -290,15 +208,10 @@ export async function POST(request: NextRequest) {
         question: questionResponse,
         sessionState,
         ...(debug ? { debug } : {}),
-        // 内部確率・重みは返さない（Data exposure policy）
       });
     }
 
-    throw new ApiError(
-      500,
-      '予期しない状態が発生しました',
-      'Unexpected state'
-    );
+    throw new ApiError(500, '予期しない状態が発生しました', 'Unexpected state');
   } catch (error) {
     console.error('Error in /api/reveal:', error);
     return handleApiError(error);

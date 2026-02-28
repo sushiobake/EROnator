@@ -1,12 +1,14 @@
 /**
  * Phase0: 未タグ作品のタグ付けバッチ
- * POST /api/admin/groq-tag-batch?count=10&source=untagged
+ * POST /api/admin/openai-tag-batch?count=10&source=untagged
  * 未タグ or legacy_ai から取得し、5件ずつ LLM でタグ付け → チェック待ちへ
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import pLimit from 'p-limit';
 import { prisma } from '@/server/db/client';
 import { callCheckApi } from '@/server/checkAiClient';
+import { parseAiJson } from '@/server/ai/parseAiJson';
 import { resolveTagKeyForDisplayName } from '@/server/admin/resolveTagByDisplayName';
 import { getTitleReadingInitialFromTitle } from '@/server/utils/titleCharType';
 import * as fs from 'fs';
@@ -15,11 +17,15 @@ import crypto from 'crypto';
 
 const root = path.resolve(process.cwd());
 const INSTRUCTION = path.join(root, 'docs', 'tag-instruction-phase0-batch.md');
+const INSTRUCTION_LEGACY = path.join(root, 'docs', 'tag-instruction-phase0-batch-legacy.md');
 const BATCH_SIZE = 8; // mini で 8件（10件だと empty content になるため）
+/** AI API 同時呼び出し数 */
+const API_CONCURRENCY = 15;
 
-function loadInstruction(): string {
-  if (!fs.existsSync(INSTRUCTION)) throw new Error(`Not found: ${INSTRUCTION}`);
-  return fs.readFileSync(INSTRUCTION, 'utf-8');
+function loadInstruction(useLegacy: boolean): string {
+  const p = useLegacy ? INSTRUCTION_LEGACY : INSTRUCTION;
+  if (!fs.existsSync(p)) throw new Error(`Not found: ${p}`);
+  return fs.readFileSync(p, 'utf-8');
 }
 
 function loadTagRanks(): Record<string, string> {
@@ -60,9 +66,15 @@ export async function POST(request: NextRequest) {
 
     const countParam = request.nextUrl.searchParams.get('count') || '10';
     const count = Math.min(100, Math.max(1, parseInt(countParam, 10) || 10));
-    const source = request.nextUrl.searchParams.get('source') || 'untagged'; // untagged | legacy_ai | both
+    const concurrencyParam = request.nextUrl.searchParams.get('concurrency');
+    const apiConcurrency = concurrencyParam
+      ? Math.min(15, Math.max(1, parseInt(concurrencyParam, 10) || 15))
+      : API_CONCURRENCY;
+    const source = request.nextUrl.searchParams.get('source') || 'untagged'; // untagged | legacy_ai | both | ab_test
+    const variant = request.nextUrl.searchParams.get('variant') || 'compact'; // compact（本番）| current（レガシー・ABテスト用）
+    const dryRun = request.nextUrl.searchParams.get('dryRun') === 'true';
     const folders: string[] =
-      source === 'both' ? ['untagged', 'legacy_ai'] : source === 'legacy_ai' ? ['legacy_ai'] : ['untagged'];
+      source === 'both' ? ['untagged', 'legacy_ai'] : source === 'legacy_ai' ? ['legacy_ai'] : source === 'ab_test' ? ['ab_test'] : ['untagged'];
 
     const works = await prisma.work.findMany({
       where: {
@@ -75,10 +87,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (works.length === 0) {
-      return NextResponse.json(
-        { error: `対象がありません（${source}）` },
-        { status: 404 }
-      );
+      const encoder = new TextEncoder();
+      const emptyStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(JSON.stringify({ type: 'done', success: true, count: 0, results: [], fullResults: [] }) + '\n'));
+          controller.close();
+        },
+      });
+      return new Response(emptyStream, {
+        headers: { 'Content-Type': 'application/x-ndjson', 'Transfer-Encoding': 'chunked' },
+      });
     }
 
     const tagRanks = loadTagRanks();
@@ -91,7 +109,7 @@ export async function POST(request: NextRequest) {
     const b = derivedTagsList.filter((t) => tagRanks[t.displayName] === 'B').map((t) => t.displayName);
     const allTags = { s, a, b };
 
-    const inst = loadInstruction();
+    const inst = loadInstruction(variant === 'current');
     const officialNameToKey = new Map(
       (await prisma.tag.findMany({ where: { tagType: 'OFFICIAL' }, select: { displayName: true, tagKey: true } })).map(
         (t) => [t.displayName.toLowerCase(), t.tagKey]
@@ -107,17 +125,17 @@ export async function POST(request: NextRequest) {
         const send = (obj: object) => {
           controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
         };
-        const toPayload = (work: (typeof works)[0]) => {
+        const toPayload = (work: (typeof works)[0], includeAllTags: boolean) => {
           const officialTags = work.workTags
             .filter((wt) => wt.tag.tagType === 'OFFICIAL')
             .map((wt) => wt.tag.displayName);
-          return {
+          const base = {
             workId: work.workId,
             title: work.title,
             commentText: work.commentText || '',
             officialTags,
-            allTags,
           };
+          return includeAllTags ? { ...base, allTags } : base;
         };
 
         try {
@@ -135,10 +153,41 @@ export async function POST(request: NextRequest) {
             }
           }
 
+          type TagBatch = { results: Phase0Item[] };
+          const chunks: Array<{ chunkStart: number; chunk: (typeof works)[0][] }> = [];
           for (let chunkStart = 0; chunkStart < works.length; chunkStart += BATCH_SIZE) {
-            const chunk = works.slice(chunkStart, chunkStart + BATCH_SIZE);
-            const worksPayload = chunk.map(toPayload);
-            const userContent = `${inst}
+            chunks.push({
+              chunkStart,
+              chunk: works.slice(chunkStart, chunkStart + BATCH_SIZE),
+            });
+          }
+
+          const apiLimit = pLimit(apiConcurrency);
+          type ChunkResult =
+            | { success: true; chunkStart: number; chunk: (typeof works)[0][]; parsed: TagBatch; retried?: boolean }
+            | { success: false; chunkStart: number; chunk: (typeof works)[0][]; error: string; moveToHumanCheck?: true };
+          const chunkResults = await Promise.all(
+            chunks.map(({ chunkStart, chunk }) =>
+              apiLimit(async (): Promise<ChunkResult> => {
+                const isCompact = variant === 'compact';
+                const worksPayload = chunk.map((w) => toPayload(w, !isCompact));
+                const userContent = isCompact
+                  ? `${inst}
+
+---
+
+## タグリスト（allTags）
+
+${JSON.stringify(allTags, null, 2)}
+
+---
+
+## 作品データ（タグ付け対象）
+
+${JSON.stringify({ works: worksPayload }, null, 2)}
+
+上記の allTags と works の各作品にタグを付け、results 配列（works と同じ順序・件数）で返せ。`
+                  : `${inst}
 
 ---
 
@@ -148,40 +197,76 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
 
 上記の works 配列の各作品にタグを付け、results 配列（works と同じ順序・件数）で返せ。`;
 
-            let content: string;
-            try {
-              content = await callCheckApi(userContent, 'groq-tag-batch');
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : String(e);
-              send({ type: 'error', error: `Phase0 失敗 (${chunk.map((w) => w.workId).join(',')}): ${msg}` });
-              controller.close();
-              return;
-            }
+                let content: string;
+                try {
+                  content = await callCheckApi(userContent, 'openai-tag-batch');
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  return { success: false, chunkStart, chunk, error: msg };
+                }
 
-            type TagBatch = { results: Phase0Item[] };
-            let parsed: TagBatch;
-            try {
-              const jsonMatch = content.match(/\{[\s\S]*\}/);
-              if (!jsonMatch) throw new Error('No JSON in response');
-              parsed = JSON.parse(jsonMatch[0]) as TagBatch;
-              if (!Array.isArray(parsed.results) || parsed.results.length !== chunk.length) {
-                throw new Error(
-                  `results length mismatch: expected ${chunk.length}, got ${parsed.results?.length ?? 0}`
-                );
+                const parseChunk = (raw: string): TagBatch => {
+                  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                  if (!jsonMatch) throw new Error('No JSON in response');
+                  const { data } = parseAiJson<TagBatch>(jsonMatch[0]);
+                  if (!Array.isArray(data.results) || data.results.length !== chunk.length) {
+                    throw new Error(`results length mismatch: expected ${chunk.length}, got ${data.results?.length ?? 0}`);
+                  }
+                  return data;
+                };
+
+                try {
+                  const parsed = parseChunk(content);
+                  return { success: true, chunkStart, chunk, parsed };
+                } catch (parseErr) {
+                  const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+                  console.warn(`[openai-tag-batch] AI返答が想定形式でなかった → 人間確認へ workIds=${chunk.map((w) => w.workId).join(',')}:`, msg);
+                  return { success: false, chunkStart, chunk, error: msg, moveToHumanCheck: true };
+                }
+              })
+            )
+          );
+
+          const failedChunks = chunkResults.filter((r): r is { success: false } => !r.success);
+          const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+          const refusalResultJson = JSON.stringify({
+            aiParseError: true,
+            reason: 'AI返答が想定形式でなかった（Phase0）',
+          });
+
+          for (const f of failedChunks) {
+            if (f.moveToHumanCheck && !dryRun) {
+              const workIds = f.chunk.map((w) => w.workId);
+              console.warn(`[openai-tag-batch] 人間確認へ移動: workIds=${workIds.join(',')}`);
+              for (const work of f.chunk) {
+                if (isPostgres) {
+                  await prisma.$executeRawUnsafe(
+                    'UPDATE "Work" SET "manualTaggingFolder" = $1, "updatedAt" = NOW(), "lastCheckResultJson" = $2, "lastCheckTagChanges" = NULL, "lastCheckReasoning" = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $3',
+                    'needs_human_check',
+                    refusalResultJson,
+                    work.workId
+                  );
+                } else {
+                  await prisma.$executeRawUnsafe(
+                    "UPDATE Work SET manualTaggingFolder = ?, updatedAt = datetime('now'), lastCheckResultJson = ?, lastCheckTagChanges = NULL, lastCheckReasoning = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?",
+                    'needs_human_check',
+                    refusalResultJson,
+                    work.workId
+                  );
+                }
               }
-            } catch (e) {
-              send({
-                type: 'error',
-                error: `Phase0 パース失敗: ${e instanceof Error ? e.message : String(e)}`,
-                raw: content.slice(0, 500),
-              });
-              controller.close();
-              return;
+              send({ type: 'chunkRefusal', workIds, reason: 'AI返答が想定形式でなかった' });
+            } else if (f.moveToHumanCheck && dryRun) {
+              send({ type: 'chunkRefusal', workIds: f.chunk.map((w) => w.workId), reason: 'AI返答が想定形式でなかった（dryRun）' });
+            } else {
+              send({ type: 'chunkError', workIds: f.chunk.map((w) => w.workId), error: f.error });
             }
+          }
 
-            const nowIso = new Date().toISOString();
-            const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
+          const nowIso = new Date().toISOString();
 
+          const successfulChunks = chunkResults.filter((r): r is { success: true; chunkStart: number; chunk: (typeof works)[0][]; parsed: TagBatch } => r.success);
+          for (const { chunk, parsed } of successfulChunks.sort((a, b) => a.chunkStart - b.chunkStart)) {
             for (let i = 0; i < chunk.length; i++) {
               const item = parsed.results[i]!;
               const work = chunk[i]!;
@@ -212,6 +297,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
 
               const workId = item.workId || work.workId;
 
+              if (!dryRun) {
               await prisma.$transaction(async (tx) => {
                 const existingWorkTags = await tx.workTag.findMany({
                   where: { workId },
@@ -330,6 +416,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
                   );
                 }
               });
+              }
 
               results.push({
                 workId,
@@ -364,6 +451,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
               characterName: r.characterName ? 1 : 0,
               titleReadingInitial: r.titleReadingInitial ? 1 : 0,
             })),
+            fullResults: results,
           });
         } catch (err) {
           send({ type: 'error', error: err instanceof Error ? err.message : String(err) });
@@ -377,7 +465,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
       headers: { 'Content-Type': 'application/x-ndjson', 'Transfer-Encoding': 'chunked' },
     });
   } catch (error) {
-    console.error('[groq-tag-batch]', error);
+    console.error('[openai-tag-batch]', error);
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });
   }

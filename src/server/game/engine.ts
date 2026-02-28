@@ -21,15 +21,19 @@ import {
   type TagInfo,
 } from '@/server/algo/questionSelection';
 import { passesCoverageGate } from '@/server/algo/coverage';
-import { hasDerivedFeature, updateWeightsForTagQuestion, updateWeightsForTagQuestionBayesian } from '@/server/algo/weightUpdate';
+import { hasDerivedFeature, updateWeightsForTagQuestion, updateWeightsForTagQuestionBayesian, updateWeightsForPopularitySoft, applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
+import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
 import { selectSpecialQuestion, type SpecialQuestionType } from '@/server/algo/specialQuestionSelection';
 import { getTitleCharType } from '@/server/utils/titleCharType';
+import { getAuthorCharType } from '@/server/utils/authorCharType';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
-import type { QuestionHistoryEntry } from '@/server/session/manager';
+import type { QuestionHistoryEntry, SessionState } from '@/server/session/manager';
+import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import { isTagBanned } from '@/server/admin/bannedTags';
+import { SERIES_TAG_KEYS } from '@/server/algo/types';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 import {
   ensureTagCacheLoaded,
@@ -223,11 +227,17 @@ export interface QuestionData {
   /** まとめ/エロ/抽象/通常の判別用（EXPLORE_TAG のみ。表示には使わずタグ・バッジ用） */
   exploreTagKind?: ExploreTagKind;
   /** SPECIAL_QUESTION の種別 */
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';
   /** SPECIAL_QUESTION SERIES の判定用タグキー */
   seriesTagKeys?: string[];
   /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
-  titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
+  titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA';
+  /** SPECIAL_QUESTION POPULARITY の閾値（popularityBase >= で「有名」） */
+  popularityThreshold?: number;
+  /** SPECIAL_QUESTION TITLE_SYLLABLE / TITLE_SYLLABLE_2 の対象文字 */
+  syllableChars?: string[];
+  /** SPECIAL_QUESTION AUTHOR_CHAR_TYPE の聞く文字種 */
+  authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
 }
 
 /** selectNextQuestion のオプション（REVEAL失敗直後など） */
@@ -346,7 +356,74 @@ export async function selectNextQuestion(
 
   const qIndex = questionIndex;
 
-  // Confirm挿入判定
+  // REVEAL 失敗直後: 次の1問は頭文字・作者を聞いて、正解候補に早く当てに行く（EXPLORE の NO 連続を防ぐ）
+  if (options?.afterRevealWrong) {
+    const hardAfterReveal = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
+    if (hardAfterReveal) {
+      return hardAfterReveal;
+    }
+  }
+
+  // Special Question 枠（Q3, Q5, Q9, Q16）: Confirm より優先（特別質問で効率よく絞る）
+  const baseSpecialSlots = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 16];
+  const hasSpecialAnsweredUnknown = questionHistory.some(
+    q => q.kind === 'SPECIAL_QUESTION' && q.answer === 'UNKNOWN'
+  );
+  let specialSlotIndices = hasSpecialAnsweredUnknown && !baseSpecialSlots.includes(11)
+    ? [...baseSpecialSlots, 11]
+    : [...baseSpecialSlots];
+
+  // 救済特別質問（Q20, Q24）: 絞り込めていない場合のみ TITLE_SYLLABLE_2 / AUTHOR_CHAR_TYPE
+  const rescue = config.flow.rescueSpecialCondition;
+  if (rescue && rescue.slotIndices.includes(qIndex)) {
+    const meetsRescue =
+      effectiveCandidates > rescue.effectiveCandidatesMin || confidence < rescue.confidenceMax;
+    if (meetsRescue) {
+      specialSlotIndices = [...specialSlotIndices, qIndex];
+    }
+  }
+
+  if (specialSlotIndices.includes(qIndex)) {
+    const usedSpecialTypes = new Set<SpecialQuestionType>(
+      questionHistory
+        .filter((q): q is QuestionHistoryEntry & { specialQuestionType: SpecialQuestionType } =>
+          q.kind === 'SPECIAL_QUESTION' && !!q.specialQuestionType
+        )
+        .map(q => q.specialQuestionType!)
+    );
+    const titleCharTypeAnsweredUnknown = questionHistory.some(
+      q => q.kind === 'SPECIAL_QUESTION' && q.specialQuestionType === 'TITLE_CHAR_TYPE' && q.answer === 'UNKNOWN'
+    );
+    const workIds = weights.map(w => w.workId);
+    const historyForRescue = questionHistory.map(q => ({
+      kind: q.kind,
+      specialQuestionType: q.specialQuestionType,
+      syllableChars: q.syllableChars,
+      answer: q.answer,
+    }));
+    const specialResult = await selectSpecialQuestion(
+      probabilities,
+      usedSpecialTypes,
+      workIds,
+      qIndex,
+      titleCharTypeAnsweredUnknown,
+      historyForRescue
+    );
+    if (specialResult) {
+      return {
+        kind: 'SPECIAL_QUESTION',
+        displayText: specialResult.displayText,
+        specialQuestionType: specialResult.specialQuestionType,
+        seriesTagKeys: specialResult.seriesTagKeys,
+        titleCharType: specialResult.titleCharType,
+        popularityThreshold: specialResult.popularityThreshold,
+        syllableChars: specialResult.syllableChars,
+        authorCharType: specialResult.authorCharType,
+      };
+    }
+  }
+
+  // Confirm挿入判定（特別質問スロットで候補が無かった場合、または非スロット時に適用）
   const shouldConfirm = shouldInsertConfirm(
     qIndex,
     confidence,
@@ -651,37 +728,6 @@ export async function selectNextQuestion(
     }
   }
 
-  // REVEAL 失敗直後: 次の1問は頭文字・作者を聞いて、正解候補に早く当てに行く（EXPLORE の NO 連続を防ぐ）
-  if (options?.afterRevealWrong) {
-    const hardAfterReveal = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config);
-    if (hardAfterReveal) {
-      return hardAfterReveal;
-    }
-  }
-
-  // Special Question 枠（Q3, Q5, Q9, Q10）
-  const specialSlotIndices = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 10];
-  if (specialSlotIndices.includes(qIndex)) {
-    const usedSpecialTypes = new Set<SpecialQuestionType>(
-      questionHistory
-        .filter((q): q is QuestionHistoryEntry & { specialQuestionType: SpecialQuestionType } =>
-          q.kind === 'SPECIAL_QUESTION' && !!q.specialQuestionType
-        )
-        .map(q => q.specialQuestionType!)
-    );
-    const workIds = weights.map(w => w.workId);
-    const specialResult = await selectSpecialQuestion(probabilities, usedSpecialTypes, workIds);
-    if (specialResult) {
-      return {
-        kind: 'SPECIAL_QUESTION',
-        displayText: specialResult.displayText,
-        specialQuestionType: specialResult.specialQuestionType,
-        seriesTagKeys: specialResult.seriesTagKeys,
-        titleCharType: specialResult.titleCharType,
-      };
-    }
-  }
-
   // Q2,3,4,5,7,8,9,11+: まとめと通常タグを同一ルールで選択（理想フロー）
   const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
   if (unified) return unified;
@@ -972,11 +1018,12 @@ async function selectUnifiedExploreOrSummary(
   }
   let passingTagKeys: string[] = [];
   for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
+    if (SERIES_TAG_KEYS.includes(tagKey as (typeof SERIES_TAG_KEYS)[number])) continue;
     if (usedTagKeys.has(tagKey)) continue;
     if (!passesCoverageGate(workCount, totalWorks, config.dataQuality.minCoverageMode, config.dataQuality.minCoverageRatio, config.dataQuality.minCoverageWorks, config.dataQuality.maxCoverageRatio ?? null)) continue;
     passingTagKeys.push(tagKey);
   }
-  // Q6未満では抽象・エロを除外（Q2-5はまとめのみで通常タグは追加しないため、実質Q6+用）
+  // エロ解禁Q4 / 抽象解禁Q6（Q2-5はまとめのみで通常タグは追加しないため、実質Q6+用）
   if (questionIndex < 6 && passingTagKeys.length > 0) {
     const tagsForFilter = isTagCacheReady()
       ? getTagsByTagKeys(passingTagKeys)
@@ -987,8 +1034,8 @@ async function selectUnifiedExploreOrSummary(
     passingTagKeys = passingTagKeys.filter(tagKey => {
       const tag = tagsForFilter.find(t => t.tagKey === tagKey);
       if (!tag) return true;
-      if (abstractDisplayNames.has(tag.displayName)) return false;
-      if (eroticDisplayNames.has(tag.displayName)) return false;
+      if (questionIndex < 6 && abstractDisplayNames.has(tag.displayName)) return false;
+      if (questionIndex < 4 && eroticDisplayNames.has(tag.displayName)) return false;
       return true;
     });
   }
@@ -1212,6 +1259,7 @@ async function selectExploreQuestion(
   // 上限: 全員が持っているタグを除外（確度が変わらないため）
   let passingTagKeys: string[] = [];
   for (const [tagKey, workCount] of tagWorkCountMap.entries()) {
+    if (SERIES_TAG_KEYS.includes(tagKey as (typeof SERIES_TAG_KEYS)[number])) continue;
     if (!resolvedUsedTagKeys.has(tagKey) && passesCoverageGate(
       workCount,
       totalWorks,
@@ -1291,12 +1339,12 @@ async function selectExploreQuestion(
     if (resolvedUsedTagKeys.has(tag.tagKey)) continue;
     // 禁止タグは隔離（質問に使わない）
     if (isTagBanned(tag.displayName)) continue;
-    // 抽象質問（旧ふわっと）: 11問目以降のみ候補
-    if (questionIndex < 11 && abstractSet.has(tag.displayName)) {
+    // 抽象質問: Q6以降のみ候補
+    if (questionIndex < 6 && abstractSet.has(tag.displayName)) {
       continue;
     }
-    // エロ質問: 7問目以降のみ候補
-    if (questionIndex < 7 && eroticSet.has(tag.displayName)) {
+    // エロ質問: Q4以降のみ候補
+    if (questionIndex < 4 && eroticSet.has(tag.displayName)) {
       continue;
     }
     const workCount = tagWorkCountMap.get(tag.tagKey) || 0;
@@ -1412,6 +1460,17 @@ export interface ProcessAnswerOptions {
 /**
  * 回答による重み更新
  */
+/** P4: フェーズ別イプシロン。EC に応じて epsilon を返す */
+function getBayesianEpsilon(effectiveCandidates: number, config: MvpConfig): number {
+  const phases = config.algo.bayesianEpsilonPhases;
+  if (phases) {
+    if (effectiveCandidates > 200) return phases.early;
+    if (effectiveCandidates > 20) return phases.mid;
+    return phases.late;
+  }
+  return config.algo.bayesianEpsilon ?? 0.02;
+}
+
 export async function processAnswer(
   weights: WorkWeight[],
   question: QuestionData,
@@ -1422,6 +1481,10 @@ export async function processAnswer(
   const t = perfStart('processAnswer');
   try {
   await ensureTagCacheLoaded();
+  const probabilities = normalizeWeights(weights);
+  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+  const epsilon = getBayesianEpsilon(effectiveCandidates, config);
+
   const strengthMap: Record<string, number> = {
     YES: 1.0,
     PROBABLY_YES: 0.6,
@@ -1458,7 +1521,6 @@ export async function processAnswer(
     };
     const useBayesian = config.algo.useBayesianUpdate !== false;
     if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
       return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
     }
     return updateWeightsForTagQuestion(
@@ -1488,12 +1550,123 @@ export async function processAnswer(
     const workHasFeature = (workId: string): boolean => {
       const work = workMap.get(workId);
       if (!work) return false;
-      return getTitleCharType(work.title ?? '') === expectedCharType;
+      const charType = getTitleCharType(work.title ?? '');
+      if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
+        return charType === 'HIRAGANA' || charType === 'KATAKANA';
+      }
+      return charType === expectedCharType;
     };
 
     const useBayesian = config.algo.useBayesianUpdate !== false;
     if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'POPULARITY') {
+    // Type 2: 有名度（シグモイドソフト関数で重み更新）
+    const threshold = question.popularityThreshold ?? 40;
+    const workIds = weights.map(w => w.workId);
+    const works = await prisma.work.findMany({
+      where: { workId: { in: workIds } },
+      select: { workId: true, popularityBase: true, popularityPlayBonus: true },
+    });
+    const workPopularity = (workId: string): number => {
+      const w = works.find(x => x.workId === workId);
+      if (!w) return 0;
+      return (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
+    };
+    return updateWeightsForPopularitySoft(weights, workPopularity, threshold, answerChoice, 0.15, epsilon);
+  }
+
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE') {
+    // Type 1: 50音分類（titleReadingInitial が syllableChars に含まれるか）
+    const syllableChars = question.syllableChars ?? [];
+    const charSet = new Set(syllableChars);
+    const workIds = weights.map(w => w.workId);
+    const works = await prisma.work.findMany({
+      where: { workId: { in: workIds } },
+      select: { workId: true, titleReadingInitial: true },
+    });
+    const workHasFeature = (workId: string): boolean => {
+      const w = works.find(x => x.workId === workId);
+      const initials = getTitleReadingInitials(w?.titleReadingInitial);
+      if (initials.length === 0) return false;
+      return initials.some((c) => charSet.has(c));
+    };
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE_2') {
+    // 救済: 50音2次（TITLE_SYLLABLE の YES/NO に応じた範囲）
+    const syllableChars = question.syllableChars ?? [];
+    const charSet = new Set(syllableChars);
+    const workIds = weights.map(w => w.workId);
+    const works = await prisma.work.findMany({
+      where: { workId: { in: workIds } },
+      select: { workId: true, titleReadingInitial: true },
+    });
+    const workHasFeature = (workId: string): boolean => {
+      const w = works.find(x => x.workId === workId);
+      const initials = getTitleReadingInitials(w?.titleReadingInitial);
+      if (initials.length === 0) return false;
+      return initials.some((c) => charSet.has(c));
+    };
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'AUTHOR_CHAR_TYPE') {
+    // 救済: 作者名の文字種（ひらがなorカタカナ vs 漢字orアルファベット）
+    const expectedCharType = question.authorCharType!;
+    const workIds = weights.map(w => w.workId);
+    let workMap: Map<string, WorkInfoForConfirm>;
+
+    if (options?.workInfoMap) {
+      workMap = options.workInfoMap;
+    } else {
+      const works = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: { workId: true, title: true, authorName: true },
+      });
+      workMap = new Map(works.map(w => [w.workId, w]));
+    }
+
+    const workHasFeature = (workId: string): boolean => {
+      const work = workMap.get(workId);
+      if (!work) return false;
+      const ct = getAuthorCharType(work.authorName ?? '');
+      if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
+        return ct === 'HIRAGANA' || ct === 'KATAKANA';
+      }
+      return ct === 'KANJI' || ct === 'ALPHA';
+    };
+
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
       return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
     }
     return updateWeightsForTagQuestion(
@@ -1559,7 +1732,6 @@ export async function processAnswer(
 
     const useBayesian = config.algo.useBayesianUpdate !== false;
     if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
       return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
     }
     return updateWeightsForTagQuestion(
@@ -1608,7 +1780,6 @@ export async function processAnswer(
 
     const useBayesian = config.algo.useBayesianUpdate !== false;
     if (useBayesian) {
-      const epsilon = config.algo.bayesianEpsilon ?? 0.02;
       return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
     }
     return updateWeightsForTagQuestion(
@@ -1621,4 +1792,323 @@ export async function processAnswer(
   } finally {
     perfEnd('processAnswer', t);
   }
+}
+
+/** 回答後の応答種別 */
+export type AnswerResponseState = 'REVEAL' | 'FAIL_LIST' | 'QUIZ';
+
+/** 回答処理の結果（API が I/O とレスポンス構築に使用） */
+export interface AnswerResponseResult {
+  state: AnswerResponseState;
+  /** REVEAL の場合: 表示する作品の workId */
+  revealWorkId?: string;
+  /** REVEAL の場合: 強制 REVEAL かどうか */
+  forcedReveal?: boolean;
+  /** QUIZ の場合: 次の質問 */
+  nextQuestion?: QuestionData;
+  /** セッション更新内容（全パターン共通） */
+  sessionUpdates: {
+    weights: Record<string, number>;
+    questionCount: number;
+    weightsHistory: Array<{ qIndex: number; weights: Record<string, number> }>;
+    questionHistory: QuestionHistoryEntry[];
+  };
+  /** QUIZ の場合の confidence（sessionState 用） */
+  confidence?: number;
+}
+
+/** 確度順で未出の top1 workId を取得 */
+function getTopWorkIdFromProbabilities(
+  probabilities: WorkProbability[],
+  revealRejectedWorkIds: string[]
+): string | null {
+  const rejectedSet = new Set(revealRejectedWorkIds ?? []);
+  const sorted = [...probabilities].sort((a, b) => {
+    if (a.probability !== b.probability) return b.probability - a.probability;
+    return a.workId.localeCompare(b.workId);
+  });
+  return sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId ?? null;
+}
+
+/**
+ * 回答後の応答を決定（REVEAL / FAIL_LIST / QUIZ）
+ * API の判定ロジックを集約。I/O（DB・SessionManager）は呼び出し側が担当。
+ */
+export async function handleAnswerResponse(
+  session: SessionState,
+  currentQuestion: QuestionHistoryEntry,
+  updatedWeights: WorkWeight[],
+  probabilities: WorkProbability[],
+  confidence: number,
+  historyWithAnswer: QuestionHistoryEntry[],
+  weightsMap: Record<string, number>,
+  newQuestionCount: number,
+  newWeightsHistory: Array<{ qIndex: number; weights: Record<string, number> }>,
+  config: MvpConfig
+): Promise<AnswerResponseResult> {
+  const baseSessionUpdates = {
+    weights: weightsMap,
+    questionCount: newQuestionCount,
+    weightsHistory: newWeightsHistory,
+    questionHistory: historyWithAnswer,
+  };
+
+  // REVEAL 時は質問数に含めない（特別スロット Q3/Q5/Q9/Q16 を潰さないため）
+  const revealSessionUpdates = {
+    weights: weightsMap,
+    questionCount: session.questionCount,
+    weightsHistory: newWeightsHistory,
+    questionHistory: historyWithAnswer,
+  };
+
+  // 1. REVEAL 判定（confidence >= threshold）
+  const revealThreshold = getRevealThresholdForQuestion(newQuestionCount - 1, config.confirm.revealThreshold);
+  if (confidence >= revealThreshold) {
+    const revealWorkId = getTopWorkIdFromProbabilities(probabilities, session.revealRejectedWorkIds ?? []);
+    if (revealWorkId) {
+      return {
+        state: 'REVEAL',
+        revealWorkId,
+        sessionUpdates: revealSessionUpdates,
+      };
+    }
+  }
+
+  // 2. REVEAL 失敗回数上限 → FAIL_LIST
+  if (session.revealMissCount >= (config.flow.maxRevealMisses as number)) {
+    return {
+      state: 'FAIL_LIST',
+      sessionUpdates: baseSessionUpdates,
+    };
+  }
+
+  // 3. maxQuestions 到達 → 強制 REVEAL（わからない+1問、Q30かつ候補<50で+5問、最大40問）
+  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+  const effectiveMax = getEffectiveMaxQuestions(config.flow.maxQuestions as number, confidence, {
+    questionHistory: historyWithAnswer,
+    effectiveCandidates,
+    questionCount: newQuestionCount,
+  });
+  if (newQuestionCount >= effectiveMax) {
+    const forceRevealId = getTopWorkIdFromProbabilities(probabilities, session.revealRejectedWorkIds ?? []);
+    if (forceRevealId) {
+      return {
+        state: 'REVEAL',
+        revealWorkId: forceRevealId,
+        forcedReveal: true,
+        sessionUpdates: revealSessionUpdates,
+      };
+    }
+  }
+
+  // 4. 次の質問を選択
+  const nextQuestion = await selectNextQuestion(
+    updatedWeights,
+    probabilities,
+    newQuestionCount,
+    historyWithAnswer,
+    config
+  );
+
+  if (!nextQuestion) {
+    // 質問が無い → 強制 REVEAL または FAIL_LIST
+    const forceRevealId = getTopWorkIdFromProbabilities(probabilities, session.revealRejectedWorkIds ?? []);
+    if (forceRevealId) {
+      return {
+        state: 'REVEAL',
+        revealWorkId: forceRevealId,
+        forcedReveal: true,
+        sessionUpdates: revealSessionUpdates,
+      };
+    }
+    return {
+      state: 'FAIL_LIST',
+      sessionUpdates: baseSessionUpdates,
+    };
+  }
+
+  // 5. QUIZ: 次の質問を履歴に追加
+  const nextQIndex = currentQuestion.qIndex + 1;
+  const newHistory: QuestionHistoryEntry[] = [...historyWithAnswer, {
+    qIndex: nextQIndex,
+    kind: nextQuestion.kind,
+    tagKey: nextQuestion.tagKey,
+    hardConfirmType: nextQuestion.hardConfirmType,
+    hardConfirmValue: nextQuestion.hardConfirmValue,
+    displayText: nextQuestion.displayText,
+    isSummaryQuestion: nextQuestion.isSummaryQuestion,
+    summaryQuestionId: nextQuestion.summaryQuestionId,
+    summaryDisplayNames: nextQuestion.summaryDisplayNames,
+    exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+    specialQuestionType: (nextQuestion as { specialQuestionType?: SpecialQuestionType }).specialQuestionType,
+    seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
+    titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+    popularityThreshold: (nextQuestion as { popularityThreshold?: number }).popularityThreshold,
+    syllableChars: (nextQuestion as { syllableChars?: string[] }).syllableChars,
+    authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+  }];
+  const weightsHistoryWithNext = [...newWeightsHistory, { qIndex: nextQIndex, weights: weightsMap }];
+
+  return {
+    state: 'QUIZ',
+    nextQuestion,
+    confidence,
+    sessionUpdates: {
+      weights: weightsMap,
+      questionCount: newQuestionCount,
+      weightsHistory: weightsHistoryWithNext,
+      questionHistory: newHistory,
+    },
+  };
+}
+
+/** REVEAL 回答後の応答種別 */
+export type RevealResponseState = 'SUCCESS' | 'FAIL_LIST' | 'QUIZ';
+
+/** REVEAL 回答処理の結果（API が I/O とレスポンス構築に使用） */
+export interface RevealResponseResult {
+  state: RevealResponseState;
+  /** SUCCESS の場合: 正解作品の workId */
+  topWorkId?: string;
+  /** FAIL_LIST / QUIZ の場合: セッション更新内容 */
+  sessionUpdates?: {
+    weights: Record<string, number>;
+    revealRejectedWorkIds: string[];
+    revealMissCount: number;
+    questionCount?: number;
+    questionHistory?: QuestionHistoryEntry[];
+    weightsHistory?: Array<{ qIndex: number; weights: Record<string, number> }>;
+  };
+  /** QUIZ の場合: 次の質問 */
+  nextQuestion?: QuestionData;
+  /** QUIZ の場合の confidence（sessionState 用） */
+  confidence?: number;
+}
+
+/**
+ * REVEAL 回答後の応答を決定（SUCCESS / FAIL_LIST / QUIZ）
+ * API の判定ロジックを集約。I/O（DB・SessionManager）は呼び出し側が担当。
+ */
+export async function handleRevealResponse(
+  session: SessionState,
+  answer: 'YES' | 'NO',
+  weights: WorkWeight[],
+  probabilities: WorkProbability[],
+  config: MvpConfig
+): Promise<RevealResponseResult> {
+  const sorted = [...probabilities].sort((a, b) => {
+    if (a.probability !== b.probability) return b.probability - a.probability;
+    return a.workId.localeCompare(b.workId);
+  });
+  const topWorkId = sorted[0]?.workId ?? null;
+
+  if (!topWorkId) {
+    throw new Error('No top work found');
+  }
+
+  if (answer === 'YES') {
+    return { state: 'SUCCESS', topWorkId };
+  }
+
+  // NO: ペナルティ適用（同シリーズの作品にも軽めのペナルティ）
+  let sameSeriesWorkIds: string[] = [];
+  try {
+    const topWork = await prisma.work.findUnique({
+      where: { workId: topWorkId },
+      select: { seriesInfo: true },
+    });
+    if (topWork?.seriesInfo) {
+      const parsed = JSON.parse(topWork.seriesInfo) as { id?: string };
+      if (parsed.id) {
+        const seriesWorks = await prisma.$queryRawUnsafe<Array<{ workId: string }>>(
+          `SELECT "workId" FROM "Work" WHERE "seriesInfo" LIKE $1 AND "workId" != $2`,
+          `%"id":"${parsed.id}"%`,
+          topWorkId
+        );
+        sameSeriesWorkIds = seriesWorks.map(w => w.workId);
+      }
+    }
+  } catch {
+    // seriesInfo parse error - skip series penalty
+  }
+  const penalizedWeights = applyRevealPenalty(
+    weights,
+    topWorkId,
+    config.algo.revealPenalty,
+    sameSeriesWorkIds
+  );
+  const penalizedMap: Record<string, number> = {};
+  for (const w of penalizedWeights) {
+    penalizedMap[w.workId] = w.weight;
+  }
+
+  const newRejected = [...(session.revealRejectedWorkIds ?? []), topWorkId];
+  const newMissCount = session.revealMissCount + 1;
+
+  const baseSessionUpdates = {
+    weights: penalizedMap,
+    revealRejectedWorkIds: newRejected,
+    revealMissCount: newMissCount,
+  };
+
+  // FAIL_LIST 判定（maxRevealMisses 到達）
+  if (newMissCount >= (config.flow.maxRevealMisses as number)) {
+    return { state: 'FAIL_LIST', sessionUpdates: baseSessionUpdates };
+  }
+
+  // QUIZ に戻る: 次の質問を選択
+  const penalizedProbabilities = normalizeWeights(penalizedWeights);
+  const nextQuestion = await selectNextQuestion(
+    penalizedWeights,
+    penalizedProbabilities,
+    session.questionCount,
+    session.questionHistory,
+    config,
+    { afterRevealWrong: true }
+  );
+
+  if (!nextQuestion) {
+    return { state: 'FAIL_LIST', sessionUpdates: baseSessionUpdates };
+  }
+
+  const newQIndex = session.questionCount + 1;
+  const newHistory: QuestionHistoryEntry[] = [
+    ...session.questionHistory,
+    {
+      qIndex: newQIndex,
+      kind: nextQuestion.kind,
+      tagKey: nextQuestion.tagKey,
+      hardConfirmType: nextQuestion.hardConfirmType,
+      hardConfirmValue: nextQuestion.hardConfirmValue,
+      displayText: nextQuestion.displayText,
+      isSummaryQuestion: nextQuestion.isSummaryQuestion,
+      summaryQuestionId: nextQuestion.summaryQuestionId,
+      summaryDisplayNames: nextQuestion.summaryDisplayNames,
+      exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
+      specialQuestionType: (nextQuestion as { specialQuestionType?: SpecialQuestionType }).specialQuestionType,
+      seriesTagKeys: (nextQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
+      titleCharType: (nextQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+      popularityThreshold: (nextQuestion as { popularityThreshold?: number }).popularityThreshold,
+      syllableChars: (nextQuestion as { syllableChars?: string[] }).syllableChars,
+      authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+    },
+  ];
+  const newWeightsHistory = [
+    ...session.weightsHistory,
+    { qIndex: newQIndex, weights: penalizedMap },
+  ];
+
+  const confidence = calculateConfidence(penalizedProbabilities);
+
+  return {
+    state: 'QUIZ',
+    nextQuestion,
+    confidence,
+    sessionUpdates: {
+      ...baseSessionUpdates,
+      questionCount: newQIndex,
+      questionHistory: newHistory,
+      weightsHistory: newWeightsHistory,
+    },
+  };
 }

@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useAdminProgress } from '../context/AdminProgressContext';
 import type { JobType } from '../context/AdminProgressContext';
 
+const BULK_JOB_POLL_INTERVAL_MS = 5000;
+const BULK_JOB_POLL_IDLE_MS = 3600000; // アイドル時は1時間に1回のみ
+
 function playCompletionBeep() {
   try {
     const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
@@ -43,7 +46,7 @@ function ProgressRow({
 }: {
   job: JobType;
   label: string;
-  data: { current?: number; done?: number; total: number; phase?: string; etaMin?: number; startTime?: number; round?: number; roundTotal?: number } | null | undefined;
+  data: { current?: number; done?: number; total: number; phase?: string; etaMin?: number; startTime?: number; round?: number; roundTotal?: number; currentWorkId?: string; detail?: string } | null | undefined;
   justCompleted?: boolean;
 }) {
   const current = data ? (data.current ?? data.done ?? 0) : 0;
@@ -51,7 +54,6 @@ function ProgressRow({
   const startTime = data?.startTime ?? 0;
   const isActive = data && total > 0;
 
-  // 残り時間・経過時間を1秒ごとに再計算（リアルタイム更新）
   const [etaMin, setEtaMin] = useState<number | undefined>(undefined);
   const [elapsedSec, setElapsedSec] = useState<number>(0);
   useEffect(() => {
@@ -70,9 +72,10 @@ function ProgressRow({
     return () => clearInterval(id);
   }, [isActive, current, total, startTime]);
 
-  const roundInfo = data && data.round != null && data.roundTotal != null && data.roundTotal > 1
+  const roundInfo = data && data.round != null && data.roundTotal != null
     ? ` (ラウンド ${data.round}/${data.roundTotal})`
     : '';
+  const detailInfo = data?.detail ? ` ${data.detail}` : data?.currentWorkId ? ` ${data.currentWorkId}` : '';
   return (
     <div
       style={{
@@ -93,14 +96,19 @@ function ProgressRow({
       {isActive ? (
         <>
           <div>
-            {current}/{total} 件{roundInfo}
+            {current}/{total} 作品{roundInfo}
             {etaMin != null && etaMin > 0 && (
               <span style={{ color: '#666', marginLeft: '0.5rem' }}>
                 残り約{etaMin}分
               </span>
             )}
           </div>
-          {current === 0 && total > 0 && elapsedSec >= 1 && (
+          {detailInfo && (
+            <div style={{ color: '#666', fontSize: '0.75rem', marginTop: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {detailInfo}
+            </div>
+          )}
+          {current === 0 && total > 0 && elapsedSec >= 1 && !detailInfo && (
             <div style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.2rem' }}>
               開始から{elapsedSec >= 60 ? `${Math.floor(elapsedSec / 60)}分` : `${elapsedSec}秒`}経過
             </div>
@@ -118,10 +126,85 @@ function ProgressRow({
 const JOBS: JobType[] = ['comment', 'phase0', 'phase12', 'simulate'];
 
 export default function ProgressPanel() {
-  const { progress } = useAdminProgress();
+  const { progress, setProgress } = useAdminProgress();
   const [expanded, setExpanded] = useState(true);
   const [justCompleted, setJustCompleted] = useState<JobType | null>(null);
   const prevProgressRef = useRef<typeof progress>({});
+
+  const [bulkJobRunning, setBulkJobRunning] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('eronator.adminToken') : null;
+    if (!token) return;
+
+    const scheduleNext = (ms: number) => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(poll, ms);
+    };
+
+    const poll = async () => {
+      try {
+        const res = await fetch('/api/admin/bulk-job-status', {
+          headers: { 'x-eronator-admin-token': token },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.status === 'running' && data.progress) {
+          setBulkJobRunning(true);
+          const p = data.progress;
+          const phases = data.phases;
+          const startTime = p.startedAt ? new Date(p.startedAt).getTime() : undefined;
+
+          if (phases) {
+            for (const phase of ['comment', 'phase0', 'phase12'] as const) {
+              const pd = phases[phase];
+              if (pd && pd.total > 0) {
+                setProgress(phase, {
+                  done: pd.done,
+                  total: pd.total,
+                  round: pd.round,
+                  roundTotal: pd.roundTotal,
+                  currentWorkId: pd.currentWorkId,
+                  detail: pd.detail,
+                  startTime: pd.startedAt ? new Date(pd.startedAt).getTime() : startTime,
+                });
+              }
+            }
+          } else {
+            const job = p.phase === 'comment' ? 'comment' : p.phase === 'phase0' ? 'phase0' : 'phase12';
+            setProgress(job, {
+              done: p.done,
+              total: p.total,
+              round: p.round,
+              roundTotal: p.roundTotal,
+              currentWorkId: p.currentWorkId,
+              detail: p.detail,
+              startTime,
+            });
+          }
+          scheduleNext(BULK_JOB_POLL_INTERVAL_MS);
+        } else {
+          setBulkJobRunning(false);
+          if (data.status === 'done' || data.status === 'error') {
+            setProgress('comment', null);
+            setProgress('phase0', null);
+            setProgress('phase12', null);
+          }
+          scheduleNext(BULK_JOB_POLL_IDLE_MS);
+        }
+      } catch {
+        scheduleNext(BULK_JOB_POLL_IDLE_MS);
+      }
+    };
+
+    poll();
+    scheduleNext(BULK_JOB_POLL_IDLE_MS);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [setProgress]);
 
   useEffect(() => {
     for (const job of JOBS) {
@@ -150,6 +233,25 @@ export default function ProgressPanel() {
     (progress.simulate && progress.simulate.total > 0)
   );
 
+  const handleCancelBulk = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('eronator.adminToken') : null;
+    if (!token) return;
+    try {
+      const res = await fetch('/api/admin/bulk-job-cancel', {
+        method: 'POST',
+        headers: { 'x-eronator-admin-token': token },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message || '停止要求を送信しました');
+      }
+    } catch {
+      alert('停止要求の送信に失敗しました');
+    }
+  };
+
+  const showCancelButton = hasAny && !progress.simulate?.total;
+
   return (
     <div
       style={{
@@ -172,26 +274,46 @@ export default function ProgressPanel() {
         flexDirection: 'column',
       }}
     >
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        style={{
-          padding: '0.5rem 0.75rem',
-          border: 'none',
-          background: hasAny ? '#0070f3' : '#f5f5f5',
-          color: hasAny ? '#fff' : '#666',
-          fontSize: '0.85rem',
-          fontWeight: 'bold',
-          cursor: 'pointer',
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <span>📋 進行状況</span>
-        <span style={{ fontSize: '1rem' }}>{expanded ? '▼' : '▲'}</span>
-      </button>
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          style={{
+            flex: 1,
+            padding: '0.5rem 0.75rem',
+            border: 'none',
+            background: hasAny ? '#0070f3' : '#f5f5f5',
+            color: hasAny ? '#fff' : '#666',
+            fontSize: '0.85rem',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            textAlign: 'left',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <span>📋 進行状況</span>
+          <span style={{ fontSize: '1rem' }}>{expanded ? '▼' : '▲'}</span>
+        </button>
+        {showCancelButton && (
+          <button
+            type="button"
+            onClick={handleCancelBulk}
+            style={{
+              padding: '0.5rem 0.75rem',
+              border: 'none',
+              borderLeft: '1px solid rgba(255,255,255,0.3)',
+              background: '#dc3545',
+              color: '#fff',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+            }}
+          >
+            停止
+          </button>
+        )}
+      </div>
       {expanded && (
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <ProgressRow job="comment" label={JOB_LABELS.comment} data={progress.comment} justCompleted={justCompleted === 'comment'} />

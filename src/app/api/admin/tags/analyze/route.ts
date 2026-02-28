@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { getAiPromptConfig } from '@/config/aiPrompt';
-import { analyzeWithCloudflareAi, analyzeWithHuggingFace } from '@/server/ai/cloudflareAi';
+import { analyzeWithOpenAi } from '@/server/ai/cloudflareAi';
 
 export interface AnalyzeRequest {
   works: Array<{
@@ -31,29 +31,15 @@ export interface AnalyzeResponse {
 }
 
 /**
- * AI分析を実行
- * Cloudflare Workers AIまたはHugging Face APIを使用
+ * AI分析を実行（GPT のみ）
  */
 async function analyzeWork(work: { workId: string; title: string; commentText: string }): Promise<{
   derivedTags: Array<{ displayName: string; confidence: number; category: string | null }>;
   characterTags: string[];
 }> {
-  // プロンプト設定を取得
   const promptConfig = getAiPromptConfig();
-  
-  // AIサービスを選択（環境変数で制御）
-  const aiProvider = process.env.ERONATOR_AI_PROVIDER || 'huggingface'; // 'cloudflare' | 'huggingface'
-
   try {
-    let result;
-    if (aiProvider === 'cloudflare') {
-      result = await analyzeWithCloudflareAi(work.commentText, promptConfig.systemPrompt);
-    } else if (aiProvider === 'huggingface') {
-      result = await analyzeWithHuggingFace(work.commentText, promptConfig.systemPrompt);
-    } else {
-      console.warn(`[analyze] Unknown AI provider: ${aiProvider}, using Hugging Face as fallback`);
-      result = await analyzeWithHuggingFace(work.commentText, promptConfig.systemPrompt);
-    }
+    const result = await analyzeWithOpenAi(work.commentText, promptConfig.systemPrompt);
     return result;
   } catch (error) {
     console.error(`[analyze] Error analyzing work ${work.workId}:`, error);

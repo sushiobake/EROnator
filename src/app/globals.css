@@ -44,3 +44,12 @@ h1, h2, h3 {
   letter-spacing: 0.03em;
 }
 
+/* 配信者モード: サムネイルぼかし */
+.streamer-mode img[alt] {
+  filter: blur(16px);
+  transition: filter 0.3s;
+}
+.streamer-mode img[alt]:hover {
+  filter: blur(4px);
+}
+

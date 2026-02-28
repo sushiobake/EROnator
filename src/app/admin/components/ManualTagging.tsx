@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { RANK_CHIP } from '../constants/rankColors';
 import { useAdminProgress } from '../context/AdminProgressContext';
 
-type FilterType = 'tagged' | 'has_issues' | 'pending' | 'needs_human_check' | 'untagged' | 'legacy_ai' | 'needs_review';
+type FilterType = 'tagged' | 'has_issues' | 'pending' | 'needs_human_check' | 'untagged' | 'legacy_ai' | 'needs_review' | 'ab_test';
 
 const FOLDER_LABELS: Record<FilterType, string> = {
   tagged: 'タグ済',
@@ -14,6 +14,7 @@ const FOLDER_LABELS: Record<FilterType, string> = {
   untagged: '未タグ',
   legacy_ai: '旧AIタグ',
   needs_review: '要注意⚠️',
+  ab_test: 'ABテスト用',
 };
 
 interface WorkListItem {
@@ -75,6 +76,7 @@ const RANK_COLORS = {
 } as const;
 
 export default function ManualTagging() {
+  const [adminToken, setAdminToken] = useState<string>('');
   const [filter, setFilter] = useState<FilterType>('tagged');
   const [works, setWorks] = useState<WorkListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -95,8 +97,8 @@ export default function ManualTagging() {
   const [allTags, setAllTags] = useState<{ s: string[]; a: string[]; b: string[]; c: string[] } | null>(null);
   const [tabCounts, setTabCounts] = useState<Record<string, number> | null>(null);
 
-  // AIタグ付け用バッチ: 今回の対象
-  const [batchSize, setBatchSize] = useState<2 | 5 | 10 | 20 | 50 | 100>(10);
+  // AIタグ付け用バッチ: 今回の対象（8件＝1ラウンド単位）
+  const [batchSize, setBatchSize] = useState<8 | 16 | 40 | 80 | 160>(8);
   const [batchWorks, setBatchWorks] = useState<Array<{ workId: string; title: string }>>([]);
   const [batchSelectedIds, setBatchSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchSelect, setShowBatchSelect] = useState(false);
@@ -114,7 +116,31 @@ export default function ManualTagging() {
   const [combinedProgress, setCombinedProgress] = useState<{ phase: string; done: number; total: number; workId?: string; detail?: string } | null>(null);
   const [combinedResult, setCombinedResult] = useState<{ tagged: number; needsHumanCheck: number; hasIssues: number } | null>(null);
 
+  // ABテスト用（両方同時実行可能）
+  const [abTestLoadingCurrent, setAbTestLoadingCurrent] = useState(false);
+  const [abTestLoadingCompact, setAbTestLoadingCompact] = useState(false);
+  const [abTestResults, setAbTestResults] = useState<Array<{
+    variant: 'current' | 'compact';
+    fullResults: Array<{
+      workId: string;
+      title: string;
+      additionalSTags: string[];
+      aTags: string[];
+      bTags: string[];
+      characterName: string | null;
+      titleReadingInitial?: string | null;
+      taggingReasoning?: Record<string, string>;
+    }>;
+  }> | null>(null);
+
   const { setProgress } = useAdminProgress();
+
+  // 管理トークンを読み込み
+  useEffect(() => {
+    const stored = localStorage.getItem('eronator.adminToken');
+    if (stored) setAdminToken(stored);
+  }, []);
+
   useEffect(() => {
     if (combinedProgress) {
       const isPhase0 = combinedProgress.phase === 'Phase0' || combinedProgress.phase?.startsWith('Phase0');
@@ -142,32 +168,40 @@ export default function ManualTagging() {
   }, [combinedProgress, tagBatchProgress, batchProgress, setProgress]);
 
   useEffect(() => {
-    fetch('/api/admin/manual-tagging/all-tags')
+    if (!adminToken) return;
+    fetch('/api/admin/manual-tagging/all-tags', {
+      headers: { 'x-eronator-admin-token': adminToken },
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.s) setAllTags({ s: data.s, a: data.a || [], b: data.b || [], c: data.c || [] });
       })
       .catch(() => {});
-  }, []);
+  }, [adminToken]);
 
   const fetchCounts = useCallback(() => {
-    fetch('/api/admin/manual-tagging/works/counts')
+    if (!adminToken) return;
+    fetch('/api/admin/manual-tagging/works/counts', {
+      headers: { 'x-eronator-admin-token': adminToken },
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.counts) setTabCounts(data.counts);
       })
       .catch(() => {});
-  }, []);
+  }, [adminToken]);
 
   useEffect(() => {
     fetchCounts();
   }, [fetchCounts]);
 
   const fetchList = useCallback(async () => {
+    if (!adminToken) return;
     setListLoading(true);
     try {
       const res = await fetch(
-        `/api/admin/manual-tagging/works?filter=${filter}&limit=${PAGE_SIZE}&offset=0`
+        `/api/admin/manual-tagging/works?filter=${filter}&limit=${PAGE_SIZE}&offset=0`,
+        { headers: { 'x-eronator-admin-token': adminToken } }
       );
       const data = await res.json();
       if (data.success) {
@@ -182,7 +216,7 @@ export default function ManualTagging() {
     } finally {
       setListLoading(false);
     }
-  }, [filter]);
+  }, [filter, adminToken]);
 
   useEffect(() => {
     fetchList();
@@ -191,9 +225,12 @@ export default function ManualTagging() {
   const currentWorkId = works[currentIndex]?.workId ?? null;
 
   const fetchDetail = useCallback(async (workId: string) => {
+    if (!adminToken) return;
     setDetailLoading(true);
     try {
-      const res = await fetch(`/api/admin/manual-tagging/works/${workId}`);
+      const res = await fetch(`/api/admin/manual-tagging/works/${workId}`, {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
       const data = await res.json();
       if (data.success && data.work) {
         const w = data.work;
@@ -210,7 +247,7 @@ export default function ManualTagging() {
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [adminToken]);
 
   useEffect(() => {
     if (currentWorkId) fetchDetail(currentWorkId);
@@ -223,7 +260,7 @@ export default function ManualTagging() {
     try {
       const res = await fetch(`/api/admin/manual-tagging/works/${detail.workId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
         body: JSON.stringify({
           manualTaggingFolder: formFolder,
           additionalSTags: formAdditionalS,
@@ -244,7 +281,7 @@ export default function ManualTagging() {
     } finally {
       setSaving(false);
     }
-  }, [detail, dirty, formFolder, formAdditionalS, formA, formB, formC, formCharacter, fetchCounts]);
+  }, [detail, dirty, formFolder, formAdditionalS, formA, formB, formC, formCharacter, fetchCounts, adminToken]);
 
   const goPrev = () => {
     if (dirty) saveCurrent().then(() => setCurrentIndex((i) => Math.max(0, i - 1)));
@@ -340,12 +377,12 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
   }, [batchWorks]);
 
   const filterLabels: { value: FilterType; label: string }[] = (
-    ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const
+    ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const
   ).map((value) => ({ value, label: FOLDER_LABELS[value] }));
 
   return (
     <section style={{ marginBottom: '2rem' }}>
-      <h2 style={{ marginBottom: '1rem' }}>人力タグ付け</h2>
+      <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>タグ付け＆タグチェック</h2>
       <p style={{ color: '#666', marginBottom: '1rem' }}>
         <strong>フォルダ</strong>。1作品は必ず1つのフォルダにのみ入ります。作品を「移動」でフォルダを変更できます。括弧内は作品数。
       </p>
@@ -431,7 +468,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
           <span style={{ fontSize: '0.85rem' }}>件数:</span>
-          {([2, 5, 10, 20, 50, 100] as const).map((n) => (
+          {([8, 16, 40, 80, 160] as const).map((n) => (
             <button
               key={n}
               type="button"
@@ -514,7 +551,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   setGroqTagLoading(true);
                   setTagBatchProgress({ done: 0, total: batchSize });
                   try {
-                    const res = await fetch(`/api/admin/groq-tag-batch?count=${batchSize}&source=${filter}`, { method: 'POST' });
+                    const res = await fetch(`/api/admin/openai-tag-batch?count=${batchSize}&source=${filter}&concurrency=15`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
                     if (!res.ok || !res.body) {
                       const err = await res.json().catch(() => ({ error: res.statusText }));
                       throw new Error(err.error || res.statusText);
@@ -523,6 +560,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     const decoder = new TextDecoder();
                     let buffer = '';
                     let finalData: { success?: boolean; count?: number; results?: Array<{ workId: string; title: string; additionalSTags: number; aTags: number; bTags: number; characterName: number }>; error?: string } | null = null;
+                    let refusalCount = 0;
                     while (true) {
                       const { done, value } = await reader.read();
                       if (done) break;
@@ -532,11 +570,13 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                       for (const line of lines) {
                         if (!line.trim()) continue;
                         try {
-                          const obj = JSON.parse(line) as { type?: string; done?: number; total?: number; workId?: string; tagsAdded?: number; error?: string; success?: boolean; count?: number; results?: Array<{ workId: string; title: string; additionalSTags: number; aTags: number; bTags: number; characterName: number }> };
+                          const obj = JSON.parse(line) as { type?: string; done?: number; total?: number; workId?: string; tagsAdded?: number; error?: string; success?: boolean; count?: number; results?: Array<{ workId: string; title: string; additionalSTags: number; aTags: number; bTags: number; characterName: number }>; workIds?: string[] };
                           if (obj.type === 'progress') {
                             setTagBatchProgress({ done: obj.done ?? 0, total: obj.total ?? batchSize, workId: obj.workId, tagsAdded: obj.tagsAdded });
                           } else if (obj.type === 'done') {
                             finalData = { success: obj.success, count: obj.count, results: obj.results };
+                          } else if (obj.type === 'chunkRefusal') {
+                            refusalCount += obj.workIds?.length ?? 0;
                           } else if (obj.type === 'error') {
                             throw new Error(obj.error || 'Unknown error');
                           }
@@ -550,10 +590,17 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     if (finalData?.success) {
                       setTagBatchResults(finalData.results ?? []);
                       setShowTagBatchResults(true);
-                      alert(`✅ Phase0: ${finalData.count}件をタグ付けし、チェック待ちに入れました`);
+                      let msg = `✅ Phase0: ${finalData.count}件をタグ付けし、チェック待ちに入れました`;
+                      if (refusalCount > 0) msg += `\n${refusalCount}件はAI返答が想定形式でなかったため人間確認へ移動`;
+                      alert(msg);
                       fetchList();
                       fetchCounts();
-                      setFilter('pending');
+                      setFilter(refusalCount > 0 ? 'needs_human_check' : 'pending');
+                    } else if (refusalCount > 0) {
+                      alert(`${refusalCount}件はAI返答が想定形式でなかったため人間確認へ移動しました`);
+                      fetchList();
+                      fetchCounts();
+                      setFilter('needs_human_check');
                     }
                   } catch (e) {
                     setTagBatchProgress(null);
@@ -597,7 +644,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   setCombinedProgress({ phase: 'Phase0', done: 0, total: batchSize });
                   setCombinedResult(null);
                   try {
-                    const phase0Res = await fetch(`/api/admin/groq-tag-batch?count=${batchSize}&source=${filter}`, { method: 'POST' });
+                    const phase0Res = await fetch(`/api/admin/openai-tag-batch?count=${batchSize}&source=${filter}&concurrency=15`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
                     if (!phase0Res.ok || !phase0Res.body) {
                       const err = await phase0Res.json().catch(() => ({ error: phase0Res.statusText }));
                       throw new Error(err.error || phase0Res.statusText);
@@ -607,6 +654,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     let buffer = '';
                     let phase0Done = false;
                     let phase0Count = 0;
+                    let phase0RefusalCount = 0;
                     while (true) {
                       const { done, value } = await reader0.read();
                       if (done) break;
@@ -616,13 +664,15 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                       for (const line of lines) {
                         if (!line.trim()) continue;
                         try {
-                          const obj = JSON.parse(line) as { type?: string; done?: number; total?: number; workId?: string; tagsAdded?: number; error?: string; success?: boolean; count?: number; results?: unknown[] };
+                          const obj = JSON.parse(line) as { type?: string; done?: number; total?: number; workId?: string; tagsAdded?: number; error?: string; success?: boolean; count?: number; results?: unknown[]; workIds?: string[] };
                           if (obj.type === 'progress') {
                             setCombinedProgress({ phase: 'Phase0', done: obj.done ?? 0, total: obj.total ?? batchSize, workId: obj.workId, detail: obj.tagsAdded != null ? `+${obj.tagsAdded}tags` : undefined });
                           } else if (obj.type === 'done') {
                             phase0Done = true;
                             phase0Count = obj.count ?? 0;
                             if (obj.results) setTagBatchResults(obj.results as Array<{ workId: string; title: string; additionalSTags: number; aTags: number; bTags: number; characterName: number }>);
+                          } else if (obj.type === 'chunkRefusal') {
+                            phase0RefusalCount += obj.workIds?.length ?? 0;
                           } else if (obj.type === 'error') {
                             throw new Error(obj.error || 'Unknown error');
                           }
@@ -632,11 +682,21 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                         }
                       }
                     }
-                    if (!phase0Done || phase0Count === 0) throw new Error('Phase0 が完了しませんでした');
+                    if (!phase0Done) throw new Error('Phase0 が完了しませんでした');
+                    if (phase0Count === 0 && phase0RefusalCount > 0) {
+                      setCombinedProgress(null);
+                      setCombinedLoading(false);
+                      alert(`${phase0RefusalCount}件はAI返答が想定形式でなかったため人間確認へ移動しました`);
+                      fetchList();
+                      fetchCounts();
+                      setFilter('needs_human_check');
+                      return;
+                    }
+                    if (phase0Count === 0) throw new Error('Phase0 が完了しませんでした');
                     setCombinedProgress({ phase: 'Phase0 完了 → Phase1+2 開始', done: 0, total: phase0Count });
                     await new Promise((r) => setTimeout(r, 800));
                     setCombinedProgress({ phase: 'Phase1+2', done: 0, total: phase0Count });
-                    const phase12Res = await fetch(`/api/admin/groq-check-batch?count=${phase0Count}`, { method: 'POST' });
+                    const phase12Res = await fetch(`/api/admin/openai-check-batch?count=${phase0Count}&concurrency=15`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
                     if (!phase12Res.ok || !phase12Res.body) {
                       const err = await phase12Res.json().catch(() => ({ error: phase12Res.statusText }));
                       throw new Error(err.error || phase12Res.statusText);
@@ -673,13 +733,15 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     setCombinedResult({ tagged, needsHumanCheck, hasIssues });
                     setCombinedProgress(null);
                     setShowBatchResults(true);
-                    const runsRes = await fetch('/api/admin/check-batch-runs?limit=5');
+                    const runsRes = await fetch('/api/admin/check-batch-runs?limit=5', { headers: { 'x-eronator-admin-token': adminToken } });
                     const runsData = await runsRes.json();
                     if (runsData.success && runsData.runs) setBatchRuns(runsData.runs);
                     fetchList();
                     fetchCounts();
                     setFilter('tagged');
-                    alert(`✅ Phase0→1→2 完了\nタグ済: ${tagged}件 / 人間確認: ${needsHumanCheck}件 / 問題あり: ${hasIssues}件`);
+                    let msg = `✅ Phase0→1→2 完了\nタグ済: ${tagged}件 / 人間確認: ${needsHumanCheck}件 / 問題あり: ${hasIssues}件`;
+                    if (phase0RefusalCount > 0) msg += `\n${phase0RefusalCount}件はAI返答が想定形式でなかったため人間確認へ移動`;
+                    alert(msg);
                   } catch (e) {
                     setCombinedProgress(null);
                     setCombinedLoading(false);
@@ -758,7 +820,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   if (groqCheckLoading || total === 0) return;
                   setGroqCheckLoading(true);
                   try {
-                    const res = await fetch('/api/admin/groq-check-phase1', { method: 'POST' });
+                    const res = await fetch('/api/admin/openai-check-phase1', { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
                     const data = await res.json();
                     if (data.success) {
                       const displayResult = data.result === '人間による確認が必要' ? '問題あり' : data.result;
@@ -794,10 +856,10 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
               </button>
               <select
                 value={batchSize}
-                onChange={(e) => setBatchSize(Number(e.target.value) as 2 | 5 | 10 | 20 | 50 | 100)}
+                onChange={(e) => setBatchSize(Number(e.target.value) as 8 | 16 | 40 | 80 | 160)}
                 style={{ padding: '0.35rem', fontSize: '0.85rem' }}
               >
-                {([2, 5, 10, 20, 50, 100] as const).map((n) => (
+                {([8, 16, 40, 80, 160] as const).map((n) => (
                   <option key={n} value={n}>{n}件</option>
                 ))}
               </select>
@@ -808,7 +870,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   setGroqCheckLoading(true);
                   setBatchProgress({ done: 0, total: batchSize });
                   try {
-                    const res = await fetch(`/api/admin/groq-check-batch?count=${batchSize}`, { method: 'POST' });
+                    const res = await fetch(`/api/admin/openai-check-batch?count=${batchSize}`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
                     if (!res.ok || !res.body) {
                       const err = await res.json().catch(() => ({ error: res.statusText }));
                       throw new Error(err.error || res.statusText);
@@ -847,7 +909,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                       fetchList();
                       fetchCounts();
                       setShowBatchResults(true);
-                      const runsRes = await fetch('/api/admin/check-batch-runs?limit=10');
+                      const runsRes = await fetch('/api/admin/check-batch-runs?limit=10', { headers: { 'x-eronator-admin-token': adminToken } });
                       const runsData = await runsRes.json();
                       if (runsData.success && runsData.runs) setBatchRuns(runsData.runs);
                     }
@@ -881,7 +943,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                 type="button"
                 onClick={async () => {
                   setShowBatchResults(true);
-                  const res = await fetch('/api/admin/check-batch-runs?limit=20');
+                  const res = await fetch('/api/admin/check-batch-runs?limit=20', { headers: { 'x-eronator-admin-token': adminToken } });
                   const data = await res.json();
                   if (data.success && data.runs) setBatchRuns(data.runs);
                 }}
@@ -962,6 +1024,179 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
       </div>
       )}
 
+      {filter === 'ab_test' && (
+      <div style={{ marginBottom: '1rem', padding: '0.75rem', border: '1px solid #9c27b0', borderRadius: '6px', background: '#faf5ff' }}>
+        <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.95rem' }}>ABテスト: Phase0 プロンプト構造の比較</div>
+        <p style={{ color: '#555', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
+          8作品を入れて、現行（作品ごとにallTags）と compact（allTags 1回＋作品×8）の両方で試し、「どうタグをつけたか」「その理由」を比較します。現行はDBに保存されチェック待ちへ移動。compactはdryRunで保存しません。
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            disabled={abTestLoadingCurrent || total === 0}
+            onClick={async () => {
+              if (abTestLoadingCurrent || total === 0) return;
+              setAbTestLoadingCurrent(true);
+              try {
+                const res = await fetch(`/api/admin/openai-tag-batch?count=8&source=ab_test&variant=current`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
+                if (!res.ok || !res.body) throw new Error(res.statusText);
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let fullResults: Array<{ workId: string; title: string; additionalSTags: string[]; aTags: string[]; bTags: string[]; characterName: string | null; titleReadingInitial?: string | null; taggingReasoning?: Record<string, string> }> = [];
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() ?? '';
+                  for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                      const obj = JSON.parse(line) as { type?: string; fullResults?: typeof fullResults; error?: string };
+                      if (obj.type === 'error') throw new Error(obj.error || 'Unknown error');
+                      if (obj.type === 'done' && obj.fullResults) fullResults = obj.fullResults;
+                    } catch (e) {
+                      if (e instanceof SyntaxError) continue;
+                      throw e;
+                    }
+                  }
+                }
+                setAbTestResults((prev) => [...(prev ?? []), { variant: 'current', fullResults }]);
+                alert(`現行: ${fullResults.length}件タグ付け完了（チェック待ちへ移動済み）`);
+                fetchList();
+                fetchCounts();
+              } catch (e) {
+                alert(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+              } finally {
+                setAbTestLoadingCurrent(false);
+              }
+            }}
+            style={{ padding: '0.4rem 0.9rem', backgroundColor: abTestLoadingCurrent || total === 0 ? '#ccc' : '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: abTestLoadingCurrent || total === 0 ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}
+          >
+            {abTestLoadingCurrent ? '実行中…' : '現行で試す（保存あり）'}
+          </button>
+          <button
+            type="button"
+            disabled={abTestLoadingCompact || total === 0}
+            onClick={async () => {
+              if (abTestLoadingCompact || total === 0) return;
+              setAbTestLoadingCompact(true);
+              try {
+                const res = await fetch(`/api/admin/openai-tag-batch?count=8&source=ab_test&variant=compact&dryRun=true`, { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
+                if (!res.ok || !res.body) throw new Error(res.statusText);
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let fullResults: Array<{ workId: string; title: string; additionalSTags: string[]; aTags: string[]; bTags: string[]; characterName: string | null; titleReadingInitial?: string | null; taggingReasoning?: Record<string, string> }> = [];
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split('\n');
+                  buffer = lines.pop() ?? '';
+                  for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                      const obj = JSON.parse(line) as { type?: string; fullResults?: typeof fullResults; error?: string };
+                      if (obj.type === 'error') throw new Error(obj.error || 'Unknown error');
+                      if (obj.type === 'done' && obj.fullResults) fullResults = obj.fullResults;
+                    } catch (e) {
+                      if (e instanceof SyntaxError) continue;
+                      throw e;
+                    }
+                  }
+                }
+                setAbTestResults((prev) => [...(prev ?? []), { variant: 'compact', fullResults }]);
+                alert(`compact: ${fullResults.length}件（dryRun・保存なし）`);
+                fetchList();
+                fetchCounts();
+              } catch (e) {
+                alert(`エラー: ${e instanceof Error ? e.message : String(e)}`);
+              } finally {
+                setAbTestLoadingCompact(false);
+              }
+            }}
+            style={{ padding: '0.4rem 0.9rem', backgroundColor: abTestLoadingCompact || total === 0 ? '#ccc' : '#9c27b0', color: 'white', border: 'none', borderRadius: '4px', cursor: abTestLoadingCompact || total === 0 ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}
+          >
+            {abTestLoadingCompact ? '実行中…' : 'compactで試す（dryRun）'}
+          </button>
+          <button
+            type="button"
+            disabled={abTestLoadingCurrent || abTestLoadingCompact}
+            onClick={() => setAbTestResults([])}
+            style={{ padding: '0.4rem 0.9rem', backgroundColor: abTestLoadingCurrent || abTestLoadingCompact ? '#ccc' : '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: abTestLoadingCurrent || abTestLoadingCompact ? 'not-allowed' : 'pointer', fontSize: '0.9rem' }}
+          >
+            表示をリセット
+          </button>
+        </div>
+        {abTestResults && abTestResults.length > 0 && (
+          <div style={{ marginTop: '1rem', border: '1px solid #ddd', borderRadius: '4px', padding: '0.75rem', background: '#fff', maxHeight: '60vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>結果比較（taggingReasoning）</div>
+            {(() => {
+              const currentRun = abTestResults!.find((r) => r.variant === 'current');
+              const compactRun = abTestResults!.find((r) => r.variant === 'compact');
+              const hasBoth = !!currentRun && !!compactRun;
+              const workIds = (currentRun?.fullResults ?? compactRun?.fullResults ?? []).map((r) => r.workId);
+              const currentMap = currentRun ? new Map(currentRun.fullResults.map((r) => [r.workId, r])) : null;
+              const compactMap = compactRun ? new Map(compactRun.fullResults.map((r) => [r.workId, r])) : null;
+
+              const renderCard = (
+                r: { workId: string; title?: string; additionalSTags?: string[]; aTags?: string[]; bTags?: string[]; characterName?: string | null; taggingReasoning?: Record<string, string> },
+                _variant: 'current' | 'compact'
+              ) => (
+                <div style={{ padding: '0.5rem', background: '#f9f9f9', borderRadius: '4px', fontSize: '0.85rem', height: '100%' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>{r.workId} {r.title?.slice(0, 40)}{(r.title?.length ?? 0) > 40 ? '…' : ''}</div>
+                  <div style={{ marginBottom: '0.2rem' }}>additionalS: {r.additionalSTags?.join(', ') || '—'}</div>
+                  <div style={{ marginBottom: '0.2rem' }}>aTags: {r.aTags?.join(', ') || '—'}</div>
+                  <div style={{ marginBottom: '0.2rem' }}>bTags: {r.bTags?.join(', ') || '—'}</div>
+                  <div style={{ marginBottom: '0.2rem' }}>characterName: {r.characterName ?? '—'}</div>
+                  {r.taggingReasoning && Object.keys(r.taggingReasoning).length > 0 ? (
+                    <div style={{ marginTop: '0.35rem', padding: '0.35rem', background: '#f0f4f8', borderRadius: '4px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '0.8rem', marginBottom: '0.2rem' }}>taggingReasoning:</div>
+                      {Object.entries(r.taggingReasoning).map(([k, v]) => (
+                        <div key={k} style={{ fontSize: '0.8rem' }}><span style={{ color: '#666' }}>{k}:</span> {String(v)}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '0.35rem', color: '#c00', fontSize: '0.8rem' }}>taggingReasoning なし</div>
+                  )}
+                </div>
+              );
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {hasBoth && (
+                    <div style={{ display: 'flex', gap: '0.5rem', fontWeight: 'bold', paddingBottom: '0.25rem', borderBottom: '1px solid #ddd' }}>
+                      <div style={{ flex: 1, color: '#28a745' }}>現行</div>
+                      <div style={{ flex: 1, color: '#9c27b0' }}>compact</div>
+                    </div>
+                  )}
+                  {workIds.map((workId) => {
+                    const currentRow = currentMap?.get(workId);
+                    const compactRow = compactMap?.get(workId);
+                    const leftContent = currentRow ? renderCard(currentRow, 'current') : null;
+                    const rightContent = compactRow ? renderCard(compactRow, 'compact') : null;
+                    if (hasBoth) {
+                      return (
+                        <div key={workId} style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>{leftContent ?? <div style={{ padding: '0.5rem', background: '#f5f5f5', color: '#999', fontSize: '0.85rem' }}>—</div>}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>{rightContent ?? <div style={{ padding: '0.5rem', background: '#f5f5f5', color: '#999', fontSize: '0.85rem' }}>—</div>}</div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={workId}>{(leftContent ?? rightContent)!}</div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+      )}
+
       {filter === 'has_issues' && (
       <div style={{ marginBottom: '1rem', padding: '0.75rem', border: '1px solid #fd7e14', borderRadius: '6px', background: '#fff8f0' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Phase2: 追加提案</div>
@@ -974,7 +1209,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
             if (groqCheckLoading || total === 0) return;
             setGroqCheckLoading(true);
             try {
-              const res = await fetch('/api/admin/groq-check-phase2', { method: 'POST' });
+              const res = await fetch('/api/admin/openai-check-phase2', { method: 'POST', headers: { 'x-eronator-admin-token': adminToken } });
               const data = await res.json();
               if (data.success) {
                 alert(`✅ ${data.workId} に追加提案を反映しました（人間確認へ移動）`);
@@ -1102,7 +1337,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                       const folder = e.target.value as FilterType;
                       if (!folder) return;
                       try {
-                        const res = await fetch(`/api/admin/manual-tagging/works/${w.workId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ manualTaggingFolder: folder }) });
+                        const res = await fetch(`/api/admin/manual-tagging/works/${w.workId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken }, body: JSON.stringify({ manualTaggingFolder: folder }) });
                         if (res.ok) {
                           fetchList();
                           fetchCounts();
@@ -1114,7 +1349,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     }}
                   >
                     <option value="">移動先を選ぶ</option>
-                    {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const).map((f) => (
+                    {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const).map((f) => (
                       <option key={f} value={f}>{FOLDER_LABELS[f]}</option>
                     ))}
                   </select>
@@ -1135,7 +1370,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   onChange={(e) => { setFormFolder(e.target.value as FilterType); setDirty(true); }}
                   style={{ width: '100%', padding: '0.35rem', marginBottom: '0.35rem', fontSize: '0.85rem' }}
                 >
-                  {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review'] as const).map((f) => (
+                  {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const).map((f) => (
                     <option key={f} value={f}>{FOLDER_LABELS[f]}</option>
                   ))}
                 </select>
@@ -1144,6 +1379,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   <button type="button" onClick={() => { setFormFolder('has_issues'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'has_issues' ? '#dc3545' : '#eee', color: formFolder === 'has_issues' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ 問題あり</button>
                   <button type="button" onClick={() => { setFormFolder('needs_human_check'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'needs_human_check' ? '#fd7e14' : '#eee', color: formFolder === 'needs_human_check' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ 人間確認</button>
                   <button type="button" onClick={() => { setFormFolder('pending'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'pending' ? '#0070f3' : '#eee', color: formFolder === 'pending' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ チェック待ち</button>
+                  <button type="button" onClick={() => { setFormFolder('ab_test'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'ab_test' ? '#9c27b0' : '#eee', color: formFolder === 'ab_test' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ ABテスト用</button>
                 </div>
                 <div style={{ fontSize: '0.9rem', wordBreak: 'break-word', lineHeight: 1.4 }}>
                   {detail.title}
@@ -1447,7 +1683,8 @@ function UnifiedTagInput({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const res = await fetch(
-        `/api/admin/manual-tagging/autocomplete?type=all&q=${encodeURIComponent(input.trim())}&limit=30`
+        `/api/admin/manual-tagging/autocomplete?type=all&q=${encodeURIComponent(input.trim())}&limit=30`,
+        { headers: { 'x-eronator-admin-token': adminToken } }
       );
       const data = await res.json();
       if (data.success && Array.isArray(data.items)) {
@@ -1652,7 +1889,8 @@ function TagSection({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       const res = await fetch(
-        `/api/admin/manual-tagging/autocomplete?type=${autocompleteType}&q=${encodeURIComponent(input.trim())}&limit=20`
+        `/api/admin/manual-tagging/autocomplete?type=${autocompleteType}&q=${encodeURIComponent(input.trim())}&limit=20`,
+        { headers: { 'x-eronator-admin-token': adminToken } }
       );
       const data = await res.json();
       if (data.success && Array.isArray(data.items)) {

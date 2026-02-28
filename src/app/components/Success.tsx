@@ -17,6 +17,8 @@ interface WorkItem {
   authorName: string;
   productUrl: string;
   thumbnailUrl?: string | null;
+  reviewAverage?: number | null;
+  reviewCount?: number | null;
 }
 
 interface RecommendedWorkItem extends WorkItem {
@@ -27,14 +29,11 @@ interface SuccessProps {
   work: WorkItem;
   recommendedWorks?: RecommendedWorkItem[];
   onRestart?: () => void;
-  /** 正解時は「正解！？やっぱりね！」、惜しかった時は「それか～～～！次回は当てるからね！」など */
   successTitle?: string;
-  /** おすすめ見出し（省略時は「そんなあなたには…おすすめもあるわ！」） */
   recommendTitle?: string;
-  /** スマホ：おすすめはキャンバス下に表示、白板には正解作品のみ */
   mobileListBelow?: boolean;
-  /** FANZAで見るクリック記録用 */
   sessionId?: string | null;
+  questionCount?: number;
 }
 
 /** 正解作品より小さく。PC・スマホとも横スクロール */
@@ -49,8 +48,9 @@ export function Success({
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
   mobileListBelow,
   sessionId,
+  questionCount,
 }: SuccessProps) {
-  const linkText = 'FANZAで見る';
+  const linkText = '今すぐ読む';
   const isMobile = useMediaQuery(768);
   const hideRecommendations = isMobile && mobileListBelow;
 
@@ -86,11 +86,26 @@ export function Success({
             {work.title}
           </h2>
           <p style={{ fontSize: isMobile ? 15 : 14, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>{work.authorName}</p>
-          <div style={{ fontSize: isMobile ? 14 : 12, color: 'var(--color-text-muted)', fontWeight: 500 }}>
-            <ExternalLink href={work.productUrl} linkText={linkText} sessionId={sessionId}>
+          {work.reviewAverage != null && work.reviewCount != null && work.reviewCount > 0 && (
+            <p style={{ fontSize: isMobile ? 14 : 13, color: '#f59e0b', margin: '0 0 8px 0', fontWeight: 600 }}>
+              {'★'.repeat(Math.round(work.reviewAverage))} {work.reviewAverage.toFixed(1)}（{work.reviewCount}件）
+            </p>
+          )}
+          <ExternalLink href={work.productUrl} linkText={linkText} sessionId={sessionId}>
+            <span style={{
+              display: 'inline-block',
+              padding: isMobile ? '8px 18px' : '10px 24px',
+              backgroundColor: '#ff6b35',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: isMobile ? 14 : 15,
+              borderRadius: 8,
+              textDecoration: 'none',
+              boxShadow: '0 2px 8px rgba(255,107,53,0.3)',
+            }}>
               {linkText}
-            </ExternalLink>
-          </div>
+            </span>
+          </ExternalLink>
         </div>
       </div>
 
@@ -178,9 +193,15 @@ export function Success({
             href="#"
             onClick={(e) => {
               e.preventDefault();
-              const text = `【ERONATOR】「${work.title}」が当たった！ あなたの妄想、当ててみる？`;
-              const url = typeof window !== 'undefined' ? window.location.origin : '';
-              const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+              const origin = typeof window !== 'undefined' ? window.location.origin : '';
+              const qCount = questionCount ?? 0;
+              const isAlmostSuccess = successTitle !== '正解！？やっぱりね！';
+              const text = isAlmostSuccess
+                ? `【ERONATOR】${qCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`
+                : `【ERONATOR】${qCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`;
+              const resultParam = isAlmostSuccess ? 'fail' : 'success';
+              const shareUrl = `${origin}?q=${qCount}&result=${resultParam}`;
+              const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
               window.open(intent, '_blank', 'noopener,noreferrer');
             }}
             style={{
@@ -188,18 +209,20 @@ export function Success({
               minHeight: isMobile ? 36 : 48,
               fontSize: isMobile ? 12 : 15,
               fontWeight: 600,
-              color: '#0f1419',
-              backgroundColor: '#fff',
-              border: '1px solid #cfd9de',
+              color: '#fff',
+              backgroundColor: '#0f1419',
+              border: 'none',
               borderRadius: 8,
               cursor: 'pointer',
               textDecoration: 'none',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 6,
             }}
           >
-            Xでポストする
+            <svg width={isMobile ? 14 : 16} height={isMobile ? 14 : 16} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            ポストする
           </a>
         </div>
       )}

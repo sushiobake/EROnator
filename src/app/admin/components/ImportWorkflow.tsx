@@ -112,7 +112,7 @@ export default function ImportWorkflow() {
   // 一括・ChatGPT 折りたたみ
   const [bulkSectionOpen, setBulkSectionOpen] = useState(false);
   const [chatgptSectionOpen, setChatgptSectionOpen] = useState(false);
-  // AIプロバイダ表示用（Cloudflare / Groq / HuggingFace）
+  // AIプロバイダ表示用（GPT のみ）
   const [aiProvider, setAiProvider] = useState<string | null>(null);
 
   // 一括: API → コメント取得
@@ -124,9 +124,10 @@ export default function ImportWorkflow() {
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchCount, setBatchCount] = useState(10);
   const [batchLog, setBatchLog] = useState<string[]>([]);
-  // 一括: コメント取得 + Phase0+1+2（100〜1000件、100刻み）
+  // 一括: コメント取得 + Phase0+1+2（ラウンド単位: 10,20,50,100,150,200,500 → 80〜4000件）
   const [bulkCommentPhase012Running, setBulkCommentPhase012Running] = useState(false);
-  const [bulkCommentPhase012Count, setBulkCommentPhase012Count] = useState(100);
+  const [bulkCommentPhase012Rounds, setBulkCommentPhase012Rounds] = useState(10);
+  const [bulkCommentPhase012Background, setBulkCommentPhase012Background] = useState(false);
   
   // ファイルインポート（折りたたみ）
   const [showFileImport, setShowFileImport] = useState(false);
@@ -167,9 +168,12 @@ export default function ImportWorkflow() {
 
   // 統計を取得
   const fetchStats = async () => {
+    if (!adminToken) return;
     setStatsLoading(true);
     try {
-      const res = await fetch('/api/admin/import/stats');
+      const res = await fetch('/api/admin/import/stats', {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
       const data = await res.json();
       if (data.success) {
         setStats(data.stats);
@@ -183,10 +187,13 @@ export default function ImportWorkflow() {
 
   // 作品リストを取得
   const fetchWorkList = async (filter: 'all' | 'noComment' | 'noTags' | 'needsReview' = 'all', page: number = 1) => {
+    if (!adminToken) return;
     setWorkListLoading(true);
     try {
       const offset = (page - 1) * PAGE_SIZE;
-      const res = await fetch(`/api/admin/import/works?filter=${filter}&limit=${PAGE_SIZE}&offset=${offset}`);
+      const res = await fetch(`/api/admin/import/works?filter=${filter}&limit=${PAGE_SIZE}&offset=${offset}`, {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
       const data = await res.json();
       if (data.success) {
         setWorkList(data.works);
@@ -208,20 +215,24 @@ export default function ImportWorkflow() {
   }, []);
 
   useEffect(() => {
+    if (!adminToken) return;
     fetchStats();
     fetchWorkList('all', 1);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminToken]);
 
   useEffect(() => {
+    if (!adminToken) return;
     setCurrentPage(1);
     fetchWorkList(workListFilter, 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workListFilter]);
+  }, [workListFilter, adminToken]);
 
   useEffect(() => {
+    if (!adminToken) return;
     fetchWorkList(workListFilter, currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, adminToken]);
 
   // AIプロバイダ表示用（管理トークン設定時のみ取得）
   useEffect(() => {
@@ -586,9 +597,10 @@ export default function ImportWorkflow() {
     }
     if (bulkCommentPhase012Running) return;
     setBulkCommentPhase012Running(true);
-    const count = bulkCommentPhase012Count;
+    const count = bulkCommentPhase012Rounds * 8;
+    const background = bulkCommentPhase012Background;
     try {
-      const res = await fetch('/api/admin/bulk-comment-phase012', {
+      const res = await fetch(`/api/admin/bulk-comment-phase012?background=${background ? '1' : '0'}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -599,6 +611,14 @@ export default function ImportWorkflow() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || res.statusText || 'Request failed');
+      }
+      if (background) {
+        const data = await res.json();
+        if (data.success && data.background) {
+          alert(data.message || 'バックグラウンドで開始しました。右下の進行状況で確認できます。');
+        }
+        setBulkCommentPhase012Running(false);
+        return;
       }
       if (!res.body) throw new Error('No response body');
       const reader = res.body.getReader();
@@ -614,7 +634,7 @@ export default function ImportWorkflow() {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const obj = JSON.parse(line) as { type?: string; job?: 'comment' | 'phase0' | 'phase12'; phase?: string; done?: number; total?: number; round?: number; roundTotal?: number; error?: string };
+            const obj = JSON.parse(line) as { type?: string; success?: boolean; job?: 'comment' | 'phase0' | 'phase12'; phase?: string; done?: number; total?: number; round?: number; roundTotal?: number; workId?: string; detail?: string; tagsAdded?: number; result?: string; error?: string };
             if (obj.type === 'progress') {
               if (startTime == null) startTime = Date.now();
               const job = obj.job ?? (obj.phase === 'コメント取得' ? 'comment' : 'phase0');
@@ -625,18 +645,20 @@ export default function ImportWorkflow() {
                   round: obj.round,
                   roundTotal: obj.roundTotal,
                   startTime,
+                  currentWorkId: obj.workId,
+                  detail: obj.detail ?? (obj.tagsAdded != null ? `+${obj.tagsAdded}tags` : obj.result),
                 });
               }
             } else if (obj.type === 'done') {
-              setProgress('comment', null);
-              setProgress('phase0', null);
-              setProgress('phase12', null);
+              if (obj.success !== false) {
+                setProgress('comment', null);
+                setProgress('phase0', null);
+                setProgress('phase12', null);
+              }
               fetchStats();
               fetchWorkList(workListFilter);
             } else if (obj.type === 'error') {
-              setProgress('comment', null);
-              setProgress('phase0', null);
-              setProgress('phase12', null);
+              // ① エラー時も進捗は残す（Phase12が消えたように見える問題を回避）
               alert(obj.error || 'エラーが発生しました');
             }
           } catch {
@@ -646,17 +668,17 @@ export default function ImportWorkflow() {
       }
       if (buffer.trim()) {
         try {
-          const obj = JSON.parse(buffer) as { type?: string; error?: string };
+          const obj = JSON.parse(buffer) as { type?: string; success?: boolean; error?: string };
           if (obj.type === 'done') {
-            setProgress('comment', null);
-            setProgress('phase0', null);
-            setProgress('phase12', null);
+            if (obj.success !== false) {
+              setProgress('comment', null);
+              setProgress('phase0', null);
+              setProgress('phase12', null);
+            }
             fetchStats();
             fetchWorkList(workListFilter);
           } else if (obj.type === 'error') {
-            setProgress('comment', null);
-            setProgress('phase0', null);
-            setProgress('phase12', null);
+            // ① エラー時も進捗は残す
             alert(obj.error || 'エラーが発生しました');
           }
         } catch {
@@ -664,9 +686,7 @@ export default function ImportWorkflow() {
         }
       }
     } catch (e) {
-      setProgress('comment', null);
-      setProgress('phase0', null);
-      setProgress('phase12', null);
+      // ① エラー時も進捗は残す
       alert(e instanceof Error ? e.message : '一括実行に失敗しました');
     } finally {
       setBulkCommentPhase012Running(false);
@@ -787,7 +807,7 @@ export default function ImportWorkflow() {
 
   return (
     <div>
-      <h2 style={{ fontSize: '1.1rem', marginBottom: '10px' }}>📥 作品インポート & タグ取得</h2>
+      <h2 style={{ fontSize: '1.1rem', marginBottom: '10px', fontWeight: 600 }}>作品＆コメント取得</h2>
 
       {/* 統計表示（コンパクト） */}
       <div style={{
@@ -1255,15 +1275,32 @@ export default function ImportWorkflow() {
           </button>
           <span style={{ marginLeft: '8px', color: '#666', fontSize: '13px' }}>|</span>
           <select
-            value={bulkCommentPhase012Count}
-            onChange={(e) => setBulkCommentPhase012Count(Number(e.target.value))}
+            value={bulkCommentPhase012Rounds}
+            onChange={(e) => setBulkCommentPhase012Rounds(Number(e.target.value))}
             disabled={bulkCommentPhase012Running}
             style={{ padding: '6px 10px', fontSize: '13px', borderRadius: '4px', border: '1px solid #ccc' }}
           >
-            {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((n) => (
-              <option key={n} value={n}>{n}件</option>
+            {[
+              { rounds: 10, works: 80 },
+              { rounds: 20, works: 160 },
+              { rounds: 50, works: 400 },
+              { rounds: 100, works: 800 },
+              { rounds: 150, works: 1200 },
+              { rounds: 200, works: 1600 },
+              { rounds: 500, works: 4000 },
+            ].map(({ rounds, works }) => (
+              <option key={rounds} value={rounds}>{rounds}ラウンド（{works}件）</option>
             ))}
           </select>
+          <label style={{ marginLeft: '8px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <input
+              type="checkbox"
+              checked={bulkCommentPhase012Background}
+              onChange={(e) => setBulkCommentPhase012Background(e.target.checked)}
+              disabled={bulkCommentPhase012Running}
+            />
+            バックグラウンド
+          </label>
           <button
             onClick={handleBulkCommentPhase012}
             disabled={bulkCommentPhase012Running || !adminToken}
@@ -1298,13 +1335,13 @@ export default function ImportWorkflow() {
                   fontWeight: 'normal',
                   padding: '4px 10px',
                   borderRadius: '6px',
-                  backgroundColor: aiProvider === 'cloudflare' ? '#e7f3ff' : aiProvider === 'groq' ? '#e8f5e9' : '#f3e5f5',
-                  color: aiProvider === 'cloudflare' ? '#0d6efd' : aiProvider === 'groq' ? '#2e7d32' : '#6f42c1',
-                  border: `1px solid ${aiProvider === 'cloudflare' ? '#b8daff' : aiProvider === 'groq' ? '#a5d6a7' : '#e1bee7'}`,
+                  backgroundColor: aiProvider === 'openai' ? '#e7f3ff' : '#f3e5f5',
+                  color: aiProvider === 'openai' ? '#0d6efd' : '#6f42c1',
+                  border: `1px solid ${aiProvider === 'openai' ? '#b8daff' : '#e1bee7'}`,
                 }}
-                title="現在のAIプロバイダ（.env.local の設定に依存）"
+                title="現在のAIプロバイダ（OPENAI_API_KEY が設定されている場合、GPT を使用）"
               >
-                {aiProvider === 'cloudflare' ? '☁️ Cloudflare' : aiProvider === 'groq' ? '⚡ Groq' : aiProvider === 'huggingface' ? '🤗 Hugging Face' : aiProvider}
+                {aiProvider === 'openai' ? '🤖 GPT' : aiProvider}
               </span>
             )}
           </h3>

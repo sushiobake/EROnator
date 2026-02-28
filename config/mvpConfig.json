@@ -25,10 +25,15 @@
     "softConfirmStrengthScale": 1,
     "useIGForExploreSelection": true,
     "useBayesianUpdate": true,
-    "bayesianEpsilon": 0.05
+    "bayesianEpsilon": 0.05,
+    "bayesianEpsilonPhases": {
+      "early": 0.02,
+      "mid": 0.05,
+      "late": 0.08
+    }
   },
   "flow": {
-    "maxQuestions": 30,
+    "maxQuestions": 35,
     "maxRevealMisses": 3,
     "failListN": 5,
     "effectiveConfirmThresholdFormula": "A",
@@ -39,7 +44,21 @@
     },
     "consecutiveNoForAtari": 5,
     "summaryPreferRatio": 0.2,
-    "titleInitialTopN": 2
+    "titleInitialTopN": 2,
+    "specialQuestionSlotIndices": [
+      3,
+      5,
+      9,
+      16
+    ],
+    "rescueSpecialCondition": {
+      "slotIndices": [
+        20,
+        24
+      ],
+      "effectiveCandidatesMin": 25,
+      "confidenceMax": 0.35
+    }
   },
   "dataQuality": {
     "minCoverageMode": "WORKS",

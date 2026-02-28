@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
     const workIds = candidateProbs.map(p => p.workId);
     const works = await prisma.work.findMany({
       where: { workId: { in: workIds } },
-      select: { workId: true, title: true, authorName: true, productUrl: true, thumbnailUrl: true },
+      select: { workId: true, title: true, authorName: true, productUrl: true, thumbnailUrl: true, reviewAverage: true, reviewCount: true },
     });
     const workMap = new Map(works.map(w => [w.workId, w]));
     const seenAuthors = new Set<string>();

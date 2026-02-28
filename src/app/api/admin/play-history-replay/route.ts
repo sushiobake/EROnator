@@ -74,7 +74,10 @@ function getCorrectAnswerForEntry(
   if (entry.kind === 'SPECIAL_QUESTION' && entry.specialQuestionType === 'TITLE_CHAR_TYPE') {
     const targetCharType = getTitleCharType(targetWork.title ?? '');
     const expectedCharType = entry.titleCharType ?? 'KANJI';
-    return targetCharType === expectedCharType ? 'YES' : 'NO';
+    const matches = expectedCharType === 'HIRAGANA_OR_KATAKANA'
+      ? (targetCharType === 'HIRAGANA' || targetCharType === 'KATAKANA')
+      : targetCharType === expectedCharType;
+    return matches ? 'YES' : 'NO';
   }
   return null;
 }

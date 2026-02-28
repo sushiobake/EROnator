@@ -41,6 +41,7 @@ function weightsToStored(weights: Record<string, number>): WeightsArrayFormat {
  */
 export interface SessionState {
   sessionId: string;
+  version: number; // 楽観的ロック用
   aiGateChoice: AiGateChoice | null;
   questionCount: number;
   revealMissCount: number;
@@ -48,8 +49,6 @@ export interface SessionState {
   weights: Record<string, number>; // { workId: weight }
   weightsHistory: WeightsHistoryEntry[]; // 修正機能用
   questionHistory: QuestionHistoryEntry[];
-  /** 楽観的ロック用。getSessionで取得、updateSessionで検証 */
-  version?: number;
 }
 
 /** 楽観的ロック競合時（他リクエストが先に更新済み） */
@@ -72,11 +71,17 @@ export interface QuestionHistoryEntry {
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
   hardConfirmValue?: string;
   /** SPECIAL_QUESTION の種別 */
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';
   /** SPECIAL_QUESTION SERIES の判定用タグキー */
   seriesTagKeys?: string[];
   /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
-  titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
+  titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA';
+  /** SPECIAL_QUESTION POPULARITY の閾値 */
+  popularityThreshold?: number;
+  /** SPECIAL_QUESTION TITLE_SYLLABLE / TITLE_SYLLABLE_2 の対象文字 */
+  syllableChars?: string[];
+  /** SPECIAL_QUESTION AUTHOR_CHAR_TYPE の聞く文字種 */
+  authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
   /** 表示用文言（修正するで戻ったときに同じ文言を出すため） */
   displayText?: string;
   /** まとめ質問のとき true。回答時の strength を ±0.6 に固定する */
@@ -137,6 +142,7 @@ export class SessionManager {
 
     return {
       sessionId: session.sessionId,
+      version: (session as { version?: number }).version ?? 0,
       aiGateChoice: (session.aiGateChoice as AiGateChoice) || null,
       questionCount: session.questionCount,
       revealMissCount: session.revealMissCount,
@@ -144,7 +150,6 @@ export class SessionManager {
       weights: weightsFromStored(JSON.parse(session.weights || '{}')),
       weightsHistory,
       questionHistory: JSON.parse(session.questionHistory || '[]'),
-      version: (session as { version?: number }).version ?? 0,
     };
   }
 
@@ -162,8 +167,6 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    const currentVersion = current.version ?? 0;
-
     const updated: SessionState = {
       ...current,
       ...updates,
@@ -174,10 +177,10 @@ export class SessionManager {
       weights: weightsToStored(e.weights),
     }));
 
-    // 楽観的ロック: version が一致する場合のみ更新。競合時は 0 件で SessionConflictError
     const result = await prisma.session.updateMany({
-      where: { sessionId, version: currentVersion },
+      where: { sessionId, version: current.version },
       data: {
+        version: current.version + 1,
         aiGateChoice: updated.aiGateChoice || null,
         questionCount: updated.questionCount,
         revealMissCount: updated.revealMissCount,
@@ -185,10 +188,8 @@ export class SessionManager {
         weights: JSON.stringify(weightsToStored(updated.weights)),
         weightsHistory: JSON.stringify(weightsHistoryToStore),
         questionHistory: JSON.stringify(updated.questionHistory),
-        version: currentVersion + 1,
-      } as any,
+      },
     });
-
     if (result.count === 0) {
       throw new SessionConflictError();
     }
