@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
+  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
 }
 
 // Works: 作品データ
@@ -45,6 +46,7 @@ model Work {
   lastCheckReasoning  String?  // AIチェック時の推論 JSON
   lastTaggingReasoning String?  // AIタグ付け時の推論 JSON
   titleReadingInitial String?  // タイトル読みの先頭1文字（カタカナ）。50音質問用
+  titleReadingInitialConfirmed Boolean?  // 頭文字確認済み（管理画面用。確認済みは一覧から非表示）
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
@@ -95,6 +97,7 @@ model WorkTag {
 model Session {
   id                      String   @id @default(cuid())
   sessionId               String   @unique
+  version                 Int      @default(0) // 楽観的ロック用
   aiGateChoice            String?  // "YES" | "NO" | "DONT_CARE" | null
   questionCount           Int      @default(0)
   revealMissCount         Int      @default(0)
