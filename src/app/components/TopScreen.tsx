@@ -100,13 +100,14 @@ export function TopScreen({ onPlay, onRecommend, streamerMode, onToggleStreamerM
         <div style={{ marginTop: isMobile ? 12 : 14 }}>
           <button
             type="button"
-            onClick={onRecommend}
+            disabled
             style={{
               padding: isMobile ? '14px 32px' : '16px 44px',
               minHeight: isMobile ? 48 : 52,
               fontSize: isMobile ? 17 : 16,
               fontWeight: 700,
-              cursor: 'pointer',
+              cursor: 'not-allowed',
+              opacity: 0.6,
               backgroundColor: 'rgba(255,255,255,0.9)',
               color: 'var(--color-text)',
               border: '3px solid var(--color-border)',
@@ -114,29 +115,28 @@ export function TopScreen({ onPlay, onRecommend, streamerMode, onToggleStreamerM
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
             }}
           >
-            推薦モード（18歳以上）
+            推薦モード（18歳以上）※近日実装
           </button>
         </div>
-        {onToggleStreamerMode && (
-          <div style={{ marginTop: isMobile ? 10 : 12 }}>
-            <button
-              type="button"
-              onClick={onToggleStreamerMode}
-              style={{
-                padding: '8px 20px',
-                fontSize: isMobile ? 14 : 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                backgroundColor: streamerMode ? '#7c3aed' : 'rgba(255,255,255,0.7)',
-                color: streamerMode ? '#fff' : 'var(--color-text-muted)',
-                border: streamerMode ? '2px solid #7c3aed' : '2px solid var(--color-border-light)',
-                borderRadius: 'var(--radius-lg)',
-              }}
-            >
-              {streamerMode ? '🔴 配信者モード ON' : '配信者モード'}
-            </button>
-          </div>
-        )}
+        <div style={{ marginTop: isMobile ? 10 : 12 }}>
+          <button
+            type="button"
+            disabled
+            style={{
+              padding: '8px 20px',
+              fontSize: isMobile ? 14 : 13,
+              fontWeight: 600,
+              cursor: 'not-allowed',
+              opacity: 0.6,
+              backgroundColor: 'rgba(255,255,255,0.7)',
+              color: 'var(--color-text-muted)',
+              border: '2px solid var(--color-border-light)',
+              borderRadius: 'var(--radius-lg)',
+            }}
+          >
+            配信モード ※近日実装
+          </button>
+        </div>
         {isMobile && appVersion && (
           <p style={{ margin: 0, marginTop: 14, fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>
             {appVersion}

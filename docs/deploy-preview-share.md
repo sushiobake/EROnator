@@ -23,6 +23,19 @@
 
 ---
 
+## 0.4. スキーマ変更時: Supabase にスキーマを適用する
+
+**`schema.postgres.prisma` に新しいカラムやモデルを追加した場合**は、sync の**前**に Supabase へスキーマを反映する必要があります。
+
+```bash
+npm run db:push:supabase
+```
+
+これを忘れると、sync 実行時に「The column `xxx` does not exist in the current database」というエラーになります。  
+**順序**: `db:push:supabase` → `sync:supabase`
+
+---
+
 ## 0.5. 初回のみ: ローカル SQLite の作品を Supabase に投入する（任意）
 
 **これは初回だけ必要です。** 一度投入すれば Supabase にデータが残るので、**2回目以降のデプロイテスト（push → ビルド → URL 確認）ではやる必要はありません。**

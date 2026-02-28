@@ -1599,6 +1599,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   </div>
                 )}
                 <TagSection
+                  adminToken={adminToken}
                   label="既存S"
                   items={detail.officialTags.map((t) => t.displayName)}
                   readOnly
@@ -1606,6 +1607,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   gridColumns={4}
                 />
                 <UnifiedTagInput
+                  adminToken={adminToken}
                   formAdditionalS={formAdditionalS}
                   formA={formA}
                   formB={formB}
@@ -1617,6 +1619,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   onC={(v) => { setFormC(v); setDirty(true); }}
                 />
                 <TagSection
+                  adminToken={adminToken}
                   label="キャラ"
                   items={formCharacter ? [formCharacter] : []}
                   onChange={(items) => { setFormCharacter(items[0] || ''); setDirty(true); }}
@@ -1649,6 +1652,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
 type RankType = 'S' | 'A' | 'B' | 'C';
 
 function UnifiedTagInput({
+  adminToken,
   formAdditionalS,
   formA,
   formB,
@@ -1659,6 +1663,7 @@ function UnifiedTagInput({
   onB,
   onC,
 }: {
+  adminToken: string;
   formAdditionalS: string[];
   formA: string[];
   formB: string[];
@@ -1695,7 +1700,7 @@ function UnifiedTagInput({
       debounceRef.current = null;
     }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [input]);
+  }, [input, adminToken]);
 
   const alreadyIn = (name: string, rank: RankType): boolean => {
     const n = name.trim().toLowerCase();
@@ -1855,6 +1860,7 @@ function ChipList({ label, items, onRemove, rankColor }: { label: string; items:
 }
 
 function TagSection({
+  adminToken,
   label,
   items,
   onChange,
@@ -1865,6 +1871,7 @@ function TagSection({
   rankColor,
   gridColumns,
 }: {
+  adminToken: string;
   label: string;
   items: string[];
   onChange?: (items: string[]) => void;
@@ -1905,7 +1912,7 @@ function TagSection({
       debounceRef.current = null;
     }, 200);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [input, autocompleteType]);
+  }, [input, autocompleteType, adminToken]);
 
   const addItem = (name: string) => {
     const n = name.trim();
