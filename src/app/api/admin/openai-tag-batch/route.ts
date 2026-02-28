@@ -227,7 +227,7 @@ ${JSON.stringify({ works: worksPayload }, null, 2)}
             )
           );
 
-          const failedChunks = chunkResults.filter((r): r is { success: false } => !r.success);
+          const failedChunks = chunkResults.filter((r): r is Extract<ChunkResult, { success: false }> => !r.success);
           const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
           const refusalResultJson = JSON.stringify({
             aiParseError: true,
