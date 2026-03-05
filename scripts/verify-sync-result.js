@@ -2,6 +2,8 @@
  * 同期結果の検証スクリプト
  *
  * SQLite / Supabase / WorkTag行列 の gameRegistered 件数が一致するか確認する。
+ * SQLite と workTagMatrix は必須で一致すること。Supabase は「SQLite と同数」または
+ * 「SQLite より数件多いだけ」（Supabase にのみ残る古い登録）を許容する。
  * 不一致があると本番の精度に影響するため、デプロイ前に実行して確認すること。
  *
  * 実行:
@@ -148,11 +150,26 @@ async function main() {
   console.log('  Supabase (gameRegistered):', supabase.ok ? `${supabase.count} 件` : `❌ ${supabase.error}`);
   console.log('  workTagMatrix.json:', matrix.ok ? `workCount=${matrix.count}` : `❌ ${matrix.error}`);
 
-  const counts = [sqlite.count, supabase.count, matrix.count].filter((c) => c != null);
-  const allSame = counts.length >= 2 && counts.every((c) => c === counts[0]);
+  // SQLite と matrix は一致が必須（matrix は SQLite から生成される）
+  const sqliteMatrixOk = sqlite.count != null && matrix.count != null && sqlite.count === matrix.count;
 
-  if (!allSame) {
-    console.log('\n❌ 件数が一致しません。本番デプロイ前に sync:supabase を実行し、workTagMatrix.json をコミットしてください。');
+  // Supabase: 同数なら OK。または「SQLite より多いが差が許容範囲」なら OK（Supabase にだけ残る古い登録を許容）
+  const TOLERANCE = 10;
+  const supabaseOk =
+    supabase.count != null &&
+    sqlite.count != null &&
+    (supabase.count === sqlite.count ||
+      (supabase.count >= sqlite.count && supabase.count - sqlite.count <= TOLERANCE));
+
+  if (!sqliteMatrixOk) {
+    console.log('\n❌ SQLite と workTagMatrix.json の件数が一致しません。sync:supabase を実行し、workTagMatrix.json をコミットしてください。');
+    process.exit(1);
+  }
+
+  if (supabase.ok && !supabaseOk) {
+    console.log(
+      `\n❌ Supabase の件数が SQLite と一致しません（差が ${TOLERANCE} 件を超えています）。本番デプロイ前に sync:supabase を実行してください。`
+    );
     process.exit(1);
   }
 
@@ -167,7 +184,11 @@ async function main() {
     process.exit(0);
   }
 
-  console.log('\n✅ 検証OK: SQLite / Supabase / 行列 の件数が一致しています。');
+  if (supabase.count !== sqlite.count) {
+    console.log(`\n✅ 検証OK: SQLite と行列は一致（${sqlite.count} 件）。Supabase は ${supabase.count} 件（許容範囲内）。`);
+  } else {
+    console.log('\n✅ 検証OK: SQLite / Supabase / 行列 の件数が一致しています。');
+  }
   process.exit(0);
 }
 

@@ -18,6 +18,7 @@ import type { QuestionResponse, SessionStateResponse } from '@/server/api/types'
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
+import { getWorkTagMatrix } from '@/server/game/workTagMatrixLoader';
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,10 +87,28 @@ export async function POST(request: NextRequest) {
     }
 
     // AI_GATEフィルタ適用
-    const allowedWorkIds = filterWorksByAiGate(
+    let allowedWorkIds = filterWorksByAiGate(
       allWorks.map(w => ({ workId: w.workId, isAi: w.isAi })),
       aiGateChoice
     );
+
+    // workTagMatrix に存在する作品だけに限定（DB にだけある作品はタグが無く不具合の元になるため除外）
+    const matrix = getWorkTagMatrix();
+    if (matrix?.workTagMap) {
+      const inMatrix = new Set(Object.keys(matrix.workTagMap));
+      const before = allowedWorkIds.length;
+      allowedWorkIds = allowedWorkIds.filter((id) => inMatrix.has(id));
+      if (allowedWorkIds.length < before) {
+        console.warn(`[start] ${before - allowedWorkIds.length} 件を matrix に存在しないため除外しました`);
+      }
+      if (allowedWorkIds.length === 0) {
+        throw new ApiError(
+          503,
+          'ゲームに登録された作品がありません。workTagMatrix.json を確認してください。',
+          'No works in matrix after filter'
+        );
+      }
+    }
 
     // 初期重み計算
     const config: MvpConfig = getMvpConfig();
