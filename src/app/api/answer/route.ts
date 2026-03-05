@@ -62,34 +62,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SPECIAL_QUESTION 用のみ: セッション内の作品情報を1回で取得しキャッシュ（processAnswer 内の findMany を排除）。EXPLORE_TAG では毎回 8000 件取らない。
-    if (currentQuestion.kind === 'SPECIAL_QUESTION') {
-      const workIds = Object.keys(session.weights);
-      if (workIds.length > 0) {
-        const rows = await prisma.work.findMany({
-          where: { workId: { in: workIds } },
-          select: {
-            workId: true,
-            title: true,
-            authorName: true,
-            popularityBase: true,
-            popularityPlayBonus: true,
-            titleReadingInitial: true,
-          },
+    // processAnswer と selectNextQuestion（selectSpecialQuestion）の両方で使用。
+    // selectSpecialQuestion は「次の質問」選択時に呼ばれ、Q3/Q5/Q9/Q16 等のスロットで
+    // TITLE_CHAR_TYPE / POPULARITY / TITLE_SYLLABLE の候補評価に work 情報が必要。
+    // ここでセットしないと、EXPLORE_TAG 回答後に次の質問がスペシャルスロットのときに
+    // selectSpecialQuestion 内で 8000 件の findMany が 3 回走り 20 秒級の遅延になる。
+    const workIds = Object.keys(session.weights);
+    if (workIds.length > 0) {
+      const rows = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: {
+          workId: true,
+          title: true,
+          authorName: true,
+          popularityBase: true,
+          popularityPlayBonus: true,
+          titleReadingInitial: true,
+        },
+      });
+      const map = new Map<string, SimWorkData>();
+      for (const w of rows) {
+        map.set(w.workId, {
+          workId: w.workId,
+          title: w.title,
+          authorName: w.authorName,
+          popularityBase: w.popularityBase,
+          popularityPlayBonus: w.popularityPlayBonus,
+          titleReadingInitial: w.titleReadingInitial,
         });
-        const map = new Map<string, SimWorkData>();
-        for (const w of rows) {
-          map.set(w.workId, {
-            workId: w.workId,
-            title: w.title,
-            authorName: w.authorName,
-            popularityBase: w.popularityBase,
-            popularityPlayBonus: w.popularityPlayBonus,
-            titleReadingInitial: w.titleReadingInitial,
-          });
-        }
-        setSimWorkDataMap(map);
       }
+      setSimWorkDataMap(map);
     }
 
     // 重みを取得
