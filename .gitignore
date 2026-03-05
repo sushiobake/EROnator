@@ -56,3 +56,8 @@ next-env.d.ts
 
 # スクレイピング失敗時デバッグ用スクリーンショット
 /data/debug-screenshots/
+
+# シミュ結果・バックアップ・未タグ一覧（容量大・本番未使用。デプロイに含めない）
+/data/simulation-results/
+/data/*.bak*
+/data/untagged-*.json

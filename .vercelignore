@@ -1,0 +1,4 @@
+# サーバレス関数 250MB 制限対策（本番で未使用の大容量データを除外）
+data/simulation-results/
+data/*.bak*
+data/untagged-*.json
