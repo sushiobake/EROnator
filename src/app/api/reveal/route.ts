@@ -11,7 +11,7 @@ import {
   normalizeWeights,
   calculateConfidence,
 } from '@/server/algo/scoring';
-import { handleRevealResponse } from '@/server/game/engine';
+import { handleRevealResponse, setSimWorkDataMap, type SimWorkData } from '@/server/game/engine';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
@@ -65,13 +65,47 @@ export async function POST(request: NextRequest) {
     }));
     const probabilities = normalizeWeights(weights);
 
-    const result = await handleRevealResponse(
-      session,
-      answer,
-      weights,
-      probabilities,
-      config
-    );
+    // REVEAL→NO→QUIZ のとき selectNextQuestion 内で selectSpecialQuestion が呼ばれる。
+    // setSimWorkDataMap がないと getSimWorkDataMap() が null のまま 3 回 findMany で 20 秒かかる。
+    const workIds = Object.keys(session.weights);
+    if (workIds.length > 0) {
+      const rows = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: {
+          workId: true,
+          title: true,
+          authorName: true,
+          popularityBase: true,
+          popularityPlayBonus: true,
+          titleReadingInitial: true,
+        },
+      });
+      const map = new Map<string, SimWorkData>();
+      for (const w of rows) {
+        map.set(w.workId, {
+          workId: w.workId,
+          title: w.title,
+          authorName: w.authorName,
+          popularityBase: w.popularityBase,
+          popularityPlayBonus: w.popularityPlayBonus,
+          titleReadingInitial: w.titleReadingInitial,
+        });
+      }
+      setSimWorkDataMap(map);
+    }
+
+    let result;
+    try {
+      result = await handleRevealResponse(
+        session,
+        answer,
+        weights,
+        probabilities,
+        config
+      );
+    } finally {
+      setSimWorkDataMap(null);
+    }
 
     // SUCCESS: DB更新・recommended構築・PlayHistory・レスポンス
     if (result.state === 'SUCCESS' && result.topWorkId) {

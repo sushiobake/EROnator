@@ -23,11 +23,8 @@ import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
-  const t0 = Date.now();
   try {
-    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
-    console.log('[perf] ensurePrismaConnected:', Date.now() - t0, 'ms');
 
     const body = await request.json();
     const { sessionId, choice, questionShownAt } = body;
@@ -40,10 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // セッション取得
-    const t1 = Date.now();
     const session = await SessionManager.getSession(sessionId);
-    console.log('[perf] getSession:', Date.now() - t1, 'ms');
     if (!session) {
       throw new ApiError(
         404,
@@ -71,7 +65,6 @@ export async function POST(request: NextRequest) {
     // selectSpecialQuestion 内で 8000 件の findMany が 3 回走り 20 秒級の遅延になる。
     const workIds = Object.keys(session.weights);
     if (workIds.length > 0) {
-      const tFindMany = Date.now();
       const rows = await prisma.work.findMany({
         where: { workId: { in: workIds } },
         select: {
@@ -95,7 +88,6 @@ export async function POST(request: NextRequest) {
         });
       }
       setSimWorkDataMap(map);
-      console.log('[perf] findMany:', Date.now() - tFindMany, 'ms');
     }
 
     // 重みを取得
@@ -135,16 +127,13 @@ export async function POST(request: NextRequest) {
       authorCharType: (currentQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
     };
 
-    const t3 = Date.now();
     const updatedWeights = await processAnswer(
       weights,
       questionData,
       choice,
       config
     );
-    console.log('[perf] processAnswer:', Date.now() - t3, 'ms');
 
-    const t3b = Date.now();
     // 正規化
     const probabilities = normalizeWeights(updatedWeights);
     const confidence = calculateConfidence(probabilities);
@@ -182,8 +171,6 @@ export async function POST(request: NextRequest) {
       weights: snapshotWeights,
     }];
 
-    // 回答後の応答を決定（engine に集約）
-    const t4 = Date.now();
     const result = await handleAnswerResponse(
       session,
       currentQuestion,
@@ -196,14 +183,11 @@ export async function POST(request: NextRequest) {
       newWeightsHistory,
       config
     );
-    console.log('[perf] handleAnswerResponse:', Date.now() - t4, 'ms');
 
     // セッション更新（全パターン共通）。weightsHistory は渡さず、スナップショットは 1 行だけ INSERT。
-    const t5 = Date.now();
     await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
     const snapshotWeightsArray = Object.entries(snapshotWeights).map(([workId, weight]) => ({ workId, weight }));
     await SessionManager.saveWeightsSnapshot(sessionId, currentQuestion.qIndex, snapshotWeightsArray);
-    console.log('[perf] updateSession+saveSnapshot:', Date.now() - t5, 'ms');
 
     // REVEAL: 作品を取得して返却
     if (result.state === 'REVEAL' && result.revealWorkId) {
@@ -307,6 +291,5 @@ export async function POST(request: NextRequest) {
     return handleApiError(error);
   } finally {
     setSimWorkDataMap(null);
-    console.log('[perf] TOTAL:', Date.now() - t0, 'ms');
   }
 }
