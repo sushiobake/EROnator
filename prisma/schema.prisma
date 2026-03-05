@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Works: 作品データ
@@ -103,11 +102,26 @@ model Session {
   revealMissCount         Int      @default(0)
   revealRejectedWorkIds    String   @default("[]") // JSON array string
   weights                 String   @default("{}") // JSON object: { workId: weight }
-  weightsHistory          String   @default("[]") // JSON array: [{ qIndex, weights }] (修正機能用)
+  weightsHistory          String   @default("[]") // 互換用。実体は SessionWeightsSnapshot に格納
   questionHistory         String   @default("[]") // JSON array
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
+  weightsSnapshots        SessionWeightsSnapshot[]
+
+  @@index([sessionId])
+}
+
+// 修正機能用: 重みスナップショットを別テーブルで保持（セッション本体の肥大化を防止）
+model SessionWeightsSnapshot {
+  id         String   @id @default(cuid())
+  sessionId  String
+  qIndex     Int      // 質問番号（回答前の状態）
+  weightsJson String  // JSON: weightsToStored 形式
+
+  session    Session  @relation(fields: [sessionId], references: [sessionId], onDelete: Cascade)
+
+  @@unique([sessionId, qIndex])
   @@index([sessionId])
 }
 

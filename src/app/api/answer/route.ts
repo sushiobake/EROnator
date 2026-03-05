@@ -10,7 +10,7 @@ import {
   calculateConfidence,
   calculateEffectiveCandidates,
 } from '@/server/algo/scoring';
-import { processAnswer, handleAnswerResponse } from '@/server/game/engine';
+import { processAnswer, handleAnswerResponse, setSimWorkDataMap, type SimWorkData } from '@/server/game/engine';
 import { applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
@@ -51,6 +51,34 @@ export async function POST(request: NextRequest) {
     }
 
     const config: MvpConfig = getMvpConfig();
+
+    // SPECIAL_QUESTION 用: セッション内の作品情報を1回で取得しキャッシュ（processAnswer 内の findMany を排除）
+    const workIds = Object.keys(session.weights);
+    if (workIds.length > 0) {
+      const rows = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: {
+          workId: true,
+          title: true,
+          authorName: true,
+          popularityBase: true,
+          popularityPlayBonus: true,
+          titleReadingInitial: true,
+        },
+      });
+      const map = new Map<string, SimWorkData>();
+      for (const w of rows) {
+        map.set(w.workId, {
+          workId: w.workId,
+          title: w.title,
+          authorName: w.authorName,
+          popularityBase: w.popularityBase,
+          popularityPlayBonus: w.popularityPlayBonus,
+          titleReadingInitial: w.titleReadingInitial,
+        });
+      }
+      setSimWorkDataMap(map);
+    }
 
     // 現在の質問を履歴から取得（最後の質問）
     const currentQuestion = session.questionHistory[session.questionHistory.length - 1];
@@ -265,5 +293,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in /api/answer:', error);
     return handleApiError(error);
+  } finally {
+    setSimWorkDataMap(null);
   }
 }

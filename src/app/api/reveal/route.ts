@@ -23,6 +23,7 @@ import { buildRevealAnalysis } from '@/server/debug/buildRevealAnalysis';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { computeTagBasedMatchRate } from '@/server/utils/tagMatchRate';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
+import { getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,12 +83,14 @@ export async function POST(request: NextRequest) {
 
       if (topWork) {
         if (process.env.DISABLE_POPULARITY_PLAY_BONUS !== '1') {
-          await prisma.work.update({
-            where: { workId: topWorkId },
-            data: {
-              popularityPlayBonus: topWork.popularityPlayBonus + config.popularity.playBonusOnSuccess,
-            },
-          });
+          prisma.work
+            .update({
+              where: { workId: topWorkId },
+              data: {
+                popularityPlayBonus: topWork.popularityPlayBonus + config.popularity.playBonusOnSuccess,
+              },
+            })
+            .catch((e) => console.error('[reveal] popularityPlayBonus update failed:', e));
         }
 
         const allowed = isDebugAllowed(request);
@@ -106,22 +109,29 @@ export async function POST(request: NextRequest) {
         const correctAuthor = topWork.authorName ?? '';
         const correctTagKeys = (topWork.workTags ?? []).map(wt => wt.tagKey);
         const candidateProbs = sorted.slice(1).filter(p => p.workId !== topWorkId);
-        const candidateIds = candidateProbs.map(p => p.workId);
-        const candidateRows = candidateIds.length > 0
+        // おすすめは最大5件のため、上位50件に制限してDB負荷を削減
+        const topCandidateProbs = candidateProbs.slice(0, 50);
+        const topCandidateIds = topCandidateProbs.map(p => p.workId);
+        const candidateRows = topCandidateIds.length > 0
           ? await prisma.work.findMany({
-              where: { workId: { in: candidateIds } },
-              include: { workTags: { select: { tagKey: true } } },
+              where: { workId: { in: topCandidateIds } },
             })
           : [];
         const workMap = new Map(candidateRows.map(w => [w.workId, w]));
         const seenAuthors = new Set<string>();
         const recommended: Array<{ work: ReturnType<typeof toWorkResponse>; matchRate: number }> = [];
-        for (const p of candidateProbs) {
+        const recTagKeysFromMatrix = getWorkTagsFromMatrix(topCandidateIds);
+        const workTagKeysMap = new Map<string, string[]>();
+        for (const e of recTagKeysFromMatrix) {
+          if (!workTagKeysMap.has(e.workId)) workTagKeysMap.set(e.workId, []);
+          workTagKeysMap.get(e.workId)!.push(e.tagKey);
+        }
+        for (const p of topCandidateProbs) {
           if (recommended.length >= 5) break;
           const w = workMap.get(p.workId);
           if (!w || w.authorName === correctAuthor || seenAuthors.has(w.authorName)) continue;
           seenAuthors.add(w.authorName);
-          const recTagKeys = (w.workTags ?? []).map(wt => wt.tagKey);
+          const recTagKeys = workTagKeysMap.get(p.workId) ?? [];
           const matchRate = computeTagBasedMatchRate(correctTagKeys, recTagKeys);
           recommended.push({ work: toWorkResponse(w), matchRate });
         }

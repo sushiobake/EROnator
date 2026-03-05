@@ -174,10 +174,10 @@ export default function Home() {
   const thinkingSeqIndexRef = useRef<Record<string, number>>({ early: 0, mid: 0, late: 0, closing: 0 });
   const [currentThinkingText, setCurrentThinkingText] = useState('考え中…');
 
-  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 400ms（切り替え安定化） */
+  /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1000ms・本番 200ms */
   const MIN_THINKING_MS =
     (typeof process.env.NEXT_PUBLIC_MIN_THINKING_MS !== 'undefined' && Number(process.env.NEXT_PUBLIC_MIN_THINKING_MS)) ||
-    (process.env.NODE_ENV === 'development' ? 1500 : 400);
+    (process.env.NODE_ENV === 'development' ? 1000 : 200);
 
   useEffect(() => {
     setIsClient(true);

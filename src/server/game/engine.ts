@@ -197,26 +197,45 @@ export function filterWorksByAiGate(
 
 /**
  * 初期重み計算（AI_GATE後）
+ * allowedWorkIds のみ指定した場合は DB から取得（従来どおり）
  */
 export async function initializeWeights(
   allowedWorkIds: string[],
   alpha: number
 ): Promise<WorkWeight[]> {
-  // productUrlは必須（Prisma schemaでnullableではない）
   const works = await prisma.work.findMany({
     where: {
       workId: { in: allowedWorkIds },
     },
   });
+  return initializeWeightsFromWorks(
+    works.map((w) => ({
+      workId: w.workId,
+      popularityBase: w.popularityBase,
+      popularityPlayBonus: w.popularityPlayBonus,
+    })),
+    alpha
+  );
+}
 
-  // popularityPlayBonusを環境変数で無効化可能（デバッグ中は常に0として扱う）
+/**
+ * 既に取得した Work 情報から初期重みを計算（DB クエリなし）
+ * /api/start で findMany 1 回に統合するために使用
+ */
+export function initializeWeightsFromWorks(
+  works: Array<{
+    workId: string;
+    popularityBase: number | null;
+    popularityPlayBonus: number | null;
+  }>,
+  alpha: number
+): WorkWeight[] {
   const usePlayBonus = process.env.DISABLE_POPULARITY_PLAY_BONUS !== '1';
-  
-  return works.map(w => ({
+  return works.map((w) => ({
     workId: w.workId,
     weight: calculateBasePrior(
-      w.popularityBase,
-      usePlayBonus ? w.popularityPlayBonus : 0,
+      w.popularityBase ?? 0,
+      usePlayBonus ? (w.popularityPlayBonus ?? 0) : 0,
       alpha
     ),
   }));

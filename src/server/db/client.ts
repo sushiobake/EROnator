@@ -51,8 +51,8 @@ export async function ensurePrismaConnected(): Promise<void> {
     const dbUrl = process.env.DATABASE_URL ?? '';
     if (dbUrl.startsWith('file:') || dbUrl.startsWith('file://')) {
       try {
-        await prisma.$executeRawUnsafe('PRAGMA journal_mode=WAL');
-        await prisma.$executeRawUnsafe('PRAGMA busy_timeout=5000');
+        await prisma.$queryRawUnsafe('PRAGMA journal_mode=WAL');
+        await prisma.$queryRawUnsafe('PRAGMA busy_timeout=5000');
         console.log('[db] SQLite WAL mode enabled, busy_timeout=5000ms');
       } catch (e) {
         console.warn('[db] Failed to set WAL mode:', e);

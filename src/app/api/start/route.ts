@@ -4,9 +4,10 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { SessionManager } from '@/server/session/manager';
+import { SessionManager, weightsToStored } from '@/server/session/manager';
 import {
   initializeWeights,
+  initializeWeightsFromWorks,
   filterWorksByAiGate,
   selectNextQuestion,
 } from '@/server/game/engine';
@@ -19,12 +20,16 @@ import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { getWorkTagMatrix } from '@/server/game/workTagMatrixLoader';
+import { randomUUID } from 'crypto';
+
+/** 1回の findMany で取得する Work（重み計算用に popularity を含む） */
+type WorkRowFull = { workId: string; isAi: string; popularityBase: number | null; popularityPlayBonus: number | null };
+type WorkRowMinimal = { workId: string; isAi: string };
 
 export async function POST(request: NextRequest) {
   try {
-    // Prisma Clientの接続を確実にする（Vercel serverless functions用）
     await ensurePrismaConnected();
-    
+
     const body = await request.json();
     const { aiGateChoice } = body;
 
@@ -36,26 +41,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // セッション作成
-    const sessionId = await SessionManager.createSession();
-    await SessionManager.setAiGateChoice(sessionId, aiGateChoice);
-
-    // 全Work取得（ゲーム登録済みのみ・AI_GATEフィルタ前）
-    type WorkRow = { workId: string; isAi: string };
-    // gameRegistered は schema に追加済み。prisma generate 後に型が付く
-    let allWorks: WorkRow[] = await prisma.work.findMany({
+    // 全Work取得（1回で workId, isAi, popularityBase, popularityPlayBonus を取得）
+    let allWorks: WorkRowFull[] | WorkRowMinimal[] = await prisma.work.findMany({
       where: { gameRegistered: true, needsReview: false } as Record<string, unknown>,
       select: {
         workId: true,
         isAi: true,
+        popularityBase: true,
+        popularityPlayBonus: true,
       },
     });
 
-    // Prismaで0件の場合
     if (allWorks.length === 0) {
       const dbUrl = process.env.DATABASE_URL ?? '';
       const isPostgres = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://');
-      // デプロイ先（Postgres）ではSQLiteフォールバックは使わない（ファイルが存在しないため）
       if (isPostgres) {
         throw new ApiError(
           503,
@@ -63,7 +62,6 @@ export async function POST(request: NextRequest) {
           'No works with gameRegistered=true on Postgres'
         );
       }
-      // ローカル（SQLite）のみ: 直接SQLiteで取得（フォールバック）
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const sqlite3 = require('better-sqlite3');
@@ -72,7 +70,7 @@ export async function POST(request: NextRequest) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
         const db = sqlite3(dbPath, { readonly: true });
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        const directWorks = db.prepare('SELECT workId, isAi FROM Work WHERE gameRegistered = 1 AND (needsReview = 0 OR needsReview IS NULL)').all() as WorkRow[];
+        const directWorks = db.prepare('SELECT workId, isAi FROM Work WHERE gameRegistered = 1 AND (needsReview = 0 OR needsReview IS NULL)').all() as WorkRowMinimal[];
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         db.close();
         allWorks = directWorks;
@@ -86,13 +84,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // AI_GATEフィルタ適用
-    let allowedWorkIds = filterWorksByAiGate(
-      allWorks.map(w => ({ workId: w.workId, isAi: w.isAi })),
+    let allowedWorkIds: string[] = filterWorksByAiGate(
+      allWorks.map((w) => ({ workId: w.workId, isAi: w.isAi })),
       aiGateChoice
     );
 
-    // workTagMatrix に存在する作品だけに限定（DB にだけある作品はタグが無く不具合の元になるため除外）
     const matrix = getWorkTagMatrix();
     if (matrix?.workTagMap) {
       const inMatrix = new Set(Object.keys(matrix.workTagMap));
@@ -110,25 +106,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 初期重み計算
     const config: MvpConfig = getMvpConfig();
-    const weights = await initializeWeights(allowedWorkIds, config.algo.alpha);
+    const hasPrior =
+      allWorks.length > 0 &&
+      'popularityBase' in allWorks[0]! &&
+      (allWorks[0] as WorkRowFull).popularityBase !== undefined;
+    const weights = hasPrior
+      ? initializeWeightsFromWorks(
+          (allWorks as WorkRowFull[]).filter((w) => allowedWorkIds.includes(w.workId)),
+          config.algo.alpha
+        )
+      : await initializeWeights(allowedWorkIds, config.algo.alpha);
 
-    // セッションに重みを保存
-    await SessionManager.updateWeights(sessionId, weights);
-
-    // 初期重みのスナップショットを保存（修正機能用、qIndex=0）
-    await SessionManager.saveWeightsSnapshot(sessionId, 0, weights);
-
-    // 正規化
     const probabilities = normalizeWeights(weights);
 
-    // 最初の質問を選択
     const firstQuestion = await selectNextQuestion(
       weights,
       probabilities,
-      0, // questionCount = 0
-      [], // questionHistory = []
+      0,
+      [],
       config
     );
 
@@ -140,8 +136,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 質問履歴に追加（displayText を保存して修正するで戻ったときに同じ文言を出す）
-    await SessionManager.addQuestionHistory(sessionId, {
+    const sessionId = randomUUID();
+    const weightsMap: Record<string, number> = {};
+    for (const w of weights) {
+      weightsMap[w.workId] = w.weight;
+    }
+    const firstQuestionEntry = {
       qIndex: 1,
       kind: firstQuestion.kind,
       tagKey: firstQuestion.tagKey,
@@ -155,6 +155,26 @@ export async function POST(request: NextRequest) {
       specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
       seriesTagKeys: (firstQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
       titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
+    };
+
+    await prisma.session.create({
+      data: {
+        sessionId,
+        aiGateChoice,
+        questionCount: 0,
+        revealMissCount: 0,
+        revealRejectedWorkIds: JSON.stringify([]),
+        weights: JSON.stringify(weightsToStored(weightsMap)),
+        weightsHistory: '[]',
+        questionHistory: JSON.stringify([firstQuestionEntry]),
+      },
+    });
+    await prisma.sessionWeightsSnapshot.create({
+      data: {
+        sessionId,
+        qIndex: 0,
+        weightsJson: JSON.stringify(weightsToStored(weightsMap)),
+      },
     });
 
     // 返却（最小限の情報のみ）

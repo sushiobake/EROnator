@@ -29,8 +29,8 @@ function weightsFromStored(raw: unknown): Record<string, number> {
   return {};
 }
 
-/** Record → 配列形式（保存時、JSON サイズ削減） */
-function weightsToStored(weights: Record<string, number>): WeightsArrayFormat {
+/** Record → 配列形式（保存時、JSON サイズ削減）。/api/start の一括 create 用に export */
+export function weightsToStored(weights: Record<string, number>): WeightsArrayFormat {
   const w = Object.keys(weights);
   const v = w.map((k) => weights[k] ?? 0);
   return { w, v };
@@ -124,6 +124,7 @@ export class SessionManager {
 
   /**
    * セッション取得
+   * weightsHistory は別テーブル SessionWeightsSnapshot から取得（肥大化対策）。なければ従来の session.weightsHistory を参照（互換）
    */
   static async getSession(sessionId: string): Promise<SessionState | null> {
     const session = await prisma.session.findUnique({
@@ -134,11 +135,23 @@ export class SessionManager {
       return null;
     }
 
-    const weightsHistoryRaw = JSON.parse((session as any).weightsHistory ?? '[]') as WeightsHistoryEntry[];
-    const weightsHistory = weightsHistoryRaw.map((e) => ({
-      qIndex: e.qIndex,
-      weights: weightsFromStored(e.weights),
-    }));
+    const snapshots = await prisma.sessionWeightsSnapshot.findMany({
+      where: { sessionId },
+      orderBy: { qIndex: 'asc' },
+    });
+    let weightsHistory: WeightsHistoryEntry[];
+    if (snapshots.length > 0) {
+      weightsHistory = snapshots.map((s) => ({
+        qIndex: s.qIndex,
+        weights: weightsFromStored(JSON.parse(s.weightsJson)),
+      }));
+    } else {
+      const legacyRaw = JSON.parse((session as { weightsHistory?: string }).weightsHistory ?? '[]') as WeightsHistoryEntry[];
+      weightsHistory = legacyRaw.map((e) => ({
+        qIndex: e.qIndex,
+        weights: weightsFromStored(e.weights),
+      }));
+    }
 
     return {
       sessionId: session.sessionId,
@@ -172,10 +185,31 @@ export class SessionManager {
       ...updates,
     };
 
-    const weightsHistoryToStore = updated.weightsHistory.map((e) => ({
-      qIndex: e.qIndex,
-      weights: weightsToStored(e.weights),
-    }));
+    if (updates.weightsHistory !== undefined) {
+      await prisma.sessionWeightsSnapshot.deleteMany({ where: { sessionId } });
+      if (updated.weightsHistory.length > 0) {
+        // qIndex ごとに1件に絞る（同じ qIndex が複数あると unique 制約でエラーになる）
+        const byQIndex = new Map<number, WeightsHistoryEntry>();
+        for (const e of updated.weightsHistory) {
+          byQIndex.set(e.qIndex, e);
+        }
+        const deduped = Array.from(byQIndex.entries()).sort((a, b) => a[0] - b[0]).map(([, e]) => e);
+        await prisma.sessionWeightsSnapshot.createMany({
+          data: deduped.map((e) => ({
+            sessionId,
+            qIndex: e.qIndex,
+            weightsJson: JSON.stringify(weightsToStored(e.weights)),
+          })),
+        });
+      }
+    }
+
+    const existing = await prisma.session.findUnique({
+      where: { sessionId },
+      select: { weightsHistory: true },
+    });
+    const weightsHistoryColumn =
+      updates.weightsHistory !== undefined ? '[]' : (existing?.weightsHistory ?? '[]');
 
     const result = await prisma.session.updateMany({
       where: { sessionId, version: current.version },
@@ -186,7 +220,7 @@ export class SessionManager {
         revealMissCount: updated.revealMissCount,
         revealRejectedWorkIds: JSON.stringify(updated.revealRejectedWorkIds),
         weights: JSON.stringify(weightsToStored(updated.weights)),
-        weightsHistory: JSON.stringify(weightsHistoryToStore),
+        weightsHistory: weightsHistoryColumn,
         questionHistory: JSON.stringify(updated.questionHistory),
       },
     });
@@ -273,24 +307,24 @@ export class SessionManager {
 
   /**
    * 重みのスナップショットを保存（修正機能用）
+   * 別テーブル SessionWeightsSnapshot に 1 行挿入するだけ（セッション行は触らない）
    */
   static async saveWeightsSnapshot(
     sessionId: string,
     qIndex: number,
     weights: WorkWeight[]
   ): Promise<void> {
-    const current = await this.getSession(sessionId);
-    if (!current) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
-
     const weightsMap: Record<string, number> = {};
     for (const w of weights) {
       weightsMap[w.workId] = w.weight;
     }
-
-    const newHistory = [...current.weightsHistory, { qIndex, weights: weightsMap }];
-    await this.updateSession(sessionId, { weightsHistory: newHistory });
+    await prisma.sessionWeightsSnapshot.create({
+      data: {
+        sessionId,
+        qIndex,
+        weightsJson: JSON.stringify(weightsToStored(weightsMap)),
+      },
+    });
   }
 
   /**
@@ -335,13 +369,14 @@ export class SessionManager {
       return { success: false };
     }
 
-    // ロールバック後は weightsHistory を qIndex < targetQIndex のみに（使用したスナップショットを削除し、再回答時に重複しないようにする）
-    const weightsHistoryAfterRollback = current.weightsHistory.filter(w => w.qIndex < targetQIndex);
+    // 別テーブルのスナップショットから qIndex >= targetQIndex を削除（戻る先より後を破棄）
+    await prisma.sessionWeightsSnapshot.deleteMany({
+      where: { sessionId, qIndex: { gte: targetQIndex } },
+    });
 
     // questionCount は「回答数」（0始まり）。表示は questionCount+1 なので、targetQIndex 問目に戻すときは questionCount = targetQIndex - 1
     await this.updateSession(sessionId, {
       questionHistory: filteredHistory,
-      weightsHistory: weightsHistoryAfterRollback,
       weights: targetSnapshot.weights,
       questionCount: targetQIndex - 1,
     });
