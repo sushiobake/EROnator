@@ -52,34 +52,6 @@ export async function POST(request: NextRequest) {
 
     const config: MvpConfig = getMvpConfig();
 
-    // SPECIAL_QUESTION 用: セッション内の作品情報を1回で取得しキャッシュ（processAnswer 内の findMany を排除）
-    const workIds = Object.keys(session.weights);
-    if (workIds.length > 0) {
-      const rows = await prisma.work.findMany({
-        where: { workId: { in: workIds } },
-        select: {
-          workId: true,
-          title: true,
-          authorName: true,
-          popularityBase: true,
-          popularityPlayBonus: true,
-          titleReadingInitial: true,
-        },
-      });
-      const map = new Map<string, SimWorkData>();
-      for (const w of rows) {
-        map.set(w.workId, {
-          workId: w.workId,
-          title: w.title,
-          authorName: w.authorName,
-          popularityBase: w.popularityBase,
-          popularityPlayBonus: w.popularityPlayBonus,
-          titleReadingInitial: w.titleReadingInitial,
-        });
-      }
-      setSimWorkDataMap(map);
-    }
-
     // 現在の質問を履歴から取得（最後の質問）
     const currentQuestion = session.questionHistory[session.questionHistory.length - 1];
     if (!currentQuestion) {
@@ -88,6 +60,36 @@ export async function POST(request: NextRequest) {
         '現在の質問が見つかりませんでした',
         'No current question'
       );
+    }
+
+    // SPECIAL_QUESTION 用のみ: セッション内の作品情報を1回で取得しキャッシュ（processAnswer 内の findMany を排除）。EXPLORE_TAG では毎回 8000 件取らない。
+    if (currentQuestion.kind === 'SPECIAL_QUESTION') {
+      const workIds = Object.keys(session.weights);
+      if (workIds.length > 0) {
+        const rows = await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: {
+            workId: true,
+            title: true,
+            authorName: true,
+            popularityBase: true,
+            popularityPlayBonus: true,
+            titleReadingInitial: true,
+          },
+        });
+        const map = new Map<string, SimWorkData>();
+        for (const w of rows) {
+          map.set(w.workId, {
+            workId: w.workId,
+            title: w.title,
+            authorName: w.authorName,
+            popularityBase: w.popularityBase,
+            popularityPlayBonus: w.popularityPlayBonus,
+            titleReadingInitial: w.titleReadingInitial,
+          });
+        }
+        setSimWorkDataMap(map);
+      }
     }
 
     // 重みを取得
@@ -109,9 +111,6 @@ export async function POST(request: NextRequest) {
         confidence: beforeConfidence,
       };
     }
-
-    // 重みのスナップショットは handleAnswerResponse の sessionUpdates に含め、1回の updateSession で保存する
-    // （saveWeightsSnapshot を別呼び出しすると楽観的ロックで version がずれ、2回目の updateSession が SESSION_CONFLICT になる）
 
     // 回答処理（まとめ質問のときは strength ±0.6 と summaryDisplayNames を使用）
     const questionData = {
@@ -190,8 +189,10 @@ export async function POST(request: NextRequest) {
       config
     );
 
-    // セッション更新（全パターン共通）
+    // セッション更新（全パターン共通）。weightsHistory は渡さず、スナップショットは 1 行だけ INSERT。
     await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+    const snapshotWeightsArray = Object.entries(snapshotWeights).map(([workId, weight]) => ({ workId, weight }));
+    await SessionManager.saveWeightsSnapshot(sessionId, currentQuestion.qIndex, snapshotWeightsArray);
 
     // REVEAL: 作品を取得して返却
     if (result.state === 'REVEAL' && result.revealWorkId) {

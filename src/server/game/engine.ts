@@ -2070,11 +2070,10 @@ export interface AnswerResponseResult {
   forcedReveal?: boolean;
   /** QUIZ の場合: 次の質問 */
   nextQuestion?: QuestionData;
-  /** セッション更新内容（全パターン共通） */
+  /** セッション更新内容（全パターン共通）。weightsHistory は渡さず、呼び出し側で saveWeightsSnapshot を 1 行 INSERT。 */
   sessionUpdates: {
     weights: Record<string, number>;
     questionCount: number;
-    weightsHistory: Array<{ qIndex: number; weights: Record<string, number> }>;
     questionHistory: QuestionHistoryEntry[];
   };
   /** QUIZ の場合の confidence（sessionState 用） */
@@ -2110,10 +2109,10 @@ export async function handleAnswerResponse(
   newWeightsHistory: Array<{ qIndex: number; weights: Record<string, number> }>,
   config: MvpConfig
 ): Promise<AnswerResponseResult> {
+  // weightsHistory は sessionUpdates に含めない（updateSession が全削除+全再作成するため重い）。呼び出し側で saveWeightsSnapshot を 1 行 INSERT する。
   const baseSessionUpdates = {
     weights: weightsMap,
     questionCount: newQuestionCount,
-    weightsHistory: newWeightsHistory,
     questionHistory: historyWithAnswer,
   };
 
@@ -2121,7 +2120,6 @@ export async function handleAnswerResponse(
   const revealSessionUpdates = {
     weights: weightsMap,
     questionCount: session.questionCount,
-    weightsHistory: newWeightsHistory,
     questionHistory: historyWithAnswer,
   };
 
@@ -2211,8 +2209,6 @@ export async function handleAnswerResponse(
     syllableChars: (nextQuestion as { syllableChars?: string[] }).syllableChars,
     authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
   }];
-  const weightsHistoryWithNext = [...newWeightsHistory, { qIndex: nextQIndex, weights: weightsMap }];
-
   return {
     state: 'QUIZ',
     nextQuestion,
@@ -2220,7 +2216,6 @@ export async function handleAnswerResponse(
     sessionUpdates: {
       weights: weightsMap,
       questionCount: newQuestionCount,
-      weightsHistory: weightsHistoryWithNext,
       questionHistory: newHistory,
     },
   };
@@ -2359,11 +2354,6 @@ export async function handleRevealResponse(
       authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
     },
   ];
-  const newWeightsHistory = [
-    ...session.weightsHistory,
-    { qIndex: newQIndex, weights: penalizedMap },
-  ];
-
   const confidence = calculateConfidence(penalizedProbabilities);
 
   return {
@@ -2374,7 +2364,6 @@ export async function handleRevealResponse(
       ...baseSessionUpdates,
       questionCount: newQIndex,
       questionHistory: newHistory,
-      weightsHistory: newWeightsHistory,
     },
   };
 }

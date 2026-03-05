@@ -153,9 +153,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // FAIL_LIST / QUIZ: セッション更新を適用
+    // FAIL_LIST / QUIZ: セッション更新を適用。QUIZ のときはスナップショットを 1 行だけ INSERT。
     if (result.sessionUpdates) {
       await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+      if (result.state === 'QUIZ' && result.sessionUpdates.questionCount != null && result.sessionUpdates.weights) {
+        const snapshotArray = Object.entries(result.sessionUpdates.weights).map(([workId, weight]) => ({ workId, weight }));
+        await SessionManager.saveWeightsSnapshot(sessionId, result.sessionUpdates.questionCount, snapshotArray);
+      }
     }
 
     // FAIL_LIST

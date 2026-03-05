@@ -21,23 +21,6 @@ export interface WorkTagMatrix {
 }
 
 let cachedMatrix: WorkTagMatrix | null = null;
-let matrixLoadLogged = false;
-
-/** プレビュー/Vercel で process.cwd() やトレース配置が異なる場合の候補パス */
-function getMatrixCandidatePaths(): string[] {
-  const cwd = process.cwd();
-  const candidates = [
-    path.join(cwd, 'data', 'workTagMatrix.json'),
-    path.join(cwd, '.next', 'server', 'data', 'workTagMatrix.json'),
-    path.join(cwd, '..', '..', '..', 'data', 'workTagMatrix.json'), // cwd が .next/server/app/api/answer 等
-    path.join(cwd, '..', '..', 'data', 'workTagMatrix.json'),       // cwd が .next/server 等
-  ];
-  // outputFileTracingIncludes がルートごとにファイルを置く場合
-  for (const route of ['answer', 'start', 'reveal']) {
-    candidates.push(path.join(cwd, '.next', 'server', 'app', 'api', route, 'data', 'workTagMatrix.json'));
-  }
-  return candidates;
-}
 
 /** Worker Thread 等から直接データを注入する */
 export function setWorkTagMatrixDirect(data: WorkTagMatrix | null) {
@@ -47,25 +30,16 @@ export function setWorkTagMatrixDirect(data: WorkTagMatrix | null) {
 export function getWorkTagMatrix(): WorkTagMatrix | null {
   if (process.env.DISABLE_WORKTAG_MATRIX === '1') return null;
   if (cachedMatrix) return cachedMatrix;
-  const candidates = getMatrixCandidatePaths();
-  for (const p of candidates) {
-    try {
-      if (!fs.existsSync(p)) continue;
-      const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as WorkTagMatrix;
-      cachedMatrix = raw;
-      return cachedMatrix;
-    } catch (err) {
-      if (!matrixLoadLogged) {
-        console.warn('[WorkTag] Matrix load failed for path:', p, err);
-      }
-      continue;
-    }
+  try {
+    const p = path.join(process.cwd(), 'data', 'workTagMatrix.json');
+    if (!fs.existsSync(p)) return null;
+    const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as WorkTagMatrix;
+    cachedMatrix = raw;
+    return cachedMatrix;
+  } catch (err) {
+    console.error('[WorkTag] Matrix load failed:', err);
+    return null;
   }
-  if (!matrixLoadLogged) {
-    matrixLoadLogged = true;
-    console.warn('[WorkTag] Matrix not found. Tried:', candidates, 'cwd:', process.cwd());
-  }
-  return null;
 }
 
 /**
