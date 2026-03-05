@@ -142,13 +142,16 @@ async function fetchWorkTags(
   options?: { tagKeys?: string[] }
 ): Promise<Array<{ workId: string; tagKey: string; derivedConfidence: number | null }>> {
   if (workIds.length === 0) return [];
+  const tFetch = Date.now();
   const t = perfStart('fetchWorkTags');
   const matrix = getWorkTagMatrix();
   if (matrix) {
     const out = getWorkTagsFromMatrix(workIds, options);
     perfEnd('fetchWorkTags', t);
+    console.log('[perf] fetchWorkTags: matrix', Date.now() - tFetch, 'ms');
     return out;
   }
+  console.log('[perf] fetchWorkTags: DB start (matrix=null)');
   const result = await prisma.workTag.findMany({
     where: {
       workId: { in: workIds },
@@ -157,6 +160,7 @@ async function fetchWorkTags(
     select: { workId: true, tagKey: true, derivedConfidence: true },
   });
   perfEnd('fetchWorkTags', t);
+  console.log('[perf] fetchWorkTags: DB', Date.now() - tFetch, 'ms');
   return result.map((r) => ({
     workId: r.workId,
     tagKey: r.tagKey,
@@ -295,8 +299,10 @@ export async function selectNextQuestion(
   options?: SelectNextQuestionOptions
 ): Promise<QuestionData | null> {
   const t = perfStart('selectNextQuestion');
+  const tSelectNext = Date.now();
   try {
   await ensureTagCacheLoaded();
+  console.log('[perf] selectNextQuestion: after ensureTagCacheLoaded', Date.now() - tSelectNext, 'ms qIndex=', questionCount + 1);
   const questionIndex = questionCount + 1; // 次の質問番号（1-based）
   const usedSummaryIds = new Set(
     questionHistory
@@ -421,6 +427,7 @@ export async function selectNextQuestion(
   }
 
   if (specialSlotIndices.includes(qIndex)) {
+    console.log('[perf] selectNextQuestion: specialSlot branch start', Date.now() - tSelectNext, 'ms');
     const usedSpecialTypes = new Set<SpecialQuestionType>(
       questionHistory
         .filter((q): q is QuestionHistoryEntry & { specialQuestionType: SpecialQuestionType } =>
@@ -438,6 +445,7 @@ export async function selectNextQuestion(
       syllableChars: q.syllableChars,
       answer: q.answer,
     }));
+    const tSpecial = Date.now();
     const specialResult = await selectSpecialQuestion(
       probabilities,
       usedSpecialTypes,
@@ -446,6 +454,7 @@ export async function selectNextQuestion(
       titleCharTypeAnsweredUnknown,
       historyForRescue
     );
+    console.log('[perf] selectNextQuestion: selectSpecialQuestion', Date.now() - tSpecial, 'ms');
     if (specialResult) {
       return {
         kind: 'SPECIAL_QUESTION',
@@ -476,6 +485,7 @@ export async function selectNextQuestion(
   );
 
   if (shouldConfirm) {
+    console.log('[perf] selectNextQuestion: confirm branch start', Date.now() - tSelectNext, 'ms');
     const tConfirm = perfStart('selectNextQuestion_confirm');
     try {
     // SOFT_CONFIRM vs HARD_CONFIRM選択
@@ -866,7 +876,10 @@ export async function selectNextQuestion(
     const hardInjected = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
     if (hardInjected) return hardInjected;
   }
+  console.log('[perf] selectNextQuestion: selectUnifiedExploreOrSummary start', Date.now() - tSelectNext, 'ms');
+  const tUnified = Date.now();
   const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
+  console.log('[perf] selectNextQuestion: selectUnifiedExploreOrSummary', Date.now() - tUnified, 'ms');
   if (unified) return unified;
 
   // p値バンドでEXPLOREが選べなかった場合のフォールバック: HARD_CONFIRM で頭文字/作者を聞く
@@ -880,7 +893,10 @@ export async function selectNextQuestion(
 
   // フォールバック: 通常タグのみ（Q4以降）
   if (qIndex >= 4) {
+    console.log('[perf] selectNextQuestion: selectExploreQuestion start', Date.now() - tSelectNext, 'ms');
+    const tExplore = Date.now();
     const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
+    console.log('[perf] selectNextQuestion: selectExploreQuestion', Date.now() - tExplore, 'ms');
     if (exploreResult) return exploreResult;
     if (fallbackEnabled) {
       const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
