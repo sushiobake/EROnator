@@ -15,6 +15,7 @@ import {
   selectExploreTag,
   selectExploreTagByIG,
   filterTagsByPValueBandForIG,
+  limitTagsByPValueNearHalf,
   shouldInsertConfirm,
   selectConfirmType,
   getNextHardConfirmType,
@@ -1378,25 +1379,22 @@ async function selectUnifiedExploreOrSummary(
   const pValueBand = getExplorePValueBand(config);
   let selectedKey: string | null;
 
-  // 案4: effectiveCandidates が小さいときは top 候補差異タグ IG（上位N件だけでIG計算）
-  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
-  const topNIGThreshold = 100;
-  const topNForIG = 20;
-  const probsForIG =
-    effectiveCandidates < topNIGThreshold && effectiveCandidates > 0
-      ? (() => {
-          const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
-          const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
-          const sum = topN.reduce((s, p) => s + p.probability, 0);
-          return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
-        })()
-      : probabilities;
+  // 案1: IG計算は常に上位N件のworksのみ使用（序盤の23秒遅延を解消）
+  const topNForIG = 300;
+  const probsForIG = (() => {
+    const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
+    const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
+    const sum = topN.reduce((s, p) => s + p.probability, 0);
+    return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
+  })();
 
   if (useIG && !preferHighP) {
     // 案3: p値で候補を事前絞り（同じpValueBandなら結果は同じ、IG計算が軽くなる）
-    const tagsForIG = pValueBand
+    let tagsForIG = pValueBand
       ? filterTagsByPValueBandForIG(tagsForSelection, probsForIG, workHasTag, pValueBand)
       : tagsForSelection;
+    // 案2: タグ候補が多すぎる場合、p値0.5に近い上位50件に絞る
+    tagsForIG = limitTagsByPValueNearHalf(tagsForIG, probsForIG, workHasTag, 50);
     selectedKey = selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand);
   } else {
     selectedKey = selectExploreTag(
@@ -1411,8 +1409,9 @@ async function selectUnifiedExploreOrSummary(
   }
   if (!selectedKey && pValueBand) {
     if (useIG && !preferHighP) {
-      // バンド外し時は全候補で再試行（事前絞りなし）
-      selectedKey = selectExploreTagByIG(tagsForSelection, probsForIG, workHasTag, undefined);
+      // バンド外し時は全候補で再試行（案2でタグ数は制限）
+      const tagsRetry = limitTagsByPValueNearHalf(tagsForSelection, probsForIG, workHasTag, 50);
+      selectedKey = selectExploreTagByIG(tagsRetry, probsForIG, workHasTag, undefined);
     } else {
       selectedKey = selectExploreTag(
         tagsForSelection,
@@ -1644,23 +1643,20 @@ async function selectExploreQuestion(
 
   const pValueBand = getExplorePValueBand(config);
   const useIG = config.algo.useIGForExploreSelection !== false;
-  // 案4: effectiveCandidates が小さいときは top 候補差異タグ IG
-  const effectiveCandidates = calculateEffectiveCandidates(probabilities);
-  const topNIGThreshold = 100;
-  const topNForIG = 20;
-  const probsForIG =
-    useIG && effectiveCandidates < topNIGThreshold && effectiveCandidates > 0
-      ? (() => {
-          const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
-          const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
-          const sum = topN.reduce((s, p) => s + p.probability, 0);
-          return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
-        })()
-      : probabilities;
+  // 案1: IG計算は常に上位N件のworksのみ使用
+  const topNForIG = 300;
+  const probsForIG = (() => {
+    const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
+    const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
+    const sum = topN.reduce((s, p) => s + p.probability, 0);
+    return sum > 0 ? topN.map(p => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
+  })();
   // 案3: useIG時はp値で候補を事前絞り（IG計算軽量化）
-  const tagsForIG = useIG && pValueBand
+  let tagsForIG = useIG && pValueBand
     ? filterTagsByPValueBandForIG(availableTags, probsForIG, workHasTag, pValueBand)
     : availableTags;
+  // 案2: タグ候補が多すぎる場合、p値0.5に近い上位50件に絞る
+  tagsForIG = useIG ? limitTagsByPValueNearHalf(tagsForIG, probsForIG, workHasTag, 50) : tagsForIG;
   const selectedTagKey = useIG
     ? selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand)
     : selectExploreTag(

@@ -73,6 +73,33 @@ export function filterTagsByPValueBandForIG(
 }
 
 /**
+ * 案2: IG計算前にタグ候補が多すぎる場合、p値が0.5に近い上位maxCount件に絞る。
+ * 計算量削減のため。probsは既に上位N件に制限されている想定。
+ */
+export function limitTagsByPValueNearHalf(
+  tags: TagInfo[],
+  probabilities: WorkProbability[],
+  workHasTag: (workId: string, tagKey: string) => boolean,
+  maxCount: number
+): TagInfo[] {
+  if (tags.length <= maxCount) return tags;
+  const withP = tags.map((tag) => {
+    let pYes = 0;
+    for (const prob of probabilities) {
+      const hasTag = workHasTag(prob.workId, tag.tagKey);
+      const likeYes = hasTag ? L_YES_HAS : L_NO_HAS;
+      pYes += prob.probability * likeYes;
+    }
+    return { tag, distanceFromHalf: Math.abs(pYes - 0.5) };
+  });
+  withP.sort((a, b) => {
+    if (a.distanceFromHalf !== b.distanceFromHalf) return a.distanceFromHalf - b.distanceFromHalf;
+    return a.tag.tagKey.localeCompare(b.tag.tagKey);
+  });
+  return withP.slice(0, maxCount).map((x) => x.tag);
+}
+
+/**
  * EXPLORE_TAG選択（情報利得 IG = 期待事後エントロピー最小）
  * 各候補タグについて E[H'] = P(YES|q)*H(事後|YES) + P(NO|q)*H(事後|NO) を計算し、最小のタグを返す。
  * pValueBand 指定時はその範囲内の候補のみ。preferHighP は呼び出し元で分岐するため未使用。
