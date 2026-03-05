@@ -53,6 +53,13 @@ export default function TagManager({ adminToken }: Props) {
   // 検索
   const [searchText, setSearchText] = useState('');
   
+  // 並び替え
+  const [sortBy, setSortBy] = useState<'workCount' | 'rank' | 'displayName'>('displayName');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  
+  // 0件タグを非表示（デフォルトON）
+  const [hideZeroCount, setHideZeroCount] = useState(true);
+  
   // ページネーション
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -80,7 +87,7 @@ export default function TagManager({ adminToken }: Props) {
   const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
   const [editingSummaryValue, setEditingSummaryValue] = useState('');
 
-  // 抽象質問タグ（11問目以降にのみ出題）
+  // 使用不可タグ（質問候補に含めない）
   const [vagueDisplayNames, setVagueDisplayNames] = useState<Set<string>>(new Set());
   // エロ質問タグ（7問目以降にのみ出題）
   const [eroticDisplayNames, setEroticDisplayNames] = useState<Set<string>>(new Set());
@@ -137,8 +144,11 @@ export default function TagManager({ adminToken }: Props) {
 
   // ランク読み込み
   const fetchRanks = async () => {
+    if (!adminToken) return;
     try {
-      const res = await fetch('/api/admin/tags/ranks');
+      const res = await fetch('/api/admin/tags/ranks', {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
       const data = await res.json();
       if (data.ranks) {
         setRanks(data.ranks);
@@ -234,7 +244,7 @@ export default function TagManager({ adminToken }: Props) {
       if (data.success && Array.isArray(data.summaryQuestions)) setSummaryQuestions(data.summaryQuestions);
     } catch (e) { console.error('Failed to fetch summary questions:', e); }
   };
-  // 抽象質問タグ読み込み
+  // 使用不可タグ読み込み
   const fetchVagueTags = async () => {
     if (!adminToken) return;
     try {
@@ -453,7 +463,10 @@ export default function TagManager({ adminToken }: Props) {
     }
   };
 
-  // フィルタリング（あいうえお順）
+  // ランクのソート用順序（S=最優先 → N=最後）
+  const RANK_ORDER: Record<UnifiedRank, number> = { S: 0, A: 1, B: 2, C: 3, X: 4, N: 5, '': 6 };
+
+  // フィルタリング
   const filteredTags = useMemo(() => {
     return tags
       .filter(t => {
@@ -471,13 +484,12 @@ export default function TagManager({ adminToken }: Props) {
         // 検索
         if (searchText && !t.displayName.toLowerCase().includes(searchText.toLowerCase())) return false;
         
+        // 0件タグを非表示
+        if (hideZeroCount && t.workCount <= 0) return false;
+        
         return true;
-      })
-      .sort((a, b) => {
-        // あいうえお順
-        return a.displayName.localeCompare(b.displayName, 'ja');
       });
-  }, [tags, ranks, showRanks, categoryFilter, searchText]);
+  }, [tags, ranks, showRanks, categoryFilter, searchText, hideZeroCount]);
 
 
   // カテゴリ一覧（categoryOrder 順、その他・キャラタグが最後）
@@ -491,7 +503,7 @@ export default function TagManager({ adminToken }: Props) {
     return Array.from(catSet).sort();
   }, [tags, categoryOrder]);
 
-  // 全カテゴリ表示用: displayCategory でグループ化（categoryOrder 順）
+  // 全カテゴリ表示用: displayCategory でグループ化（categoryOrder 順）、並び替え適用
   const tagsByDisplayCategory = useMemo(() => {
     const map = new Map<string, TagItem[]>();
     for (const t of filteredTags) {
@@ -499,11 +511,24 @@ export default function TagManager({ adminToken }: Props) {
       if (!map.has(cat)) map.set(cat, []);
       map.get(cat)!.push(t);
     }
+    const mult = sortOrder === 'asc' ? 1 : -1;
     for (const arr of map.values()) {
-      arr.sort((a, b) => a.displayName.localeCompare(b.displayName, 'ja'));
+      arr.sort((a, b) => {
+        if (sortBy === 'workCount') {
+          const diff = a.workCount - b.workCount;
+          return diff !== 0 ? mult * diff : a.displayName.localeCompare(b.displayName, 'ja');
+        }
+        if (sortBy === 'rank') {
+          const ra = RANK_ORDER[getUnifiedRank(a)];
+          const rb = RANK_ORDER[getUnifiedRank(b)];
+          const diff = ra - rb;
+          return diff !== 0 ? mult * diff : a.displayName.localeCompare(b.displayName, 'ja');
+        }
+        return mult * a.displayName.localeCompare(b.displayName, 'ja');
+      });
     }
     return map;
-  }, [filteredTags]);
+  }, [filteredTags, sortBy, sortOrder, ranks]);
 
   // 包括・統合: 「代表の下に移動」するタグ集合と、代表→サブ一覧・代表のランク
   const { movedSet, repIncludes, repUnify, repRank } = useMemo(() => {
@@ -567,7 +592,27 @@ export default function TagManager({ adminToken }: Props) {
         ...list.filter(t => !movedSet.has(t.displayName)).map(t => ({ type: 'real' as const, tag: t })),
         ...orphanRepsInCat.map(rep => ({ type: 'orphan' as const, displayName: rep, rank: repRank.get(rep) || 'A' })),
       ];
-      mainItems.sort((a, b) => (a.type === 'real' ? a.tag.displayName : a.displayName).localeCompare(b.type === 'real' ? b.tag.displayName : b.displayName));
+      const mult = sortOrder === 'asc' ? 1 : -1;
+      mainItems.sort((a, b) => {
+        const getTag = (x: typeof mainItems[0]) => x.type === 'real' ? x.tag : null;
+        const ta = getTag(a);
+        const tb = getTag(b);
+        if (sortBy === 'workCount') {
+          const wa = ta?.workCount ?? 0;
+          const wb = tb?.workCount ?? 0;
+          const diff = wa - wb;
+          if (diff !== 0) return mult * diff;
+        }
+        if (sortBy === 'rank') {
+          const ra = RANK_ORDER[(ta ? getUnifiedRank(ta) : (a.rank as UnifiedRank)) ?? 'N'];
+          const rb = RANK_ORDER[(tb ? getUnifiedRank(tb) : (b.rank as UnifiedRank)) ?? 'N'];
+          const diff = ra - rb;
+          if (diff !== 0) return mult * diff;
+        }
+        const na = a.type === 'real' ? a.tag.displayName : a.displayName;
+        const nb = b.type === 'real' ? b.tag.displayName : b.displayName;
+        return mult * na.localeCompare(nb, 'ja');
+      });
       for (const item of mainItems) {
         if (item.type === 'real') {
           rows.push({ type: 'main', tag: item.tag });
@@ -588,7 +633,7 @@ export default function TagManager({ adminToken }: Props) {
       }
     }
     return rows;
-  }, [categoryFilter, categoryOrder, tagsByDisplayCategory, movedSet, repIncludes, repUnify, repRank, repCategory, tags, summaryQuestions, summaryCollapsed]);
+  }, [categoryFilter, categoryOrder, tagsByDisplayCategory, movedSet, repIncludes, repUnify, repRank, repCategory, tags, summaryQuestions, summaryCollapsed, sortBy, sortOrder, ranks]);
 
   // ページネーションは「行」単位（カテゴリ見出し・メイン・サブを含む）
   const paginatedTableRows = useMemo(() => {
@@ -702,7 +747,7 @@ export default function TagManager({ adminToken }: Props) {
     } catch (e) { console.error('Failed to toggle summary erotic:', e); }
   };
 
-  // 抽象質問タグのトグル
+  // 使用不可タグのトグル
   const handleToggleVague = async (displayName: string) => {
     try {
       const res = await fetch('/api/admin/vague-tags', {
@@ -1235,6 +1280,39 @@ export default function TagManager({ adminToken }: Props) {
           style={{ padding: '6px 12px', width: '150px' }}
         />
         
+        <span>|</span>
+        
+        {/* 並び替え */}
+        <select
+          value={sortBy}
+          onChange={e => { setSortBy(e.target.value as 'workCount' | 'rank' | 'displayName'); setCurrentPage(1); }}
+          style={{ padding: '6px' }}
+        >
+          <option value="displayName">表示名</option>
+          <option value="workCount">作品数</option>
+          <option value="rank">ランク</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => { setSortOrder(o => o === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
+          style={{ padding: '4px 8px', fontSize: '0.9rem' }}
+          title={sortOrder === 'asc' ? '昇順 → クリックで降順' : '降順 → クリックで昇順'}
+        >
+          {sortOrder === 'asc' ? '↑' : '↓'}
+        </button>
+        
+        <span>|</span>
+        
+        {/* 0件タグ非表示 */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={hideZeroCount}
+            onChange={e => { setHideZeroCount(e.target.checked); setCurrentPage(1); }}
+          />
+          <span>0件を非表示</span>
+        </label>
+        
         <span style={{ color: '#666', marginLeft: 'auto' }}>
           表示: {tableRows.length}行
         </span>
@@ -1307,7 +1385,7 @@ export default function TagManager({ adminToken }: Props) {
             <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd', width: '160px' }}>タグ名</th>
             <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd' }}>質問文</th>
             <th style={{ padding: '6px', textAlign: 'left', border: '1px solid #ddd', width: '220px', minWidth: '220px' }}>作品/カテゴリ</th>
-            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '64px' }}>抽象質問</th>
+            <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '64px' }}>使用不可</th>
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>エロ</th>
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>操作</th>
           </tr>
@@ -1420,7 +1498,7 @@ export default function TagManager({ adminToken }: Props) {
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>—</td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#999' }}>DBに未登録</td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
-                      <input type="checkbox" checked={vagueDisplayNames.has(row.displayName)} onChange={() => handleToggleVague(row.displayName)} title="抽象質問（11問目以降）" />
+                      <input type="checkbox" checked={vagueDisplayNames.has(row.displayName)} onChange={() => handleToggleVague(row.displayName)} title="使用不可（質問候補に含めない）" />
                     </td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                       <input type="checkbox" checked={eroticDisplayNames.has(row.displayName)} onChange={() => handleToggleErotic(row.displayName)} title="エロ質問（7問目以降）" />
@@ -1529,7 +1607,7 @@ export default function TagManager({ adminToken }: Props) {
                     type="checkbox"
                     checked={vagueDisplayNames.has(tag.displayName)}
                     onChange={() => handleToggleVague(tag.displayName)}
-                    title="抽象質問（11問目以降にのみ出題）"
+                    title="使用不可（質問候補に含めない）"
                   />
                 </td>
                 <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>

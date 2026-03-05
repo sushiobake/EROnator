@@ -3,9 +3,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import pLimit from 'p-limit';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import { updatePhaseProgress } from '@/server/bulk/progressStore';
 import { scrapeWorkComment } from '@/server/scraping/fanzaScraper';
+
+/** 同時実行数（並列4で高速化。FANZAブロック時は2に下げる） */
+const SCRAPE_CONCURRENCY = 4;
 
 /**
  * popularityBaseを計算（仕様書§9.1に基づく）
@@ -38,7 +43,7 @@ export async function POST(request: NextRequest) {
     await ensurePrismaConnected();
 
     const body = await request.json();
-    const { workIds: rawWorkIds, overwrite = false, limit: rawLimit } = body;
+    const { workIds: rawWorkIds, overwrite = false, limit: rawLimit, bulkJobId, progressContext } = body;
 
     const MAX_LIMIT = 500;
     const limit = rawLimit != null ? Math.min(MAX_LIMIT, Math.max(1, parseInt(String(rawLimit), 10) || 50)) : null;
@@ -81,80 +86,123 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    let successCount = 0;
-    let failedCount = 0;
-    let skippedCount = 0;
+    const toProcess = works.filter((w) => overwrite || !w.commentText);
+    const skippedCount = works.length - toProcess.length;
 
-    // 各作品のコメントを取得
-    for (const work of works) {
-      // 既に取得済みの場合の処理
-      if (work.commentText) {
-        if (overwrite) {
-          // 上書きモード: 既存データがあっても取得し直す
-        } else {
-          // スキップモード: 既存データがある場合はスキップ
-          skippedCount++;
-          continue;
-        }
-      }
+    const ctx = bulkJobId && progressContext && typeof progressContext.doneOffset === 'number'
+      ? progressContext as { doneOffset: number; total: number; round: number; roundTotal: number }
+      : null;
 
-      try {
-        const data = await scrapeWorkComment(work.productUrl, {
-          headless: true,
-          timeout: 30000,
-        });
+    const concurrencyLimit = pLimit(SCRAPE_CONCURRENCY);
+    const completedRef = { count: 0 };
 
-        if (data) {
-          // 更新データを準備
-          const updateData: {
-            commentText?: string | null;
-            reviewCount?: number | null;
-            reviewAverage?: number | null;
-            isAi?: 'AI' | 'HAND' | 'UNKNOWN';
-            popularityBase?: number;
-          } = {};
+    const results = await Promise.all(
+      toProcess.map((work) =>
+        concurrencyLimit(async (): Promise<{ success: boolean; skippedReason?: string }> => {
+          if (ctx) {
+            updatePhaseProgress(bulkJobId, 'comment', {
+              done: ctx.doneOffset + completedRef.count,
+              total: ctx.total,
+              round: ctx.round,
+              roundTotal: ctx.roundTotal,
+              currentWorkId: work.workId,
+              detail: `取得中: ${work.workId}`,
+            });
+          }
 
-          // コメントがあれば更新（新規取得時は manualTaggingFolder を untagged に）
-          if (data.commentText) {
-            updateData.commentText = data.commentText;
-            // フォルダ未設定の場合、未タグに自動振り分け
-            const currentFolder = work.manualTaggingFolder;
-            if (currentFolder == null || currentFolder === '') {
-              (updateData as Record<string, unknown>).manualTaggingFolder = 'untagged';
+          try {
+            const data = await scrapeWorkComment(work.productUrl, {
+              headless: true,
+              timeout: 30000,
+            });
+
+            if (data) {
+              const updateData: {
+                commentText?: string | null;
+                reviewCount?: number | null;
+                reviewAverage?: number | null;
+                isAi?: 'AI' | 'HAND' | 'UNKNOWN';
+                popularityBase?: number;
+                manualTaggingFolder?: string;
+              } = {};
+
+              if (data.commentText) {
+                updateData.commentText = data.commentText;
+                const currentFolder = work.manualTaggingFolder;
+                if (currentFolder == null || currentFolder === '') {
+                  (updateData as Record<string, unknown>).manualTaggingFolder = 'untagged';
+                }
+              } else if (data.commentSkippedReason === 'too_short') {
+                updateData.commentText = '（コメント短すぎ・要確認）';
+                updateData.manualTaggingFolder = 'needs_human_check';
+                console.warn(`[fetch-comments] コメント短すぎスキップ（人間確認へ）: ${work.workId}`);
+              } else if (data.commentSkippedReason === 'not_found') {
+                updateData.commentText = '（作品コメント未検出・要確認）';
+                updateData.manualTaggingFolder = 'needs_human_check';
+                console.warn(`[fetch-comments] 作品コメント未検出（人間確認へ）: ${work.workId}`);
+              }
+
+              if (data.reviewCount !== null || data.reviewAverage !== null) {
+                updateData.reviewCount = data.reviewCount;
+                updateData.reviewAverage = data.reviewAverage;
+                updateData.popularityBase = computePopularityBase(data.reviewCount, data.reviewAverage);
+              }
+
+              if (data.isAi && data.isAi !== 'UNKNOWN') {
+                updateData.isAi = data.isAi;
+              }
+
+              await prisma.work.update({
+                where: { workId: work.workId },
+                data: updateData,
+              });
             }
+
+            completedRef.count++;
+            const detail =
+              data?.commentText ? 'OK' :
+              data?.commentSkippedReason === 'too_short' ? '短すぎ→要確認' :
+              data?.commentSkippedReason === 'not_found' ? '未検出' : '失敗';
+            if (ctx) {
+              updatePhaseProgress(bulkJobId, 'comment', {
+                done: ctx.doneOffset + completedRef.count,
+                total: ctx.total,
+                round: ctx.round,
+                roundTotal: ctx.roundTotal,
+                currentWorkId: work.workId,
+                detail,
+              });
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            const success = !!(data?.commentText);
+            return {
+              success,
+              skippedReason: data?.commentSkippedReason,
+            };
+          } catch (error) {
+            console.error(`Error fetching comment for ${work.workId}:`, error);
+            completedRef.count++;
+            if (ctx) {
+              updatePhaseProgress(bulkJobId, 'comment', {
+                done: ctx.doneOffset + completedRef.count,
+                total: ctx.total,
+                round: ctx.round,
+                roundTotal: ctx.roundTotal,
+                currentWorkId: work.workId,
+                detail: 'エラー',
+              });
+            }
+            return { success: false };
           }
+        })
+      )
+    );
 
-          // レビュー情報があれば更新
-          if (data.reviewCount !== null || data.reviewAverage !== null) {
-            updateData.reviewCount = data.reviewCount;
-            updateData.reviewAverage = data.reviewAverage;
-            // popularityBaseを計算
-            const computedPopularityBase = computePopularityBase(data.reviewCount, data.reviewAverage);
-            updateData.popularityBase = computedPopularityBase;
-          }
-
-          // isAiがあれば更新（UNKNOWNの場合は既存値を保持）
-          if (data.isAi && data.isAi !== 'UNKNOWN') {
-            updateData.isAi = data.isAi;
-          }
-
-          // DBを更新
-          await prisma.work.update({
-            where: { workId: work.workId },
-            data: updateData,
-          });
-          successCount++;
-        } else {
-          failedCount++;
-        }
-
-        // レート制限対策
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        console.error(`Error fetching comment for ${work.workId}:`, error);
-        failedCount++;
-      }
-    }
+    const successCount = results.filter((r) => r.success).length;
+    const skippedTooShort = results.filter((r) => r.skippedReason === 'too_short').length;
+    const skippedNotFound = results.filter((r) => r.skippedReason === 'not_found').length;
+    const failedCount = results.length - successCount;
 
     return NextResponse.json({
       success: true,
@@ -162,9 +210,13 @@ export async function POST(request: NextRequest) {
         success: successCount,
         failed: failedCount,
         skipped: skippedCount,
+        skippedTooShort,
+        skippedNotFound,
       },
       fetched: successCount,
       failed: failedCount,
+      skippedTooShort,
+      skippedNotFound,
     });
   } catch (error) {
     console.error('Error fetching comments:', error);

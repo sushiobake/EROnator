@@ -40,12 +40,24 @@ if (process.env.NODE_ENV !== 'production') {
 
 /**
  * Prisma Client の接続を確実にする（Vercel サーバーレス等で初回クエリ前に呼ぶ場合に使用）
+ * SQLite の場合は WAL モードを有効化して読み書き同時実行を可能にする
  */
 export async function ensurePrismaConnected(): Promise<void> {
   if (globalForPrisma.prismaConnected) return;
   try {
     await prisma.$connect();
     globalForPrisma.prismaConnected = true;
+
+    const dbUrl = process.env.DATABASE_URL ?? '';
+    if (dbUrl.startsWith('file:') || dbUrl.startsWith('file://')) {
+      try {
+        await prisma.$executeRawUnsafe('PRAGMA journal_mode=WAL');
+        await prisma.$executeRawUnsafe('PRAGMA busy_timeout=5000');
+        console.log('[db] SQLite WAL mode enabled, busy_timeout=5000ms');
+      } catch (e) {
+        console.warn('[db] Failed to set WAL mode:', e);
+      }
+    }
   } catch (error) {
     console.error('Failed to connect Prisma Client:', error);
     globalForPrisma.prismaConnected = false;

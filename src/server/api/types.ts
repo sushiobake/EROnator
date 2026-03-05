@@ -34,7 +34,7 @@ export interface QuestionResponse {
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   displayText: string;
   tagKey?: string; // EXPLORE_TAG, SOFT_CONFIRM用
-  hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR'; // HARD_CONFIRM用
+  hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER'; // HARD_CONFIRM用
   hardConfirmValue?: string; // HARD_CONFIRM用（例: "あ", "サークルA"）
   /** 質問の出題種別（キャラ差分表示用） */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';

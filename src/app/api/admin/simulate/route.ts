@@ -11,9 +11,9 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { isSqlite } from '@/server/db/is-sqlite';
 import { getMvpConfig } from '@/server/config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
-import { selectNextQuestion, processAnswer, filterWorksByAiGate, type WorkInfoForConfirm } from '@/server/game/engine';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, setSimWorkDataMap, type WorkInfoForConfirm, type SimWorkData } from '@/server/game/engine';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
-import { ensureTagCacheLoaded } from '@/server/game/tagCacheLoader';
+import { ensureTagCacheLoaded, getAllCachedTags } from '@/server/game/tagCacheLoader';
 import {
   perfStart,
   perfEnd,
@@ -28,6 +28,11 @@ import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
 import { getAuthorCharType } from '@/server/utils/authorCharType';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
+import { Worker } from 'worker_threads';
+import path from 'path';
+import fs from 'fs';
+import { cpus } from 'os';
+import { setSimProgress, clearSimProgress } from '@/server/bulk/progressStore';
 
 interface SimulationStep {
   qIndex: number;
@@ -112,7 +117,7 @@ interface SimulationResult {
   errorMessage?: string;
 }
 
-/** バッチ用: 全トライアルで共有するデータ（DB クエリ削減） */
+/** バッチ用: 全トライアルで共有するデータ（DB クエリ完全排除） */
 interface SharedBatchContext {
   allWorks: Array<{
     workId: string;
@@ -123,6 +128,21 @@ interface SharedBatchContext {
     authorName: string | null;
   }>;
   workTitleMap: Map<string, string>;
+  /** 全作品の詳細（targetWork 用 DB クエリ排除） */
+  workDetailMap: Map<string, {
+    workId: string;
+    title: string;
+    authorName: string | null;
+    isAi: string | null;
+    popularityBase: number | null;
+    popularityPlayBonus: number | null;
+    titleReadingInitial: string | null;
+    reviewCount: number | null;
+    reviewAverage: number | null;
+    commentText: string | null;
+  }>;
+  /** workId→タグ配列（行列から構築） */
+  workTagMap: Map<string, Array<{ tagKey: string; displayName: string; tagType: string; derivedConfidence: number | null }>>;
 }
 
 /** シミュ用: 正解作品に基づく正答を1か所で判定（まとめ質問・頭文字正規化対応）。両ループで共通利用。 */
@@ -208,6 +228,10 @@ function getCorrectAnswer(
       const targetInitial = normalizeTitleForInitial(targetWork.title ?? '');
       const questionInitial = question.hardConfirmValue ?? '';
       return targetInitial === questionInitial ? 'YES' : 'NO';
+    }
+    if (question.hardConfirmType === 'CHARACTER') {
+      const tagKey = question.hardConfirmValue ?? '';
+      return targetTags.has(tagKey) ? 'YES' : 'NO';
     }
     return (targetWork.authorName ?? '') === question.hardConfirmValue ? 'YES' : 'NO';
   }
@@ -775,14 +799,17 @@ export async function PUT(request: NextRequest) {
       aiGateChoice = 'BOTH',
       trialsPerWork = 1,
       sampleSize = 0,
-      parallelCount = 12,
+      parallelCount = 20,
       includePerf = false,
+      totalTrials: totalTrialsParam,
+      doneOffset = 0,
     } = body;
 
     const level = ambiguityLevel != null ? Math.max(1, Math.min(10, Number(ambiguityLevel))) : 2;
-    // SQLite は同時アクセスに弱いため6並列、Postgres は12並列
-    const defaultParallel = isSqlite() ? 6 : 12;
-    const parallel = Math.max(1, Math.min(32, Number(parallelCount) || defaultParallel));
+    // Worker Thread 数（CPU コアの 80% を使用、最大 numCpus-2）
+    const numCpus = cpus().length;
+    const defaultParallel = Math.max(4, Math.min(numCpus - 2, Math.floor(numCpus * 0.8)));
+    const parallel = Math.max(1, Math.min(numCpus, Number(parallelCount) || defaultParallel));
 
     const config = getMvpConfig();
 
@@ -802,7 +829,7 @@ export async function PUT(request: NextRequest) {
       targetWorkIds = works.map(w => w.workId);
     }
 
-    // バッチ用: allWorks を1回だけ取得し、全トライアルで共有（100件→1回に削減）
+    // バッチ用: allWorks を1回だけ取得し、全トライアルで共有（DB クエリ完全排除）
     const allWorks = await prisma.work.findMany({
       where: { gameRegistered: true, needsReview: false },
       select: {
@@ -812,16 +839,44 @@ export async function PUT(request: NextRequest) {
         popularityPlayBonus: true,
         title: true,
         authorName: true,
+        titleReadingInitial: true,
+        reviewCount: true,
+        reviewAverage: true,
+        commentText: true,
       },
     });
     const workTitleMap = new Map<string, string>(
       allWorks.map(w => [w.workId, w.title ?? '(不明)'])
     );
-    const sharedContext: SharedBatchContext = { allWorks, workTitleMap };
+    const workDetailMap = new Map(allWorks.map(w => [w.workId, w]));
+
+    // 行列 + タグキャッシュから workId→タグ配列を構築（DB 不要）
+    const matrix = getWorkTagMatrix();
+    const workTagMap = new Map<string, Array<{ tagKey: string; displayName: string; tagType: string; derivedConfidence: number | null }>>();
+    if (matrix?.workTagMap) {
+      const { getTagsByTagKeys: getTags, isTagCacheReady: cacheReady } = await import('@/server/game/tagCacheLoader');
+      for (const [wId, entries] of Object.entries(matrix.workTagMap)) {
+        if (cacheReady()) {
+          const tagKeys = entries.map(e => e.tagKey);
+          const tags = getTags(tagKeys);
+          const tagMap = new Map(tags.map(t => [t.tagKey, t]));
+          workTagMap.set(wId, entries.map(e => {
+            const t = tagMap.get(e.tagKey);
+            return {
+              tagKey: e.tagKey,
+              displayName: t?.displayName ?? e.tagKey,
+              tagType: t?.tagType ?? 'DERIVED',
+              derivedConfidence: e.derivedConfidence,
+            };
+          }));
+        }
+      }
+    }
+
+    const sharedContext: SharedBatchContext = { allWorks, workTitleMap, workDetailMap, workTagMap };
 
     // ランダムサンプリング
     if (sampleSize > 0 && sampleSize < targetWorkIds.length) {
-      // Fisher-Yates shuffle して先頭N件を取得
       const shuffled = [...targetWorkIds];
       for (let i = shuffled.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -830,20 +885,6 @@ export async function PUT(request: NextRequest) {
       targetWorkIds = shuffled.slice(0, sampleSize);
     }
 
-    const results: Array<{
-      workId: string;
-      title: string;
-      success: boolean;
-      questionCount: number;
-      outcome: string;
-      steps?: SimulationStep[];
-      workDetails?: WorkDetails;
-      diagnostic?: SimulationDiagnostic;
-      analysisData?: SimulationAnalysisData;
-      errorMessage?: string;
-      perfSummary?: Record<string, number>;
-    }> = [];
-
     const tasks: Array<{ targetWorkId: string; trial: number }> = [];
     for (const targetWorkId of targetWorkIds) {
       for (let trial = 0; trial < trialsPerWork; trial++) {
@@ -851,48 +892,64 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // simWorkDataMap を構築（engine.ts の DB クエリを完全排除）
+    const simWorkDataEntries: [string, SimWorkData][] = allWorks.map(w => [
+      w.workId,
+      {
+        workId: w.workId,
+        title: w.title,
+        authorName: w.authorName,
+        popularityBase: w.popularityBase,
+        popularityPlayBonus: w.popularityPlayBonus,
+        titleReadingInitial: w.titleReadingInitial,
+      },
+    ]);
+
     const startTime = Date.now();
-    for (let i = 0; i < tasks.length; i += parallel) {
-      const chunk = tasks.slice(i, i + parallel);
-      const chunkResults = await Promise.all(
-        chunk.map(({ targetWorkId }) =>
-          runSimulation(targetWorkId, level, aiGateChoice, config, sharedContext, includePerf)
-        )
-      );
-      for (const simResult of chunkResults) {
-        if (simResult) {
-          results.push({
-            workId: simResult.targetWorkId,
-            title: simResult.targetWorkTitle,
-            success: simResult.success,
-            questionCount: simResult.questionCount,
-            outcome: simResult.outcome,
-            steps: simResult.steps,
-            workDetails: simResult.workDetails,
-            diagnostic: simResult.diagnostic,
-            analysisData: simResult.analysisData,
-            errorMessage: simResult.errorMessage,
-            perfSummary: simResult.perfSummary,
-          });
-        }
-      }
+    const totalTasks = tasks.length;
+    const effectiveTotal = totalTrialsParam != null ? Number(totalTrialsParam) : totalTasks;
+    const offset = Math.max(0, Number(doneOffset) || 0);
+
+    // 進捗パネル用（bulk-job-status でポーリング取得）
+    setSimProgress(offset, effectiveTotal, new Date().toISOString());
+
+    // Worker Thread でシミュレーション実行（メインスレッドをブロックしない）
+    let results: Awaited<ReturnType<typeof runSimulationInWorker>>['results'] = [];
+    let totalWorksInDb = 0;
+    try {
+      const workerResult = await runSimulationInWorker({
+        tasks,
+        level,
+        aiGateChoice,
+        includePerf,
+        parallel,
+        sharedContext,
+        workTagMatrixData: matrix,
+        tagCacheData: getAllCachedTags(),
+        simWorkDataEntries,
+        onProgress: (done, total) => {
+          console.log(`[Sim] ${done}/${total}`);
+          setSimProgress(offset + done, effectiveTotal);
+        },
+      });
+      results = workerResult.results;
+      totalWorksInDb = workerResult.totalWorksInDb;
+    } finally {
+      clearSimProgress();
     }
 
-    const successCount = results.filter((r) => r.success).length;
+    const successCount = results.filter(r => r.success).length;
     const totalTrials = results.length;
     const totalQuestions = results.reduce((s, r) => s + r.questionCount, 0);
     const successRate = totalTrials > 0 ? successCount / totalTrials : 0;
     const avgQuestions = totalTrials > 0 ? totalQuestions / totalTrials : 0;
 
-    const failures = results.filter((r) => !r.success);
+    const failures = results.filter(r => !r.success);
     const failureSummary: Record<string, number> = {};
     for (const f of failures) {
       failureSummary[f.outcome] = (failureSummary[f.outcome] ?? 0) + 1;
     }
 
-    const totalWorksInDb = await prisma.work.count();
-
-    // 失敗ケースの分析サマリー（JSON保存・分析用）
     const failureAnalysis = failures.length > 0 ? (() => {
       const withAnalysis = failures.filter(f => f.analysisData);
       const withDiag = failures.filter(f => f.diagnostic);
@@ -989,8 +1046,145 @@ export async function PATCH(request: NextRequest) {
 }
 
 /**
- * シミュレーション実行（内部関数）
- * @param sharedContext バッチ時のみ。allWorks と workTitleMap を共有して DB クエリを削減
+ * Worker Thread でシミュレーションバッチを実行
+ * メインスレッドをブロックしないため、UI や他の API が応答し続ける
+ */
+interface WorkerResultItem {
+  workId: string;
+  title: string;
+  success: boolean;
+  questionCount: number;
+  outcome: string;
+  steps?: SimulationStep[];
+  workDetails?: WorkDetails;
+  diagnostic?: SimulationDiagnostic;
+  analysisData?: SimulationAnalysisData;
+  errorMessage?: string;
+  perfSummary?: Record<string, number>;
+}
+
+import { execSync } from 'child_process';
+
+function ensureWorkerBundle(): void {
+  const bundlePath = path.resolve(process.cwd(), 'dist/simulationWorker.js');
+  const srcPath = path.resolve(process.cwd(), 'src/server/simulation/simulationWorker.ts');
+  try {
+    const srcStat = fs.statSync(srcPath);
+    let needsBuild = !fs.existsSync(bundlePath);
+    if (!needsBuild) {
+      const bundleStat = fs.statSync(bundlePath);
+      needsBuild = srcStat.mtimeMs > bundleStat.mtimeMs;
+    }
+    if (needsBuild) {
+      const distDir = path.resolve(process.cwd(), 'dist');
+      if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+      execSync(
+        'npx esbuild src/server/simulation/simulationWorker.ts --bundle --platform=node --target=node18 --outfile=dist/simulationWorker.js --format=cjs --alias:@/server/db/client=./src/server/simulation/prismaStub.ts',
+        { cwd: process.cwd(), stdio: 'pipe' }
+      );
+      console.log('[Sim] Worker bundle rebuilt');
+    }
+  } catch (e) {
+    console.warn('[Sim] Failed to build worker bundle, falling back to tsx:', e);
+  }
+}
+
+async function runSimulationInWorker(opts: {
+  tasks: Array<{ targetWorkId: string; trial: number }>;
+  level: number;
+  aiGateChoice: string;
+  includePerf: boolean;
+  parallel: number;
+  sharedContext: SharedBatchContext;
+  workTagMatrixData: ReturnType<typeof getWorkTagMatrix>;
+  tagCacheData: Array<{ tagKey: string; displayName: string; tagType: string | null; questionText: string | null }>;
+  simWorkDataEntries: [string, SimWorkData][];
+  onProgress?: (done: number, total: number) => void;
+}): Promise<{ results: WorkerResultItem[]; totalWorksInDb: number }> {
+  ensureWorkerBundle();
+  const workerPathJs = path.resolve(process.cwd(), 'dist/simulationWorker.js');
+  const workerPathTs = path.resolve(process.cwd(), 'src/server/simulation/simulationWorker.ts');
+  const useBundle = fs.existsSync(workerPathJs);
+  const workerPath = useBundle ? workerPathJs : workerPathTs;
+  const workerCount = Math.min(opts.parallel, opts.tasks.length);
+  if (workerCount === 0) return { results: [], totalWorksInDb: opts.sharedContext.allWorks.length };
+
+  // 共有データを SharedArrayBuffer に格納（ファイル I/O ゼロ、全 Worker がゼロコピーで参照）
+  const sharedPayload = JSON.stringify({
+    sharedContextSerialized: {
+      allWorks: opts.sharedContext.allWorks,
+      workTitleEntries: Array.from(opts.sharedContext.workTitleMap.entries()),
+      workDetailEntries: Array.from(opts.sharedContext.workDetailMap.entries()),
+      workTagEntries: Array.from(opts.sharedContext.workTagMap.entries()),
+    },
+    workTagMatrixData: opts.workTagMatrixData,
+    tagCacheData: opts.tagCacheData,
+    simWorkDataEntries: opts.simWorkDataEntries,
+  });
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(sharedPayload);
+  const sharedBuffer = new SharedArrayBuffer(bytes.byteLength);
+  new Uint8Array(sharedBuffer).set(bytes);
+  console.log(`[Sim] Shared data in memory: ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB (SharedArrayBuffer)`);
+
+  // 動的タスクキュー: Atomics で次タスクインデックスを共有（早く終わった Worker が次のタスクを取得）
+  const taskIndexBuffer = new SharedArrayBuffer(4);
+  new Int32Array(taskIndexBuffer)[0] = 0;
+
+  let totalDone = 0;
+  const totalTasks = opts.tasks.length;
+
+  const sharedWorkerData = {
+    tasks: opts.tasks,
+    level: opts.level,
+    aiGateChoice: opts.aiGateChoice,
+    includePerf: opts.includePerf,
+    sharedBuffer,
+    taskIndexBuffer,
+  };
+
+  function spawnWorker(): Promise<WorkerResultItem[]> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(workerPath, {
+        ...(useBundle ? {} : { execArgv: ['--require', 'tsx/cjs'] }),
+        workerData: sharedWorkerData,
+      });
+
+      let workerResults: WorkerResultItem[] = [];
+
+      worker.on('message', (msg: { type: string; results?: WorkerResultItem[]; totalWorksInDb?: number; done?: number; total?: number; message?: string }) => {
+        if (msg.type === 'done') {
+          workerResults = msg.results ?? [];
+        } else if (msg.type === 'progress' && msg.done != null) {
+          totalDone++;
+          opts.onProgress?.(totalDone, totalTasks);
+        } else if (msg.type === 'error') {
+          reject(new Error(msg.message ?? 'Worker error'));
+        }
+      });
+
+      worker.on('error', reject);
+
+      worker.on('exit', (code) => {
+        if (workerResults.length > 0 || code === 0) {
+          resolve(workerResults);
+        } else {
+          reject(new Error(`Worker exited with code ${code}`));
+        }
+      });
+    });
+  }
+
+  console.log(`[Sim] Spawning ${workerCount} workers for ${totalTasks} tasks (dynamic queue, bundle=${useBundle})`);
+  const workerPromises = Array.from({ length: workerCount }, () => spawnWorker());
+
+  const allResults = await Promise.all(workerPromises);
+  return { results: allResults.flat(), totalWorksInDb: opts.sharedContext.allWorks.length };
+}
+
+/**
+ * シミュレーション実行（内部関数 - 単発POST用。バッチはWorker Threadで実行）
+ * @param sharedContext バッチ時は全データを共有して DB クエリをゼロにする
  */
 async function runSimulation(
   targetWorkId: string,
@@ -1001,41 +1195,45 @@ async function runSimulation(
   includePerf = false
 ): Promise<(SimulationResult & { perfSummary?: Record<string, number> }) | null> {
   try {
-    // 正解作品を取得（タグの詳細情報も含む。POPULARITY/TITLE_SYLLABLE用にpopularityPlayBonus, titleReadingInitialも取得）
-    const targetWork = await prisma.work.findUnique({
-      where: { workId: targetWorkId },
-      select: {
-        workId: true,
-        title: true,
-        authorName: true,
-        isAi: true,
-        popularityBase: true,
-        popularityPlayBonus: true,
-        titleReadingInitial: true,
-        reviewCount: true,
-        reviewAverage: true,
-        commentText: true,
-        workTags: {
-          select: {
-            tagKey: true,
-            derivedConfidence: true,
-            tag: {
-              select: {
-                displayName: true,
-                tagType: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    // sharedContext がある場合は DB クエリなしで全て取得
+    const targetWorkBase = sharedContext?.workDetailMap?.get(targetWorkId);
+    const targetWorkTagsRaw = sharedContext?.workTagMap?.get(targetWorkId);
 
-    if (!targetWork) return null;
+    let targetWork: {
+      workId: string; title: string; authorName: string | null; isAi: string | null;
+      popularityBase: number | null; popularityPlayBonus: number | null;
+      titleReadingInitial: string | null; reviewCount: number | null;
+      reviewAverage: number | null; commentText: string | null;
+      workTags: Array<{ tagKey: string; derivedConfidence: number | null; tag: { displayName: string; tagType: string } }>;
+    };
+
+    if (targetWorkBase && targetWorkTagsRaw) {
+      targetWork = {
+        ...targetWorkBase,
+        title: targetWorkBase.title ?? '(不明)',
+        workTags: targetWorkTagsRaw.map(t => ({
+          tagKey: t.tagKey,
+          derivedConfidence: t.derivedConfidence,
+          tag: { displayName: t.displayName, tagType: t.tagType },
+        })),
+      };
+    } else {
+      const fromDb = await prisma.work.findUnique({
+        where: { workId: targetWorkId },
+        select: {
+          workId: true, title: true, authorName: true, isAi: true,
+          popularityBase: true, popularityPlayBonus: true, titleReadingInitial: true,
+          reviewCount: true, reviewAverage: true, commentText: true,
+          workTags: { select: { tagKey: true, derivedConfidence: true, tag: { select: { displayName: true, tagType: true } } } },
+        },
+      });
+      if (!fromDb) return null;
+      targetWork = { ...fromDb, title: fromDb.title ?? '(不明)' };
+    }
 
     const targetTags = new Set(targetWork.workTags.map(wt => wt.tagKey));
     const targetWorkTagsForAnswer = targetWork.workTags.map(wt => ({ displayName: wt.tag.displayName }));
-    
-    // 作品詳細を整形
+
     const workDetails: WorkDetails = {
       workId: targetWork.workId,
       title: targetWork.title,
@@ -1053,19 +1251,11 @@ async function runSimulation(
       })),
     };
 
-    // ゲーム登録済みかつ要注意でない作品のみ取得（バッチ時は共有データを使用）
     const allWorks = sharedContext
       ? sharedContext.allWorks
       : await prisma.work.findMany({
           where: { gameRegistered: true, needsReview: false },
-          select: {
-            workId: true,
-            isAi: true,
-            popularityBase: true,
-            popularityPlayBonus: true,
-            title: true,
-            authorName: true,
-          },
+          select: { workId: true, isAi: true, popularityBase: true, popularityPlayBonus: true, title: true, authorName: true },
         });
 
     const workTitleMap = sharedContext?.workTitleMap ?? new Map<string, string>(
@@ -1213,14 +1403,7 @@ async function runSimulation(
       if (question.tagKey) {
         const tagCovT = perfStart('tagCoverage');
         const workIds = weights.map(w => w.workId);
-        const tagWorkIds = getWorkTagMatrix()
-          ? new Set(getWorkTagsFromMatrix(workIds, { tagKeys: [question.tagKey] }).map(wt => wt.workId))
-          : new Set(
-              (await prisma.workTag.findMany({
-                where: { tagKey: question.tagKey, workId: { in: workIds } },
-                select: { workId: true },
-              })).map(wt => wt.workId)
-            );
+        const tagWorkIds = new Set(getWorkTagsFromMatrix(workIds, { tagKeys: [question.tagKey] }).map(wt => wt.workId));
         tagCoverage = probabilities
           .filter(p => tagWorkIds.has(p.workId))
           .reduce((sum, p) => sum + p.probability, 0);

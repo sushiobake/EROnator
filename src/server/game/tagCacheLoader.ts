@@ -19,6 +19,19 @@ let tagByKey: Map<string, CachedTag> | null = null;
 let tagByDisplayName: Map<string, CachedTag[]> | null = null;
 let loadPromise: Promise<void> | null = null;
 
+/** Worker Thread 等から直接データを注入する（DB不要） */
+export function setTagCacheDirect(tags: CachedTag[]) {
+  tagByKey = new Map();
+  tagByDisplayName = new Map();
+  for (const t of tags) {
+    tagByKey.set(t.tagKey, t);
+    const dn = t.displayName;
+    if (!tagByDisplayName.has(dn)) tagByDisplayName.set(dn, []);
+    tagByDisplayName.get(dn)!.push(t);
+  }
+  loadPromise = Promise.resolve();
+}
+
 async function loadTagCache(): Promise<void> {
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
@@ -98,6 +111,12 @@ export function getTagKeysByDisplayName(displayName: string): string[] {
   if (!tagByDisplayName) return [];
   const list = tagByDisplayName.get(displayName) ?? [];
   return list.map(t => t.tagKey);
+}
+
+/** 全キャッシュデータを取得（Worker Thread へ転送用） */
+export function getAllCachedTags(): CachedTag[] {
+  if (!tagByKey) return [];
+  return Array.from(tagByKey.values());
 }
 
 /** 指定 type の tagKey 一覧（notIn で除外可能） */

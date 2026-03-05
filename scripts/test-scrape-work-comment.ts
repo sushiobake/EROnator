@@ -2,21 +2,31 @@
 /**
  * 作品コメント取得テスト
  * Puppeteerを使用して年齢確認を突破し、作品コメントを取得
+ *
+ * 使い方:
+ *   npm run test:scrape-comment           # 通常（ヘッドレス）
+ *   npm run test:scrape-comment -- --visible  # ブラウザ表示＋失敗時スクリーンショット
  */
 
 import { scrapeWorkComment } from '../src/server/scraping/fanzaScraper';
 
 async function main() {
+  const visible = process.argv.includes('--visible');
+
   // テスト用のURL（実際のDBから取得したURLを使用）
   const testUrl = 'https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=d_719191/';
 
   console.log('🔍 作品コメント取得テスト\n');
-  console.log(`テストURL: ${testUrl}\n`);
+  console.log(`テストURL: ${testUrl}`);
+  if (visible) console.log('👁 可視化モード: ブラウザ表示＋失敗時スクリーンショット\n');
+  else console.log('');
 
   try {
     const data = await scrapeWorkComment(testUrl, {
-      headless: true, // falseにするとブラウザが表示される（デバッグ用）
+      headless: !visible,
       timeout: 30000,
+      visible,
+      screenshotOnFail: visible,
     });
 
     if (!data) {

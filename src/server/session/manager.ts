@@ -68,7 +68,7 @@ export interface QuestionHistoryEntry {
   qIndex: number;
   kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
   tagKey?: string;
-  hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR';
+  hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER';
   hardConfirmValue?: string;
   /** SPECIAL_QUESTION の種別 */
   specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';

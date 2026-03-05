@@ -39,6 +39,7 @@
     "check:api-comment": "tsx scripts/check-api-comment-field.ts",
     "test:fanza-age-gate": "tsx scripts/test-fanza-age-gate.ts",
     "test:scrape-comment": "tsx scripts/test-scrape-work-comment.ts",
+    "benchmark:scrape": "tsx scripts/benchmark-scrape-concurrency.ts",
     "compare:api-scraping": "tsx scripts/compare-api-vs-scraping.ts",
     "generate:derived-tags": "tsx scripts/generate-derived-tags-batch.ts",
     "generate:worktag-matrix": "node scripts/generate-worktag-matrix.js",

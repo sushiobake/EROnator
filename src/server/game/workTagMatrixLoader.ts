@@ -22,6 +22,11 @@ export interface WorkTagMatrix {
 
 let cachedMatrix: WorkTagMatrix | null = null;
 
+/** Worker Thread 等から直接データを注入する */
+export function setWorkTagMatrixDirect(data: WorkTagMatrix | null) {
+  cachedMatrix = data;
+}
+
 export function getWorkTagMatrix(): WorkTagMatrix | null {
   if (process.env.DISABLE_WORKTAG_MATRIX === '1') return null;
   if (cachedMatrix) return cachedMatrix;

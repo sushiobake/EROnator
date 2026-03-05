@@ -1,8 +1,8 @@
 /**
- * 抽象質問タグ API（旧ふわっと）
+ * 使用不可タグ API（旧抽象質問・ふわっと）
  * GET: チェックされている displayName の一覧
  * POST: トグル（displayName を渡すと追加/削除）または一括設定（displayNames 配列）
- * 抽象質問は11問目以降にのみ出題される。
+ * チェックされたタグは質問候補に含めない。まとめ質問・タグは残る。
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -25,7 +25,7 @@ async function loadVague(): Promise<Set<string>> {
 async function saveVague(displayNames: string[]): Promise<void> {
   const content = JSON.stringify(
     {
-      description: 'ふわっとタグ。質問としての優先度を下げる候補。チェックされたタグの displayName を列挙。',
+      description: '使用不可タグ。チェックされたタグは質問候補に含めない。',
       updatedAt: new Date().toISOString().slice(0, 10),
       displayNames: displayNames.sort((a, b) => a.localeCompare(b)),
     },

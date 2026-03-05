@@ -164,6 +164,15 @@ export default function Home() {
   const [effectiveCandidates, setEffectiveCandidates] = useState<number | null>(null);
   const [streamerMode, setStreamerMode] = useState(false);
   const questionShownAtRef = useRef<number>(0);
+  const [thinkingConfig, setThinkingConfig] = useState<{
+    displayMode: 'random' | 'sequential';
+    early: string[];
+    mid: string[];
+    late: string[];
+    closing: string[];
+  } | null>(null);
+  const thinkingSeqIndexRef = useRef<Record<string, number>>({ early: 0, mid: 0, late: 0, closing: 0 });
+  const [currentThinkingText, setCurrentThinkingText] = useState('考え中…');
 
   /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1500ms・本番 400ms（切り替え安定化） */
   const MIN_THINKING_MS =
@@ -238,6 +247,33 @@ export default function Home() {
     localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
   }, [isClient, debugPanelOpen]);
 
+  /** 「考え中」設定を取得（AI_GATE表示時にプリロード） */
+  useEffect(() => {
+    if (state === 'AI_GATE' && !thinkingConfig) {
+      fetch('/api/config/thinking')
+        .then((r) => r.ok ? r.json() : null)
+        .then((t) => { if (t) setThinkingConfig(t); })
+        .catch(() => {});
+    }
+  }, [state, thinkingConfig]);
+
+  /** isThinking になったタイミングで表示文言を決定（同じ thinking 中は固定） */
+  useEffect(() => {
+    if (!isThinking) return;
+    const cfg = thinkingConfig ?? { displayMode: 'sequential' as const, early: ['考え中…'], mid: ['なんとなく見えてきた…'], late: ['おっ……これは……！'], closing: ['わかったかも……！'] };
+    const ec = effectiveCandidates;
+    const level: 'early' | 'mid' | 'late' | 'closing' = (ec == null || ec > 500) ? 'early' : (ec > 50) ? 'mid' : (ec > 10) ? 'late' : 'closing';
+    const arr = (cfg[level] ?? ['考え中…']).filter(Boolean);
+    if (arr.length === 0) {
+      setCurrentThinkingText('考え中…');
+      return;
+    }
+    const text = cfg.displayMode === 'random'
+      ? arr[Math.floor(Math.random() * arr.length)]
+      : arr[thinkingSeqIndexRef.current[level]++ % arr.length];
+    setCurrentThinkingText(text);
+  }, [isThinking, thinkingConfig, effectiveCandidates]);
+
   useEffect(() => {
     if (streamerMode) {
       document.body.classList.add('streamer-mode');
@@ -252,6 +288,7 @@ export default function Home() {
     const img = new Image();
     img.src = '/ilust/inari_thinking.png';
   }, [isClient]);
+
 
   const debugUIEnabled = isDebugUIEnabled();
 
@@ -302,6 +339,7 @@ export default function Home() {
       setQuestionCount(data.sessionState.questionCount);
       setEffectiveCandidates(data.effectiveCandidates ?? null);
       setDebugData(data.debug || null);
+      if (data.thinking) setThinkingConfig(data.thinking);
       setState('QUIZ');
     } catch (error) {
       console.error('Error starting session:', error);
@@ -568,12 +606,6 @@ export default function Home() {
   };
   const confidenceLevel = getConfidenceLevel(effectiveCandidates);
 
-  const thinkingTexts: Record<string, string> = {
-    early: '考え中…',
-    mid: 'なんとなく見えてきた…',
-    late: 'おっ……これは……！',
-    closing: 'わかったかも……！',
-  };
   const thinkingVariants: Record<string, CharacterVariant> = {
     early: 'thinking',
     mid: 'thinking',
@@ -581,7 +613,7 @@ export default function Home() {
     closing: 'question',
   };
   const thinkingSpeech = (
-    <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{thinkingTexts[confidenceLevel]}</p>
+    <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{currentThinkingText}</p>
   );
 
   if (state === 'AI_GATE') {

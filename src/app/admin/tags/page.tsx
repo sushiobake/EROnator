@@ -6,7 +6,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
 import ManualTagging from '../components/ManualTagging';
@@ -16,7 +16,7 @@ import ChangelogTab from './tabs/ChangelogTab';
 import ConfigTab from './tabs/ConfigTab';
 import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
-import { RANK_BG, RANK_TEXT } from '../constants/rankColors';
+import { RANK_BG, RANK_TEXT, RANK_CHIP } from '../constants/rankColors';
 
 interface ParsedWork {
   workId: string;
@@ -45,6 +45,9 @@ interface ParsedWork {
   gameRegistered?: boolean; // ゲーム・シミュレーションで使用（エロネーター登録）
   tagSource?: 'human' | 'ai' | null; // タグの由来（human=人力タグ付け、ai=AI分析、null=未タグ）
   derivedTags?: Array<{ displayName: string; rank?: string; tagKey?: string; source?: string }>; // DB取得時など
+  lastTaggingReasoning?: Record<string, unknown> | null;
+  lastCheckReasoning?: Record<string, unknown> | null;
+  lastCheckTagChanges?: { added?: string[]; removed?: string[]; newProposal?: string } | null;
 }
 
 interface ParseResponse {
@@ -62,6 +65,15 @@ interface ParseResponse {
 type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'history' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
+
+/** 発売日を日付のみ・見やすく表示（時刻は出さない） */
+function formatReleaseDateOnly(value: string | null | undefined): string {
+  if (value == null || value.trim() === '') return '—';
+  const datePart = value.trim().split(/[T\s]/)[0];
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart || value;
+  const [y, m, d] = datePart.split('-');
+  return `${y}/${m}/${d}`;
+}
 
 /** 履歴詳細の回答表示: はい→◎ たぶんそう→〇 たぶんちがう→△ いいえ→× わからない→— どちらでもいい→※ */
 function historyAnswerSymbol(a: string | undefined): string {
@@ -87,7 +99,7 @@ export default function AdminTagsPage() {
   const [parseResult, setParseResult] = useState<ParseResponse | null>(null);
   const [selectedWorks, setSelectedWorks] = useState<Set<string>>(new Set());
   const [analysisResults, setAnalysisResults] = useState<Record<string, {
-    derivedTags: Array<{ displayName: string; confidence: number; category: string | null }>;
+    derivedTags: Array<{ displayName: string; confidence: number; category: string | null; rank?: string; tagKey?: string; source?: string }>;
     characterTags: string[];
   }>>({});
 
@@ -95,10 +107,18 @@ export default function AdminTagsPage() {
   const [showCommentModal, setShowCommentModal] = useState<{ workId: string; comment: string } | null>(null);
   // ページネーション
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(100);
+  const [pageSize] = useState(10000); // 使用作品DB: 全作品取得用
+  const [displayPageSize] = useState(200); // 表示は200件/ページ
   const [totalPages, setTotalPages] = useState(1);
-  // 作品DBタブ: エロネーター登録フィルタ
-  const [dbFilter, setDbFilter] = useState<'all' | 'registered' | 'unregistered'>('all');
+  // 検索・絞り込み・並び替え（使用作品DB）
+  const [searchTitle, setSearchTitle] = useState('');
+  const [searchCircleName, setSearchCircleName] = useState('');
+  const [filterIsAi, setFilterIsAi] = useState<'all' | 'AI' | 'HAND' | 'UNKNOWN'>('all');
+  const [filterTagCount, setFilterTagCount] = useState<'all' | '0-5' | '5-10' | '11+'>('all');
+  const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
+  const [moveSelectedToNeedsReviewLoading, setMoveSelectedToNeedsReviewLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<'title' | 'circleName' | 'popularity' | 'createdAt' | 'releaseDate'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // コンフィグ用のstate
   const [config, setConfig] = useState<any>(null);
@@ -184,6 +204,7 @@ export default function AdminTagsPage() {
   const [simShowWorkDetails, setSimShowWorkDetails] = useState(false);
   const [simExpandedSteps, setSimExpandedSteps] = useState(false);
   const [simTrialsPerWork, setSimTrialsPerWork] = useState(1);
+  const [simUseSingleRequest, setSimUseSingleRequest] = useState(false);
   const [simBatchResult, setSimBatchResult] = useState<{
     totalTrials: number;
     successCount: number;
@@ -236,6 +257,7 @@ export default function AdminTagsPage() {
     failureAnalysis?: { failureCount: number; avgWasNoisyCount: number | null; avgCorrectRank: number | null; avgTop1Confidence: number | null };
   } | null>(null);
   const [simBatchLoading, setSimBatchLoading] = useState(false);
+  const [simMatrixRegenerating, setSimMatrixRegenerating] = useState(false);
   const [simSampleSize, setSimSampleSize] = useState<number>(50);
   const [simSaving, setSimSaving] = useState(false);
   const [simFailureFilter, setSimFailureFilter] = useState(false);
@@ -256,7 +278,7 @@ export default function AdminTagsPage() {
     errorMessage?: string;
     steps: Array<{
       qIndex: number;
-      question: { kind: string; displayText: string; exploreTagKind?: string };
+      question: { kind: string; displayText: string; exploreTagKind?: string; tagKey?: string; specialQuestionType?: string; titleCharType?: string; authorCharType?: string; rangeId?: string; titleSyllableRangeId?: string; titleSyllable2RangeId?: string; titleSyllable2Branch?: 'yesBranch' | 'noBranch' };
       answer: string;
       wasNoisy: boolean;
       confidenceBefore: number;
@@ -268,6 +290,11 @@ export default function AdminTagsPage() {
     diagnostic?: unknown;
     analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
   } | null>(null);
+
+  // シミュ結果の質問文言編集（'simResult-0' | 'simResultModal-2' など）
+  const [editingQuestionKey, setEditingQuestionKey] = useState<string | null>(null);
+  const [editingQuestionValue, setEditingQuestionValue] = useState('');
+  const [editingQuestionLoading, setEditingQuestionLoading] = useState(false);
 
   // サービスプレイ履歴タブ用
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -321,8 +348,10 @@ export default function AdminTagsPage() {
       const response = await fetch('/api/admin/tags/load-from-db', {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-eronator-admin-token': token,
         },
+        body: JSON.stringify({ page: 1, pageSize: 10000 }),
       });
 
       if (!response.ok) {
@@ -349,8 +378,8 @@ export default function AdminTagsPage() {
           setCurrentPage(data.stats.page || 1);
         }
         
-        // 最新100件を初期選択
-        setSelectedWorks(new Set(data.works.map((w: any) => w.workId)));
+        // 初期は未選択
+        setSelectedWorks(new Set());
         
         const existingResults: Record<string, {
           derivedTags: Array<{ displayName: string; confidence: number; category: string | null }>;
@@ -436,13 +465,13 @@ export default function AdminTagsPage() {
     setSelectedWorks(newSelected);
   };
 
-  const toggleAllSelection = () => {
-    if (!parseResult?.works) return;
-
-    if (selectedWorks.size === parseResult.works.length) {
+  const toggleAllSelection = (worksToUse?: ParsedWork[]) => {
+    const list = worksToUse ?? parseResult?.works;
+    if (!list) return;
+    if (selectedWorks.size === list.length) {
       setSelectedWorks(new Set());
     } else {
-      setSelectedWorks(new Set(parseResult.works.map(w => w.workId)));
+      setSelectedWorks(new Set(list.map(w => w.workId)));
     }
   };
 
@@ -732,7 +761,7 @@ export default function AdminTagsPage() {
       if (data.success) {
         alert(`DMMインポート完了\n新規保存: ${data.stats.saved}件\nスキップ: ${data.stats.skipped}件（既存）`);
         // DBを再読み込み
-        await handleLoadFromDb(1, dbFilter);
+        await handleLoadFromDb(1);
       } else {
         alert(`インポートに失敗しました: ${data.error || 'Unknown error'}`);
       }
@@ -746,13 +775,13 @@ export default function AdminTagsPage() {
   };
 
   // DBから読み込む関数（手動、ページネーション・フィルタ対応）
-  const handleLoadFromDb = async (pageNum: number = 1, filter?: 'all' | 'registered' | 'unregistered') => {
+  const handleLoadFromDb = async (pageNum: number = 1, forceNeedsReviewOnly?: boolean) => {
     if (!adminToken) {
       alert('管理トークンを入力してください');
       return;
     }
+    const useOnly = forceNeedsReviewOnly ?? showOnlyNeedsReview;
 
-    const effectiveFilter = filter ?? dbFilter;
     setLoading(true);
     try {
       const response = await fetch('/api/admin/tags/load-from-db', {
@@ -762,9 +791,9 @@ export default function AdminTagsPage() {
           'x-eronator-admin-token': adminToken,
         },
         body: JSON.stringify({
-          page: pageNum,
+          page: 1,
           pageSize,
-          filter: effectiveFilter,
+          needsReviewFilter: useOnly ? 'only' : 'exclude',
         }),
       });
 
@@ -778,12 +807,8 @@ export default function AdminTagsPage() {
       const data = await response.json();
 
       if (data.success && Array.isArray(data.works)) {
-        if (data.works.length === 0 && pageNum === 1) {
-          alert(
-            effectiveFilter === 'all'
-              ? 'DBに作品が登録されていません。\nまずファイルから作品をインポートしてください。'
-              : `該当する作品がありません。（フィルタ: ${effectiveFilter === 'registered' ? '登録済み' : '未登録'}）`
-          );
+        if (data.works.length === 0 && pageNum === 1 && !useOnly) {
+          alert('ゲーム使用の作品がありません。\nタグチェックでタグ済・人間確認・チェック待ち・旧AIタグのいずれかに入れ、要注意でない作品がここに表示されます。');
         }
         
         // ParseResponse形式に変換（gameRegistered を含む）。stats は load-from-db の形に合わせて安全に
@@ -810,14 +835,14 @@ export default function AdminTagsPage() {
         // ページネーション情報を更新（load-from-db は totalPages / page を返す）
         const totalPagesVal = (safeStats as { totalPages?: number }).totalPages ?? ((safeStats.total as number) > 0 ? Math.ceil((safeStats.total as number) / ((safeStats as { pageSize?: number }).pageSize ?? 100)) : 1);
         setTotalPages(totalPagesVal);
-        setCurrentPage((safeStats as { page?: number }).page ?? 1);
+        setCurrentPage(1);
         
         // 選択をクリア（新しいページなので）
         setSelectedWorks(new Set());
         
         // 既存のタグをanalysisResultsに設定
         const existingResults: Record<string, {
-          derivedTags: Array<{ displayName: string; confidence: number; category: string | null }>;
+          derivedTags: Array<{ displayName: string; confidence: number; category: string | null; rank?: string; tagKey?: string; source?: string }>;
           characterTags: string[];
         }> = {};
         
@@ -839,6 +864,125 @@ export default function AdminTagsPage() {
       alert(`DBからの読み込みに失敗しました: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 使用作品DB: 検索・絞り込み・並び替え後の表示用リスト
+  const { displayWorks, filteredTotal, totalWorks, displayTotalPages } = useMemo(() => {
+    const works = parseResult?.works ?? [];
+    const isDbMode = parseResult?.mode === 'db';
+    const st = searchTitle.trim().toLowerCase();
+    const sc = searchCircleName.trim().toLowerCase();
+    let filtered = isDbMode ? works.filter((w) => {
+      if (st && !w.title.toLowerCase().includes(st)) return false;
+      if (sc && !w.circleName.toLowerCase().includes(sc)) return false;
+      if (filterIsAi !== 'all' && w.isAi !== filterIsAi) return false;
+      const tagCount = (w.officialTags?.length ?? 0) + (analysisResults[w.workId]?.derivedTags?.length ?? 0) + (analysisResults[w.workId]?.characterTags?.length ?? 0);
+      if (filterTagCount === '0-5' && (tagCount < 0 || tagCount > 5)) return false;
+      if (filterTagCount === '5-10' && (tagCount < 5 || tagCount > 10)) return false;
+      if (filterTagCount === '11+' && tagCount < 11) return false;
+      return true;
+    }) : works;
+    const cmp = (a: ParsedWork, b: ParsedWork) => {
+      let v = 0;
+      if (sortBy === 'title') v = (a.title || '').localeCompare(b.title || '', 'ja');
+      else if (sortBy === 'circleName') v = (a.circleName || '').localeCompare(b.circleName || '', 'ja');
+      else if (sortBy === 'popularity') v = (a.popularityBase + a.popularityPlayBonus) - (b.popularityBase + b.popularityPlayBonus);
+      else if (sortBy === 'releaseDate') v = (a.releaseDate || '').localeCompare(b.releaseDate || '', 'ja');
+      else v = (a.scrapedAt || '').localeCompare(b.scrapedAt || '', 'ja');
+      // asc=昇順(A→Z, 小→大), desc=降順(Z→A, 大→小)
+      return sortOrder === 'asc' ? -v : v;
+    };
+    filtered = [...filtered].sort(cmp);
+    const total = filtered.length;
+    const totalPagesVal = Math.max(1, Math.ceil(total / displayPageSize));
+    const start = (currentPage - 1) * displayPageSize;
+    const display = filtered.slice(start, start + displayPageSize);
+    return { displayWorks: display, filteredTotal: total, totalWorks: works.length, displayTotalPages: totalPagesVal };
+  }, [parseResult, searchTitle, searchCircleName, filterIsAi, filterTagCount, sortBy, sortOrder, currentPage, displayPageSize, analysisResults]);
+
+  // 使用作品DB: 選択した作品をチェック完了に（needsReview=false）
+  const handleCheckCompleteNeedsReview = async () => {
+    if (!adminToken || selectedWorks.size === 0) return;
+    const workIds = Array.from(selectedWorks);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/works/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({ action: 'setNeedsReview', workIds, needsReview: false }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        setSelectedWorks((prev) => {
+          const next = new Set(prev);
+          workIds.forEach((id) => next.delete(id));
+          return next;
+        });
+        await handleLoadFromDb(1, true);
+      } else {
+        alert(data.error || 'チェック完了の更新に失敗しました');
+      }
+    } catch (e) {
+      console.error('handleCheckCompleteNeedsReview failed:', e);
+      alert('チェック完了に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 使用作品DB: 要注意フォルダへ移動
+  const handleMoveToNeedsReview = async (workId: string) => {
+    if (!adminToken) return;
+    if (!confirm('この作品を「要注意」フォルダに送ります。\nゲーム使用一覧からは外れ、タグチェックの要注意で確認できます。\nよろしいですか？')) return;
+    try {
+      const res = await fetch(`/api/admin/manual-tagging/works/${workId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({ manualTaggingFolder: 'needs_review' }),
+      });
+      if (res.ok && parseResult?.mode === 'db' && parseResult?.works) {
+        setParseResult({ ...parseResult, works: parseResult.works.filter((w) => w.workId !== workId) });
+        setShowCommentModal(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || '移動に失敗しました');
+      }
+    } catch (e) {
+      console.error('handleMoveToNeedsReview failed:', e);
+      alert('移動に失敗しました');
+    }
+  };
+
+  // 使用作品DB: 選択した作品をすべて要注意へ移動
+  const handleMoveSelectedToNeedsReview = async () => {
+    if (!adminToken || selectedWorks.size === 0) return;
+    if (!confirm(`選択中の ${selectedWorks.size} 件をすべて「要注意」にしますか？\nゲーム使用一覧からは外れ、タグチェックの要注意で確認できます。`)) return;
+    setMoveSelectedToNeedsReviewLoading(true);
+    try {
+      const ids = Array.from(selectedWorks);
+      let ok = 0;
+      let fail = 0;
+      for (const workId of ids) {
+        const res = await fetch(`/api/admin/manual-tagging/works/${workId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({ manualTaggingFolder: 'needs_review' }),
+        });
+        if (res.ok) ok++;
+        else fail++;
+      }
+      if (parseResult?.mode === 'db' && parseResult?.works) {
+        setParseResult({ ...parseResult, works: parseResult.works.filter((w) => !selectedWorks.has(w.workId)) });
+        setSelectedWorks(new Set());
+      }
+      setShowCommentModal(null);
+      if (fail > 0) alert(`${ok} 件を要注意にしました。${fail} 件は失敗しました。`);
+    } catch (e) {
+      console.error('handleMoveSelectedToNeedsReview failed:', e);
+      alert('一括移動に失敗しました');
+    } finally {
+      setMoveSelectedToNeedsReviewLoading(false);
     }
   };
 
@@ -935,7 +1079,7 @@ export default function AdminTagsPage() {
       const data = await res.json();
       if (data.success) {
         alert(`${data.updated ?? 0} 件を未登録にしました。`);
-        await handleLoadFromDb(currentPage, dbFilter);
+        await handleLoadFromDb(currentPage);
       } else {
         alert(data.error || '更新に失敗しました');
       }
@@ -1072,6 +1216,30 @@ export default function AdminTagsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, adminToken]);
+
+  const handleRegenerateMatrix = async () => {
+    if (!adminToken) {
+      alert('管理トークンを入力してください');
+      return;
+    }
+    setSimMatrixRegenerating(true);
+    try {
+      const res = await fetch('/api/admin/generate-worktag-matrix', {
+        method: 'POST',
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || '行列を再生成しました。');
+      } else {
+        alert(data.error || '行列の再生成に失敗しました。');
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '行列の再生成に失敗しました。');
+    } finally {
+      setSimMatrixRegenerating(false);
+    }
+  };
 
   const handleConfigSave = async () => {
     if (!config) return;
@@ -1255,6 +1423,119 @@ export default function AdminTagsPage() {
     } catch (error) {
       console.error('質問テンプレート保存エラー:', error);
       alert(error instanceof Error ? error.message : '質問テンプレートの保存に失敗しました');
+    }
+  };
+
+  // シミュ結果の質問文言を保存（EXPLORE_TAG/SOFT_CONFIRM→tags/update、SPECIAL_QUESTION→special-questions）
+  const handleSaveSimQuestionText = async (
+    source: 'simResult' | 'simResultModal',
+    stepIndex: number,
+    step: { question: { kind: string; displayText: string; tagKey?: string; specialQuestionType?: string; titleCharType?: string; authorCharType?: string; rangeId?: string; titleSyllableRangeId?: string; titleSyllable2RangeId?: string; titleSyllable2Branch?: 'yesBranch' | 'noBranch' } },
+    newText: string
+  ) => {
+    if (!adminToken || !newText.trim()) return;
+    setEditingQuestionLoading(true);
+    try {
+      const q = step.question;
+      if (q.kind === 'EXPLORE_TAG' || q.kind === 'SOFT_CONFIRM') {
+        if (!q.tagKey) {
+          alert('タグ情報がありません');
+          return;
+        }
+        const res = await fetch('/api/admin/tags/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({ tagKey: q.tagKey, questionText: newText.trim() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? '保存に失敗しました');
+        if (source === 'simResult' && simResult) {
+          setSimResult({
+            ...simResult,
+            steps: simResult.steps.map((s, i) =>
+              i === stepIndex ? { ...s, question: { ...s.question, displayText: newText.trim() } } : s
+            ),
+          });
+        } else if (source === 'simResultModal' && simResultModal) {
+          setSimResultModal({
+            ...simResultModal,
+            steps: simResultModal.steps.map((s, i) =>
+              i === stepIndex ? { ...s, question: { ...s.question, displayText: newText.trim() } } : s
+            ),
+          });
+        }
+        setEditingQuestionKey(null);
+        alert('質問文言を保存しました');
+        return;
+      }
+      if (q.kind === 'SPECIAL_QUESTION' && q.specialQuestionType) {
+        const st = q.specialQuestionType;
+        let body: { type: string; key?: string; value: string } = { type: st, value: newText.trim() };
+        if (st === 'TITLE_CHAR_TYPE' && q.titleCharType) body.key = q.titleCharType;
+        else if (st === 'AUTHOR_CHAR_TYPE' && q.authorCharType) body.key = q.authorCharType;
+        else if (st === 'TITLE_SYLLABLE') {
+          const rid = q.titleSyllableRangeId ?? q.rangeId;
+          if (rid) body.key = rid; else { alert('TITLE_SYLLABLE の rangeId がありません'); return; }
+        }
+        else if (st === 'SERIES' || st === 'POPULARITY') {
+          /* body はそのまま */
+        } else if (st === 'TITLE_SYLLABLE_2' && q.titleSyllable2RangeId && q.titleSyllable2Branch) {
+          body = { type: st, key: `${q.titleSyllable2RangeId}.${q.titleSyllable2Branch}.questionText`, value: newText.trim() };
+        } else if (st === 'TITLE_SYLLABLE_2') {
+          const cfgRes = await fetch('/api/admin/special-questions', { headers: { 'x-eronator-admin-token': adminToken } });
+          const cfgData = await cfgRes.json().catch(() => ({}));
+          type T2B = { yesBranch?: { questionText?: string }; noBranch?: { questionText?: string } };
+          const cfg = (cfgData as { TITLE_SYLLABLE_2?: { branches?: Record<string, T2B> } }).TITLE_SYLLABLE_2;
+          const branches = cfg?.branches ?? {};
+          let found = false;
+          for (const [pid, b] of Object.entries(branches)) {
+            if (b?.yesBranch?.questionText === q.displayText) {
+              body = { type: st, key: `${pid}.yesBranch.questionText`, value: newText.trim() };
+              found = true;
+              break;
+            }
+            if (b?.noBranch?.questionText === q.displayText) {
+              body = { type: st, key: `${pid}.noBranch.questionText`, value: newText.trim() };
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            alert('TITLE_SYLLABLE_2 の該当ブランチを特定できませんでした');
+            return;
+          }
+        }
+        const res = await fetch('/api/admin/special-questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as { error?: string }).error ?? '保存に失敗しました');
+        if (source === 'simResult' && simResult) {
+          setSimResult({
+            ...simResult,
+            steps: simResult.steps.map((s, i) =>
+              i === stepIndex ? { ...s, question: { ...s.question, displayText: newText.trim() } } : s
+            ),
+          });
+        } else if (source === 'simResultModal' && simResultModal) {
+          setSimResultModal({
+            ...simResultModal,
+            steps: simResultModal.steps.map((s, i) =>
+              i === stepIndex ? { ...s, question: { ...s.question, displayText: newText.trim() } } : s
+            ),
+          });
+        }
+        setEditingQuestionKey(null);
+        alert('質問文言を保存しました');
+        return;
+      }
+      alert('この質問は編集できません');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '保存に失敗しました');
+    } finally {
+      setEditingQuestionLoading(false);
     }
   };
 
@@ -1457,7 +1738,7 @@ export default function AdminTagsPage() {
               fontWeight: activeTab === 'works' ? 'bold' : 'normal',
             }}
           >
-            作品DB
+            使用作品DB
           </button>
           <button
             onClick={() => setActiveTab('tags')}
@@ -1610,147 +1891,66 @@ export default function AdminTagsPage() {
       {/* タブコンテンツ 作品DB */}
       {activeTab === 'works' && (
         <>
-          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>作品DB</h2>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>使用作品DB</h2>
           {/* メイン: 作品一覧（DB読み込みまたはファイル読み込み）*/}
           {parseResult && parseResult.success && parseResult.works && (
             <section style={{ marginBottom: '2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2>
-                  {parseResult.mode === 'db' ? '既存DBの作品一覧' : 'パース結果（ファイル読み込み）'}
-                </h2>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {parseResult.mode === 'db' && (
-                    <>
-                      <button
-                        onClick={() => handleLoadFromDb(currentPage, dbFilter)}
-                        disabled={loading}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          fontSize: '0.9rem',
-                          backgroundColor: loading ? '#ccc' : '#666',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: loading ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        {loading ? '更新中...' : '🔄 再読み込み'}
-                      </button>
-                      {parseResult.stats && (
-                        <span style={{ marginLeft: '1rem', fontSize: '0.9rem' }}>
-                          ページ {currentPage} / {totalPages} (全{parseResult.stats?.total ?? 0}件)
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              {parseResult.stats && (
-                <div style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
-                  <p>
-                    <strong>総作品数:</strong> {parseResult.stats?.total ?? 0}件
-                  </p>
-                </div>
+              {parseResult.mode !== 'db' && (
+                <h2 style={{ marginBottom: '1rem' }}>パース結果（ファイル読み込み）</h2>
               )}
 
-              {/* ページネーション（DB読み込みの場合のみ）*/}
-              {parseResult.mode === 'db' && parseResult.stats && totalPages > 1 && (
-                <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <button
-                    onClick={() => {
-                      if (currentPage > 1) {
-                        setCurrentPage(currentPage - 1);
-                        handleLoadFromDb(currentPage - 1, dbFilter);
-                      }
-                    }}
-                    disabled={currentPage === 1 || loading}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: currentPage === 1 || loading ? '#ccc' : '#666',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: currentPage === 1 || loading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    前へ
-                  </button>
-                  <span style={{ fontSize: '0.9rem' }}>
-                    ページ {currentPage} / {totalPages}
-                  </span>
-                  <button
-                    onClick={() => {
-                      if (currentPage < totalPages) {
-                        setCurrentPage(currentPage + 1);
-                        handleLoadFromDb(currentPage + 1, dbFilter);
-                      }
-                    }}
-                    disabled={currentPage === totalPages || loading}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      backgroundColor: currentPage === totalPages || loading ? '#ccc' : '#666',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: currentPage === totalPages || loading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    次へ
-                  </button>
-                  <button
-                    onClick={() => {
-                      setCurrentPage(1);
-                      handleLoadFromDb(1, dbFilter);
-                    }}
-                    disabled={currentPage === 1 || loading}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      fontSize: '0.85rem',
-                      backgroundColor: currentPage === 1 || loading ? '#ccc' : '#0070f3',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: currentPage === 1 || loading ? 'not-allowed' : 'pointer',
-                      marginLeft: '1rem',
-                    }}
-                  >
-                    最新100件へ
-                  </button>
-                </div>
-              )}
-
-              {/* 全選択/解除・エロネーター登録（DB読み込みの場合のみ）*/}
-              {parseResult.mode === 'db' && (
-                <div style={{ marginBottom: '1rem' }}>
-                  {/* エロネーター登録フィルタ */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
-                    <span style={{ color: '#666', fontSize: '0.85rem' }}>🎮 表示:</span>
-                    {(['all', 'registered', 'unregistered'] as const).map(f => (
-                      <button
-                        key={f}
-                        onClick={() => {
-                          setDbFilter(f);
-                          handleLoadFromDb(1, f);
-                        }}
-                        style={{
-                          padding: '0.35rem 0.75rem',
-                          fontSize: '0.85rem',
-                          backgroundColor: dbFilter === f ? '#28a745' : '#e9ecef',
-                          color: dbFilter === f ? 'white' : '#333',
-                          border: 'none',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {f === 'all' ? '全て' : f === 'registered' ? '登録済み' : '未登録'}
-                      </button>
-                    ))}
-                  </div>
-                  {/* 選択コントロール */}
+              {/* ページネーション・全選択・検索（DB読み込みの場合のみ）*/}
+              {parseResult.mode === 'db' && parseResult.stats && (
+                <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
-                      onClick={toggleAllSelection}
+                      onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: currentPage === 1 ? '#ccc' : '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      前へ
+                    </button>
+                    <span style={{ fontSize: '0.9rem' }}>
+                      ページ {currentPage} / {displayTotalPages}
+                    </span>
+                    <button
+                      onClick={() => currentPage < displayTotalPages && setCurrentPage(currentPage + 1)}
+                      disabled={currentPage === displayTotalPages}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        backgroundColor: currentPage === displayTotalPages ? '#ccc' : '#666',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: currentPage === displayTotalPages ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      次へ
+                    </button>
+                    <button
+                      onClick={() => { setCurrentPage(1); handleLoadFromDb(1); }}
+                      disabled={loading}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        fontSize: '0.85rem',
+                        backgroundColor: loading ? '#ccc' : '#0070f3',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      🔄 再読み込み
+                    </button>
+                    <button
+                      onClick={() => toggleAllSelection(displayWorks)}
                       style={{
                         padding: '0.5rem 1rem',
                         backgroundColor: '#666',
@@ -1760,396 +1960,302 @@ export default function AdminTagsPage() {
                         cursor: 'pointer',
                       }}
                     >
-                      {selectedWorks.size === parseResult.works.length ? '全て解除' : '全て選択'}
+                      {selectedWorks.size === displayWorks.length ? '全て解除' : '全て選択'}
                     </button>
-                    <span style={{ marginLeft: '0.5rem' }}>
-                      選択中: <strong>{selectedWorks.size}</strong> / {parseResult.works.length}件
+                    <span style={{ fontSize: '0.9rem' }}>
+                      選択中: <strong>{selectedWorks.size}</strong> / {displayWorks.length}件
                     </span>
-                    <button
-                      onClick={() => handleBulkSetGameRegistered(true)}
-                      disabled={selectedWorks.size === 0}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: selectedWorks.size === 0 ? '#ccc' : '#28a745',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: selectedWorks.size === 0 ? 'not-allowed' : 'pointer',
-                        marginLeft: '0.5rem',
-                      }}
-                      title="選択作品をゲーム登録（エロネーター登録）にします"
-                    >
-                      選択を登録
-                    </button>
-                    <button
-                      onClick={() => handleBulkSetGameRegistered(false)}
-                      disabled={selectedWorks.size === 0}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: selectedWorks.size === 0 ? '#ccc' : '#6c757d',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: selectedWorks.size === 0 ? 'not-allowed' : 'pointer',
-                      }}
-                      title="選択作品のゲーム登録を解除します"
-                    >
-                      選択を未登録
-                    </button>
-                    <button
-                      onClick={handleUnregisterWorksWithoutDerivedTags}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: '#ffc107',
-                        color: '#333',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                      title="このページに表示中の、準有名タグがない作品を一括で未登録にします（実験用）"
-                    >
-                      準有名タグがない作品をオフにする
-                    </button>
-                    <button
-                      onClick={handleUnregisterAllWorksWithoutDerivedTags}
-                      style={{
-                        padding: '0.35rem 0.75rem',
-                        fontSize: '0.85rem',
-                        backgroundColor: '#fd7e14',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                      title="DB全体で準有名タグがない作品を一括で未登録にします（数万件対応）"
-                    >
-                      全件でオフにする
-                    </button>
                   </div>
-                  
-                  {/* クイック選択ボタン */}
-                  <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ color: '#666', fontSize: '0.85rem', alignSelf: 'center' }}>クイック選択:</span>
-                    <button
-                      onClick={() => selectLatestN(10)}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#e0e0e0',
-                        color: '#333',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
+                  {/* 検索・絞り込み（右側）*/}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+                    {!showOnlyNeedsReview ? (
+                      <button
+                        onClick={async () => { setShowOnlyNeedsReview(true); await handleLoadFromDb(1, true); }}
+                        disabled={loading}
+                        style={{ padding: '4px 10px', fontSize: '0.85rem', backgroundColor: loading ? '#ccc' : '#f0f0f0', color: '#555', border: '1px solid #ccc', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer' }}
+                      >
+                        要確認のみ表示
+                      </button>
+                    ) : (
+                      <>
+                        <span style={{ fontSize: '0.9rem', color: '#333', fontWeight: 500 }}>要確認のみ表示中</span>
+                        <button
+                          onClick={handleCheckCompleteNeedsReview}
+                          disabled={loading || selectedWorks.size === 0}
+                          style={{ padding: '4px 12px', fontSize: '0.85rem', backgroundColor: (loading || selectedWorks.size === 0) ? '#ccc' : '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: (loading || selectedWorks.size === 0) ? 'not-allowed' : 'pointer' }}
+                        >
+                          選択した作品をチェック完了に{selectedWorks.size > 0 ? ` (${selectedWorks.size}件)` : ''}
+                        </button>
+                        {displayWorks.length === 0 && (
+                          <button
+                            onClick={async () => { setShowOnlyNeedsReview(false); await handleLoadFromDb(1, false); }}
+                            disabled={loading}
+                            style={{ padding: '4px 10px', fontSize: '0.85rem', backgroundColor: loading ? '#ccc' : '#f0f0f0', color: '#555', border: '1px solid #ccc', borderRadius: '4px', cursor: loading ? 'not-allowed' : 'pointer' }}
+                          >
+                            一覧に戻る
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <input
+                      type="text"
+                      value={searchTitle}
+                      onChange={(e) => { setSearchTitle(e.target.value); setCurrentPage(1); }}
+                      placeholder="タイトル検索"
+                      style={{ padding: '8px 10px', width: '140px', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                    />
+                    <input
+                      type="text"
+                      value={searchCircleName}
+                      onChange={(e) => { setSearchCircleName(e.target.value); setCurrentPage(1); }}
+                      placeholder="サークル名検索"
+                      style={{ padding: '8px 10px', width: '140px', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                    />
+                    <select
+                      value={filterIsAi}
+                      onChange={(e) => { setFilterIsAi(e.target.value as typeof filterIsAi); setCurrentPage(1); }}
+                      style={{ padding: '8px 10px', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
                     >
-                      最新10件
-                    </button>
-                    <button
-                      onClick={() => selectLatestN(20)}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#e0e0e0',
-                        color: '#333',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
+                      <option value="all">isAi: すべて</option>
+                      <option value="AI">AIのみ</option>
+                      <option value="HAND">HANDのみ</option>
+                      <option value="UNKNOWN">UNKNOWN</option>
+                    </select>
+                    <select
+                      value={filterTagCount}
+                      onChange={(e) => { setFilterTagCount(e.target.value as typeof filterTagCount); setCurrentPage(1); }}
+                      style={{ padding: '8px 10px', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
                     >
-                      最新20件
-                    </button>
-                    <button
-                      onClick={() => selectLatestN(50)}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#e0e0e0',
-                        color: '#333',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      最新50件
-                    </button>
-                    <span style={{ color: '#999', margin: '0 0.25rem' }}>|</span>
-                    <button
-                      onClick={selectNoComment}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#fff3cd',
-                        color: '#856404',
-                        border: '1px solid #ffc107',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      コメント未取得
-                    </button>
-                    <button
-                      onClick={selectNoDerivedTags}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#d4edda',
-                        color: '#155724',
-                        border: '1px solid #28a745',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      タグ未生成
-                    </button>
-                    <span style={{ color: '#999', margin: '0 0.25rem' }}>|</span>
-                    <button
-                      onClick={selectHumanTagged}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: RANK_BG.S,
-                        color: RANK_TEXT.S,
-                        border: `1px solid ${RANK_TEXT.S}`,
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                      title="人力タグ付け済みの作品を選択"
-                    >
-                      人力タグ済み
-                    </button>
-                    <button
-                      onClick={selectWithDerivedTags}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: RANK_BG.A,
-                        color: RANK_TEXT.A,
-                        border: `1px solid ${RANK_TEXT.A}`,
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                      title="準有名タグがある作品を選択（人力 or AI）"
-                    >
-                      タグあり
-                    </button>
-                    <button
-                      onClick={() => setSelectedWorks(new Set())}
-                      style={{
-                        padding: '0.25rem 0.5rem',
-                        backgroundColor: '#f8d7da',
-                        color: '#721c24',
-                        border: '1px solid #dc3545',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      選択解除
-                    </button>
+                      <option value="all">タグ数: すべて</option>
+                      <option value="0-5">0〜5</option>
+                      <option value="5-10">5〜10</option>
+                      <option value="11+">11以上</option>
+                    </select>
+                    <span style={{ fontSize: '0.9rem', color: '#333', fontWeight: 'bold' }}>
+                      {filteredTotal < totalWorks ? (
+                        <>絞り込み: <strong style={{ color: '#0066cc' }}>{filteredTotal}</strong> 件（全{totalWorks}件中）</>
+                      ) : (
+                        <>{filteredTotal} 件</>
+                      )}
+                    </span>
                   </div>
-
                 </div>
               )}
 
               {/* 作品一覧（テーブル形式）*/}
               <div style={{ overflowX: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
-                    <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '30px' }}>
+                    <tr style={{ backgroundColor: '#e0e0e0', borderBottom: '2px solid #ddd' }}>
+                      <th style={{ padding: '4px 6px', textAlign: 'center', width: '36px' }}>
                         <input
                           type="checkbox"
-                          checked={selectedWorks.size === parseResult.works.length && parseResult.works.length > 0}
-                          onChange={toggleAllSelection}
+                          checked={selectedWorks.size === displayWorks.length && displayWorks.length > 0}
+                          onChange={() => toggleAllSelection(displayWorks)}
                         />
                       </th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '200px' }}>タイトル</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '150px' }}>サークル名（作者）</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '200px' }}>有名タグ</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '150px' }}>準有名タグ</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '120px' }}>キャラクタータグ</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '50px' }}>isAi</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '100px' }}>有名度</th>
-                      {parseResult.mode === 'db' && (
-                        <th style={{ padding: '0.5rem', textAlign: 'center', width: '50px' }} title="ゲーム・シミュレーションで使用">🎮</th>
-                      )}
-                      <th style={{ padding: '0.5rem', textAlign: 'left', width: '80px' }}>操作</th>
+                      <th
+                        style={{ padding: '4px 6px', textAlign: 'left', minWidth: '160px', cursor: 'pointer', color: '#0066cc', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                        onClick={() => { setSortBy('title'); setSortOrder(sortBy === 'title' ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc'); setCurrentPage(1); }}
+                        title="クリックで並び替え"
+                      >
+                        タイトル ⇅ {sortBy === 'title' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th
+                        style={{ padding: '4px 6px', textAlign: 'left', minWidth: '120px', cursor: 'pointer', color: '#0066cc', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                        onClick={() => { setSortBy('circleName'); setSortOrder(sortBy === 'circleName' ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc'); setCurrentPage(1); }}
+                        title="クリックで並び替え"
+                      >
+                        サークル名 ⇅ {sortBy === 'circleName' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th style={{ padding: '4px 6px', textAlign: 'left', minWidth: '360px' }}>
+                        タグ
+                        <div style={{ fontSize: '9px', fontWeight: 'normal', color: '#666', marginTop: '1px' }}>
+                          <span style={{ backgroundColor: '#e8d5ff', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>S</span>
+                          <span style={{ backgroundColor: '#d4edda', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>A</span>
+                          <span style={{ backgroundColor: '#fff3cd', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>B</span>
+                          <span style={{ backgroundColor: '#e9ecef', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>★未分類</span>
+                          <span style={{ backgroundColor: '#cfe2ff', padding: '1px 3px', borderRadius: '3px' }}>X</span>
+                        </div>
+                      </th>
+                      <th style={{ padding: '4px 6px', textAlign: 'left', width: '44px' }}>isAi</th>
+                      <th
+                        style={{ padding: '4px 6px', textAlign: 'left', width: '72px', cursor: 'pointer', color: '#0066cc', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                        onClick={() => { setSortBy('popularity'); setSortOrder(sortBy === 'popularity' ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'desc'); setCurrentPage(1); }}
+                        title="クリックで並び替え"
+                      >
+                        有名度 ⇅ {sortBy === 'popularity' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th
+                        style={{ padding: '4px 6px', textAlign: 'left', width: '88px', cursor: 'pointer', color: '#0066cc', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                        onClick={() => { setSortBy('releaseDate'); setSortOrder(sortBy === 'releaseDate' ? (sortOrder === 'asc' ? 'desc' : 'asc') : 'asc'); setCurrentPage(1); }}
+                        title="クリックで並び替え"
+                      >
+                        発売日 ⇅ {sortBy === 'releaseDate' && (sortOrder === 'asc' ? '↑' : '↓')}
+                      </th>
+                      <th style={{ padding: '4px 6px', textAlign: 'left', width: '72px' }}>操作</th>
+                      <th style={{ padding: '4px 6px 4px 20px', textAlign: 'center', width: '40px' }}>⚠️</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parseResult.works.map((work, index) => {
+                    {displayWorks.map((work, index) => {
                       const result = analysisResults[work.workId];
                       return (
                         <tr
                           key={work.workId}
                           style={{
-                            borderBottom: '1px solid #eee',
+                            borderBottom: '1px solid #ddd',
                             backgroundColor: work.isDuplicate ? '#fff3cd' : (index % 2 === 0 ? 'white' : '#fafafa'),
                           }}
                         >
-                          <td style={{ padding: '0.5rem' }}>
+                          <td style={{ padding: '4px 6px', textAlign: 'center', verticalAlign: 'top' }}>
                             <input
                               type="checkbox"
                               checked={selectedWorks.has(work.workId)}
                               onChange={() => toggleWorkSelection(work.workId)}
                             />
                           </td>
-                          <td style={{ padding: '0.5rem' }}>
-                            <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                          <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
+                            <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '0.15rem' }}>
                               {work.title}
                               {work.isDuplicate && (
                                 <span
                                   style={{
-                                    marginLeft: '0.5rem',
-                                    padding: '0.15rem 0.4rem',
+                                    marginLeft: '0.35rem',
+                                    padding: '0.1rem 0.3rem',
                                     backgroundColor: '#ffc107',
                                     color: '#000',
                                     borderRadius: '3px',
-                                    fontSize: '0.7rem',
+                                    fontSize: '0.65rem',
                                   }}
                                 >
                                   重複
                                 </span>
                               )}
                             </div>
-                            {work.productUrl && (
-                              <a
-                                href={work.productUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ fontSize: '0.8rem', color: '#0070f3' }}
-                              >
-                                🔗 リンク
-                              </a>
-                            )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              {work.productUrl && (
+                                <a
+                                  href={work.productUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ fontSize: '0.75rem', color: '#0070f3' }}
+                                >
+                                  🔗 リンク
+                                </a>
+                              )}
+                              {work.scrapedAt && (
+                                <span style={{ fontSize: '0.7rem', color: '#888' }}>
+                                  作成日時: {new Date(work.scrapedAt).toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td style={{ padding: '0.5rem' }}>{work.circleName}</td>
-                          <td style={{ padding: '0.5rem' }}>
-                            {work.officialTags.length > 0 ? (
-                              <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-                                gap: '0.15rem',
-                                maxWidth: '200px',
-                              }}>
-                                {work.officialTags.map((tag, i) => (
-                                  <span
-                                    key={i}
-                                    style={{
-                                      padding: '0.1rem 0.3rem',
-                                      backgroundColor: RANK_BG.S,
-                                      color: RANK_TEXT.S,
-                                      borderRadius: '3px',
-                                      fontSize: '0.7rem',
-                                      textAlign: 'center',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                    }}
-                                    title={tag}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ color: '#999', fontSize: '0.8rem' }}>なし</span>
-                            )}
+                          <td style={{ padding: '4px 6px', fontSize: '11px', verticalAlign: 'top' }}>{work.circleName}</td>
+                          <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center' }}>
+                              {/* S（有名タグ） */}
+                              {work.officialTags && work.officialTags.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '2px' }}>
+                                  {work.officialTags.map((tag, i) => (
+                                    <span key={`o-${i}`} style={{
+                                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                      backgroundColor: '#e8d5ff',
+                                      border: '1px solid #6f42c1',
+                                      padding: '2px 6px',
+                                      borderRadius: '10px',
+                                      fontSize: '11px',
+                                      color: '#6f42c1'
+                                    }} title="S（有名タグ）">
+                                      <span style={{ fontWeight: 'bold', opacity: 0.9 }}>S</span>
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {/* A/B/C/★（準有名タグ） */}
+                              {result?.derivedTags && result.derivedTags.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '2px' }}>
+                                  {result.derivedTags.map((tag, i) => {
+                                    const rank = tag.rank || '';
+                                    const chip = rank === 'A' ? RANK_CHIP.A : rank === 'B' ? RANK_CHIP.B : rank === 'C' ? RANK_CHIP.C : { bg: '#e9ecef', border: '#6c757d', text: '#495057' };
+                                    const rankLabel = rank === 'A' ? 'A' : rank === 'B' ? 'B' : rank === 'C' ? 'C' : '';
+                                    return (
+                                      <span
+                                        key={`d-${i}`}
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          backgroundColor: chip.bg,
+                                          border: `1px solid ${chip.border}`,
+                                          padding: '2px 6px',
+                                          borderRadius: '10px',
+                                          fontSize: '11px',
+                                          color: chip.text,
+                                        }}
+                                        title={rank ? `ランク: ${rank}` : '未分類'}
+                                      >
+                                        {rankLabel && <span style={{ fontWeight: 'bold', opacity: 0.9 }}>{rankLabel}</span>}
+                                        {tag.displayName}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {/* X（キャラクタータグ） */}
+                              {result?.characterTags && result.characterTags.length > 0 && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                  {result.characterTags.map((tag, i) => (
+                                    <span
+                                      key={`x-${i}`}
+                                      style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        backgroundColor: RANK_CHIP.X.bg,
+                                        border: `1px solid ${RANK_CHIP.X.border}`,
+                                        padding: '2px 6px',
+                                        borderRadius: '10px',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        color: RANK_CHIP.X.text,
+                                      }}
+                                      title="キャラクター"
+                                    >
+                                      X {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {(!work.officialTags || work.officialTags.length === 0) && (!result?.derivedTags || result.derivedTags.length === 0) && (!result?.characterTags || result.characterTags.length === 0) && (
+                                <span style={{ color: '#999', fontSize: '11px' }}>タグなし</span>
+                              )}
+                            </div>
                           </td>
-                          <td style={{ padding: '0.5rem' }}>
-                            {result?.derivedTags.length > 0 ? (
-                              <div style={{ 
-                                display: 'grid', 
-                                gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
-                                gap: '0.15rem',
-                                maxWidth: '200px',
-                              }}>
-                                {result.derivedTags.slice(0, 5).map((tag, i) => (
-                                  <span
-                                    key={i}
-                                    style={{
-                                      padding: '0.1rem 0.3rem',
-                                      backgroundColor: RANK_BG.B,
-                                      color: RANK_TEXT.B,
-                                      borderRadius: '3px',
-                                      fontSize: '0.7rem',
-                                      textAlign: 'center',
-                                      whiteSpace: 'nowrap',
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                    }}
-                                    title={tag.displayName}
-                                  >
-                                    {tag.displayName}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ color: '#999', fontSize: '0.8rem' }}>なし</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.5rem' }}>
-                            {result?.characterTags.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                                {result.characterTags.map((tag, i) => (
-                                  <span
-                                    key={i}
-                                    style={{
-                                      padding: '0.1rem 0.3rem',
-                                      backgroundColor: RANK_BG.X,
-                                      color: RANK_TEXT.X,
-                                      borderRadius: '3px',
-                                      fontSize: '0.7rem',
-                                    }}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span style={{ color: '#999', fontSize: '0.8rem' }}>なし</span>
-                            )}
-                          </td>
-                          <td style={{ padding: '0.5rem' }}>
+                          <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
                             <span
                               style={{
-                                padding: '0.1rem 0.3rem',
+                                padding: '2px 4px',
                                 backgroundColor: work.isAi === 'AI' ? '#fff3cd' : work.isAi === 'HAND' ? '#d4edda' : '#f8d7da',
                                 borderRadius: '3px',
-                                fontSize: '0.65rem',
+                                fontSize: '10px',
                               }}
                             >
                               {work.isAi}
                             </span>
                           </td>
-                          <td style={{ padding: '0.5rem' }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
-                              {Math.round(work.popularityBase)}+{Math.round(work.popularityPlayBonus)}
-                            </div>
+                          <td style={{ padding: '4px 6px', fontSize: '11px', fontWeight: 'bold', verticalAlign: 'top' }}>
+                            {Math.round(work.popularityBase)}+{Math.round(work.popularityPlayBonus)}
                           </td>
-                          {parseResult.mode === 'db' && (() => {
-                            const isChecked = work.gameRegistered ?? false;
-                            return (
-                              <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => handleSetGameRegistered(work.workId, !isChecked)}
-                                  title="エロネーター登録（ゲーム・シミュレーションで使用）"
-                                  style={{ width: '18px', height: '18px', accentColor: '#28a745' }}
-                                />
-                              </td>
-                            );
-                          })()}
-                          <td style={{ padding: '0.5rem' }}>
+                          <td style={{ padding: '4px 6px', fontSize: '11px', verticalAlign: 'top', whiteSpace: 'nowrap', color: '#333' }}>
+                            {formatReleaseDateOnly(work.releaseDate)}
+                          </td>
+                          <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
                             <button
                               onClick={() => setShowCommentModal({ workId: work.workId, comment: work.commentText ?? '' })}
                               style={{
-                                padding: '0.25rem 0.5rem',
-                                fontSize: '0.75rem',
+                                padding: '2px 6px',
+                                fontSize: '11px',
                                 backgroundColor: '#0070f3',
                                 color: 'white',
                                 border: 'none',
@@ -2160,12 +2266,54 @@ export default function AdminTagsPage() {
                               詳細
                             </button>
                           </td>
+                          <td style={{ padding: '4px 6px 4px 20px', verticalAlign: 'top', textAlign: 'center' }}>
+                            {parseResult.mode === 'db' && adminToken && (
+                              <button
+                                onClick={() => handleMoveToNeedsReview(work.workId)}
+                                style={{
+                                  padding: '1px 4px',
+                                  fontSize: '12px',
+                                  lineHeight: 1,
+                                  backgroundColor: 'transparent',
+                                  color: '#dc3545',
+                                  border: '1px solid #dc3545',
+                                  borderRadius: '3px',
+                                  cursor: 'pointer',
+                                }}
+                                title="要注意フォルダへ移動"
+                              >
+                                ⚠️
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
+              {/* 作品リスト右下: 選択を一括で要注意に */}
+              {parseResult.mode === 'db' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', paddingTop: '0.35rem' }}>
+                  <button
+                    type="button"
+                    title="チェックした作品をすべて要注意にします"
+                    disabled={selectedWorks.size === 0 || moveSelectedToNeedsReviewLoading}
+                    onClick={handleMoveSelectedToNeedsReview}
+                    style={{
+                      padding: '0.25rem 0.6rem',
+                      fontSize: '0.8rem',
+                      cursor: selectedWorks.size === 0 || moveSelectedToNeedsReviewLoading ? 'not-allowed' : 'pointer',
+                      backgroundColor: selectedWorks.size === 0 || moveSelectedToNeedsReviewLoading ? '#e9ecef' : '#fd7e14',
+                      color: selectedWorks.size === 0 || moveSelectedToNeedsReviewLoading ? '#adb5bd' : '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    {moveSelectedToNeedsReviewLoading ? '処理中…' : `選択しているものをすべて要注意にする${selectedWorks.size > 0 ? ` (${selectedWorks.size}件)` : ''}`}
+                  </button>
+                </div>
+              )}
             </section>
           )}
 
@@ -2222,28 +2370,47 @@ export default function AdminTagsPage() {
                         </button>
                       </div>
                       
-                      <div style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>サークル:</strong> {work.circleName}
+                      <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                        <div style={{ flexShrink: 0 }}>
+                          <img
+                            src={work.thumbnailUrl?.startsWith('http') ? work.thumbnailUrl : `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`}
+                            alt="表紙"
+                            style={{ width: '120px', height: 'auto', borderRadius: '4px', border: '1px solid #ddd' }}
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
                         </div>
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>isAi:</strong> {work.isAi}
-                        </div>
-                        {work.productUrl && (
+                        <div style={{ flex: 1, minWidth: '200px' }}>
                           <div style={{ marginBottom: '0.5rem' }}>
-                            <strong>URL:</strong>{' '}
-                            <a href={work.productUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0070f3' }}>
-                              {work.productUrl}
-                            </a>
+                            <strong>サークル:</strong> {work.circleName}
                           </div>
-                        )}
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>有名度:</strong> {Math.round(work.popularityBase)}+{Math.round(work.popularityPlayBonus)}
-                        </div>
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>取得日時:</strong> {new Date(work.scrapedAt).toLocaleString('ja-JP')}
-                        </div>
-                        {/* 新フィールド */}
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>isAi:</strong> {work.isAi}
+                          </div>
+                          {parseResult.mode === 'db' && (
+                            <div style={{ marginBottom: '0.5rem' }}>
+                              <strong>現在のフォルダ:</strong>{' '}
+                              {(() => {
+                                const folder = (work as { manualTaggingFolder?: string | null }).manualTaggingFolder;
+                                const labels: Record<string, string> = { tagged: 'タグ済', needs_review: '要注意', needs_human_check: '人間確認', pending: 'チェック待ち', legacy_ai: '旧AIタグ', has_issues: '問題あり', untagged: '未タグ', ab_test: 'ABテスト' };
+                                return folder ? (labels[folder] ?? folder) : '（未設定）';
+                              })()}
+                            </div>
+                          )}
+                          {work.productUrl && (
+                            <div style={{ marginBottom: '0.5rem' }}>
+                              <strong>URL:</strong>{' '}
+                              <a href={work.productUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#0070f3' }}>
+                                {work.productUrl}
+                              </a>
+                            </div>
+                          )}
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>有名度:</strong> {Math.round(work.popularityBase)}+{Math.round(work.popularityPlayBonus)}
+                          </div>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>作成日時:</strong> {work.scrapedAt ? new Date(work.scrapedAt).toLocaleString('ja-JP') : '-'}
+                          </div>
+                          {/* 新フィールド */}
                         {work.contentId && (
                           <div style={{ marginBottom: '0.5rem' }}>
                             <strong>content_id:</strong> {work.contentId}
@@ -2251,7 +2418,7 @@ export default function AdminTagsPage() {
                         )}
                         {work.releaseDate && (
                           <div style={{ marginBottom: '0.5rem' }}>
-                            <strong>発売日:</strong> {work.releaseDate}
+                            <strong>発売日:</strong> {formatReleaseDateOnly(work.releaseDate)}
                           </div>
                         )}
                         {work.pageCount && (
@@ -2282,85 +2449,85 @@ export default function AdminTagsPage() {
                         <div style={{ marginBottom: '0.5rem' }}>
                           <strong>作品コメント:</strong> {work.commentText ? `✅ ${work.commentText.length}文字` : '❌ 未取得'}
                         </div>
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>準有名タグ:</strong> {result?.derivedTags.length ? `✅ ${result.derivedTags.length}件` : '❌ 未生成'}
                         </div>
                       </div>
 
-                      <div style={{ marginBottom: '1rem' }}>
-                        <strong>有名タグ:</strong>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                          {work.officialTags.length > 0 ? (
-                            work.officialTags.map((tag, i) => (
-                              <span
-                                key={i}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  backgroundColor: RANK_BG.S,
-                                  color: RANK_TEXT.S,
-                                  borderRadius: '4px',
-                                  fontSize: '0.9rem',
-                                }}
-                              >
-                                {tag}
-                              </span>
-                            ))
-                          ) : (
-                            <span style={{ color: '#999' }}>なし</span>
+                      {/* Phase0 のタグ付け理由 */}
+                      {work.lastTaggingReasoning && Object.keys(work.lastTaggingReasoning).length > 0 && (
+                        <div style={{ padding: '0.6rem', background: '#f0f4f8', border: '1px solid #c9d6e3', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Phase0 のタグ付け理由</div>
+                          <div style={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
+                            {Object.entries(work.lastTaggingReasoning).map(([k, v]) => (
+                              <div key={k} style={{ marginBottom: '0.2rem' }}><span style={{ color: '#666' }}>{k}:</span> {String(v)}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Phase1 のチェック判断理由 */}
+                      {(work.lastCheckReasoning && Object.keys(work.lastCheckReasoning).length > 0) && (
+                        <div style={{ padding: '0.6rem', background: '#f8f9fa', border: '1px solid #dee2e6', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Phase1 のチェック判断理由</div>
+                          <div style={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
+                            {Object.entries(work.lastCheckReasoning).map(([k, v]) => (
+                              <div key={k} style={{ marginBottom: '0.2rem' }}><span style={{ color: '#666' }}>{k}:</span> {String(v)}</div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* AIチェックによる修正提案 */}
+                      {work.lastCheckTagChanges && (
+                        (work.lastCheckTagChanges.added?.length ?? 0) > 0 ||
+                        (work.lastCheckTagChanges.removed?.length ?? 0) > 0 ||
+                        (work.lastCheckTagChanges.newProposal ?? '').trim() ? (
+                        <div style={{ padding: '0.6rem', background: '#f0f8ff', border: '1px solid #b8d4e8', borderRadius: '6px', marginBottom: '0.5rem' }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.3rem' }}>AIチェックによる修正提案</div>
+                          {work.lastCheckTagChanges.added && work.lastCheckTagChanges.added.length > 0 && (
+                            <div style={{ fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+                              <span style={{ color: '#0d6efd', fontWeight: 'bold' }}>追加推奨:</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', marginTop: '0.2rem' }}>
+                                {work.lastCheckTagChanges.added.map((tag) => (
+                                  <span key={tag} style={{ padding: '0.1rem 0.3rem', backgroundColor: '#e7f1ff', borderRadius: '4px', fontSize: '0.8rem' }}>{tag}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {work.lastCheckTagChanges.removed && work.lastCheckTagChanges.removed.length > 0 && (
+                            <div style={{ fontSize: '0.8rem', marginBottom: '0.35rem' }}>
+                              <span style={{ color: '#dc3545', fontWeight: 'bold' }}>削除推奨:</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem', marginTop: '0.2rem' }}>
+                                {work.lastCheckTagChanges.removed.map((tag) => (
+                                  <span key={tag} style={{ padding: '0.1rem 0.3rem', backgroundColor: '#ffe7e7', borderRadius: '4px', fontSize: '0.8rem' }}>{tag}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {work.lastCheckTagChanges.newProposal?.trim() && (
+                            <div style={{ fontSize: '0.8rem' }}>
+                              <span style={{ fontWeight: 'bold' }}>その他:</span> {work.lastCheckTagChanges.newProposal}
+                            </div>
                           )}
                         </div>
-                      </div>
+                      ) : null)}
 
-                      {result && (
-                        <>
-                          <div style={{ marginBottom: '1rem' }}>
-                            <strong>準有名タグ:</strong>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                              {result.derivedTags.length > 0 ? (
-                                result.derivedTags.map((tag, i) => (
-                                  <span
-                                    key={i}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      backgroundColor: RANK_BG.B,
-                                      color: RANK_TEXT.B,
-                                      borderRadius: '4px',
-                                      fontSize: '0.9rem',
-                                    }}
-                                  >
-                                    {tag.displayName} ({tag.confidence.toFixed(2)})
-                                  </span>
-                                ))
-                              ) : (
-                                <span style={{ color: '#999' }}>なし</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div style={{ marginBottom: '1rem' }}>
-                            <strong>キャラクタータグ:</strong>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                              {result.characterTags.length > 0 ? (
-                                result.characterTags.map((tag, i) => (
-                                  <span
-                                    key={i}
-                                    style={{
-                                      padding: '0.25rem 0.5rem',
-                                      backgroundColor: RANK_BG.X,
-                                      color: RANK_TEXT.X,
-                                      borderRadius: '4px',
-                                      fontSize: '0.9rem',
-                                    }}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))
-                              ) : (
-                                <span style={{ color: '#999' }}>なし</span>
-                              )}
-                            </div>
-                          </div>
-                        </>
+                      {parseResult.mode === 'db' && adminToken && (
+                        <div style={{ marginBottom: '1rem' }}>
+                          <button
+                            onClick={() => handleMoveToNeedsReview(work.workId)}
+                            style={{
+                              padding: '0.5rem 1rem',
+                              backgroundColor: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '0.9rem',
+                            }}
+                          >
+                            ⚠️ 要注意フォルダへ移動
+                          </button>
+                        </div>
                       )}
 
                       <div style={{ marginTop: '1rem' }}>
@@ -2541,7 +2708,7 @@ export default function AdminTagsPage() {
               DBに保存されている既存の作品とタグを読み込みます。（100件ずつページ表示）
             </p>
             <button
-              onClick={() => handleLoadFromDb(1, dbFilter)}
+              onClick={() => handleLoadFromDb(1)}
               disabled={loading}
               style={{
                 padding: '0.75rem 2rem',
@@ -2954,12 +3121,31 @@ export default function AdminTagsPage() {
             指定した作品を「正解」として自動でゲームをプレイし、アルゴリズムの精度を検証します。
           </p>
           {simWorksStats !== null && (
-            <p style={{ marginBottom: '2rem', fontSize: '1rem', fontWeight: 'bold', color: '#333' }}>
-              ゲーム有効: <span style={{ color: '#28a745' }}>{simWorksStats.gameRegisteredCount.toLocaleString()}</span>
-              {' / '}
-              全作品: <span style={{ color: '#666' }}>{simWorksStats.totalWorks.toLocaleString()}</span>
-              {' 作品'}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+              <p style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold', color: '#333' }}>
+                ゲーム有効: <span style={{ color: '#28a745' }}>{simWorksStats.gameRegisteredCount.toLocaleString()}</span>
+                {' / '}
+                全作品: <span style={{ color: '#666' }}>{simWorksStats.totalWorks.toLocaleString()}</span>
+                {' 作品'}
+              </p>
+              <button
+                onClick={handleRegenerateMatrix}
+                disabled={simMatrixRegenerating || !adminToken}
+                title="シミュレーション前に押すと WorkTag 行列を最新化します"
+                style={{
+                  padding: '0.4rem 0.8rem',
+                  fontSize: '0.9rem',
+                  backgroundColor: simMatrixRegenerating || !adminToken ? '#ccc' : '#17a2b8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: simMatrixRegenerating || !adminToken ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                {simMatrixRegenerating ? '再生成中...' : '行列を再生成'}
+              </button>
+            </div>
           )}
 
           {/* 設定パネル（コンパクト） */}
@@ -3012,6 +3198,17 @@ export default function AdminTagsPage() {
                 />
                 <span style={{ fontSize: '0.85rem', marginLeft: '0.25rem' }}>{simTrialsPerWork}</span>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  id="sim-single-request"
+                  checked={simUseSingleRequest}
+                  onChange={(e) => setSimUseSingleRequest(e.target.checked)}
+                />
+                <label htmlFor="sim-single-request" style={{ fontSize: '0.85rem', fontWeight: 'bold', cursor: 'pointer' }} title="HTTP往復を1回に抑えて高速化（進捗は完了時のみ）">
+                  全件1回送信（高速）
+                </label>
+              </div>
               <button
                 onClick={async () => {
                   if (simSampleSize > 5000 && simSampleSize < 10000 && !confirm(`${simSampleSize}件は時間がかかります。続行しますか？`)) return;
@@ -3026,7 +3223,6 @@ export default function AdminTagsPage() {
                       setSimBatchLoading(false);
                       return;
                     }
-                    // チャンク実行: 進捗を逐次更新するため、workIds を取得して分割実行
                     const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}`, {
                       headers: { 'x-eronator-admin-token': adminToken },
                     });
@@ -3034,21 +3230,26 @@ export default function AdminTagsPage() {
                     const { workIds } = (await idsRes.json()) as { workIds: string[] };
                     const totalTrials = workIds.length * simTrialsPerWork;
                     setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中', startTime: simStartTime });
-                    const CHUNK_SIZE = 10;
+                    const CHUNK_SIZE = 100;
                     const allResults: Array<{ workId: string; title: string; success: boolean; questionCount: number; outcome: string; steps?: unknown; workDetails?: unknown; diagnostic?: unknown; analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number }; errorMessage?: string; perfSummary?: Record<string, number> }> = [];
                     let doneCount = 0;
                     let totalWorksInDb = 0;
-                    for (let i = 0; i < workIds.length; i += CHUNK_SIZE) {
-                      const chunk = workIds.slice(i, i + CHUNK_SIZE);
+                    const chunkTimings: Array<{ chunk: number; doneCount: number; elapsedMs: number }> = [];
+
+                    if (simUseSingleRequest) {
+                      setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中（1回送信）', startTime: simStartTime });
                       const response = await fetch('/api/admin/simulate', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                         body: JSON.stringify({
-                          workIds: chunk,
+                          workIds,
                           ambiguityLevel: simAmbiguityLevel,
                           aiGateChoice: simAiGateChoice,
                           trialsPerWork: simTrialsPerWork,
                           includePerf: true,
+                          parallelCount: 20,
+                          totalTrials,
+                          doneOffset: 0,
                         }),
                       });
                       if (!response.ok) {
@@ -3058,8 +3259,48 @@ export default function AdminTagsPage() {
                       const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
                       allResults.push(...data.results);
                       if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
-                      doneCount += data.results.length;
-                      setProgress('simulate', { done: doneCount, total: totalTrials, phase: '実行中' });
+                      doneCount = data.results.length;
+                      chunkTimings.push({ chunk: 1, doneCount, elapsedMs: Date.now() - simStartTime });
+                    } else {
+                      for (let i = 0; i < workIds.length; i += CHUNK_SIZE) {
+                        const chunkStart = Date.now();
+                        const chunk = workIds.slice(i, i + CHUNK_SIZE);
+                        const doneOffset = i * simTrialsPerWork;
+                        const response = await fetch('/api/admin/simulate', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+                          body: JSON.stringify({
+                            workIds: chunk,
+                            ambiguityLevel: simAmbiguityLevel,
+                            aiGateChoice: simAiGateChoice,
+                            trialsPerWork: simTrialsPerWork,
+                            includePerf: true,
+                            parallelCount: 20,
+                            totalTrials,
+                            doneOffset,
+                          }),
+                        });
+                        if (!response.ok) {
+                          const err = await response.json();
+                          throw new Error(err.error || 'Batch simulation failed');
+                        }
+                        const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
+                        allResults.push(...data.results);
+                        if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
+                        doneCount += data.results.length;
+                        chunkTimings.push({ chunk: Math.floor(i / CHUNK_SIZE) + 1, doneCount, elapsedMs: Date.now() - chunkStart });
+                        const elapsedTotal = Date.now() - simStartTime;
+                        const avgMsPerItem = elapsedTotal / doneCount;
+                        const remainItems = totalTrials - doneCount;
+                        const etaSec = Math.round((avgMsPerItem * remainItems) / 1000);
+                        const lastChunkSec = ((Date.now() - chunkStart) / 1000).toFixed(1);
+                        setProgress('simulate', {
+                          done: doneCount,
+                          total: totalTrials,
+                          phase: `実行中 | 直近${lastChunkSec}s | 残り約${etaSec}s`,
+                          startTime: simStartTime,
+                        });
+                      }
                     }
                     const successCount = allResults.filter((r) => r.success).length;
                     const totalQuestions = allResults.reduce((s, r) => s + r.questionCount, 0);
@@ -3069,6 +3310,24 @@ export default function AdminTagsPage() {
                       failureSummary[f.outcome] = (failureSummary[f.outcome] ?? 0) + 1;
                     }
                     const durationSeconds = Math.round((Date.now() - simStartTime) / 1000);
+                    // localStorage に履歴保存
+                    try {
+                      const simHist = JSON.parse(localStorage.getItem('sim-history') || '[]') as Array<Record<string, unknown>>;
+                      simHist.unshift({
+                        timestamp: new Date().toISOString(),
+                        sampleSize: workIds.length,
+                        trialsPerWork: simTrialsPerWork,
+                        totalTrials,
+                        successCount,
+                        successRate: allResults.length > 0 ? Math.round((successCount / allResults.length) * 100) / 100 : 0,
+                        durationSeconds,
+                        avgSecPerItem: allResults.length > 0 ? Math.round((durationSeconds / allResults.length) * 10) / 10 : 0,
+                        chunkTimings,
+                      });
+                      if (simHist.length > 20) simHist.length = 20;
+                      localStorage.setItem('sim-history', JSON.stringify(simHist));
+                    } catch {}
+                    setProgress('simulate', { done: totalTrials, total: totalTrials, phase: `完了 ${durationSeconds}秒`, startTime: simStartTime });
                     const failureAnalysis = failures.length > 0 ? (() => {
                       const withAnalysis = failures.filter((f: { analysisData?: { wasNoisyCount: number } }) => f.analysisData);
                       const withDiag = failures.filter((f) => f.diagnostic);
@@ -3109,7 +3368,7 @@ export default function AdminTagsPage() {
                     alert(error instanceof Error ? error.message : 'バッチシミュレーションに失敗しました');
                   } finally {
                     setSimBatchLoading(false);
-                    setProgress('simulate', null);
+                    setTimeout(() => setProgress('simulate', null), 15000);
                   }
                 }}
                   disabled={simBatchLoading}
@@ -3480,7 +3739,38 @@ export default function AdminTagsPage() {
                                     </span>
                                   )}
                                 </span>
-                                {step.question.displayText}
+                                {(() => {
+                                  const key = `simResult-${i}`;
+                                  const editable = !isReveal && ((step.question.kind === 'EXPLORE_TAG' && step.question.exploreTagKind !== 'summary') || step.question.kind === 'SOFT_CONFIRM' || step.question.kind === 'SPECIAL_QUESTION');
+                                  const isEditing = editingQuestionKey === key;
+                                  if (editable && isEditing) {
+                                    return (
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.25rem' }}>
+                                        <input
+                                          type="text"
+                                          value={editingQuestionValue}
+                                          onChange={(e) => setEditingQuestionValue(e.target.value)}
+                                          style={{ minWidth: '200px', padding: '0.2rem 0.4rem', fontSize: '0.9rem' }}
+                                          autoFocus
+                                        />
+                                        <button type="button" onClick={() => handleSaveSimQuestionText('simResult', i, step, editingQuestionValue)} disabled={editingQuestionLoading} style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}>保存</button>
+                                        <button type="button" onClick={() => { setEditingQuestionKey(null); }} style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}>キャンセル</button>
+                                      </span>
+                                    );
+                                  }
+                                  if (editable) {
+                                    return (
+                                      <span
+                                        onClick={() => { setEditingQuestionKey(key); setEditingQuestionValue(step.question.displayText); }}
+                                        style={{ marginLeft: '0.25rem', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                                        title="クリックで編集"
+                                      >
+                                        {step.question.displayText}
+                                      </span>
+                                    );
+                                  }
+                                  return <span style={{ marginLeft: '0.25rem' }}>{step.question.displayText}</span>;
+                                })()}
                                 {(step as any).preferHighP && (
                                   <span style={{ marginLeft: '0.25rem', padding: '0.1rem 0.3rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.75rem' }}>当たり狙い</span>
                                 )}
@@ -3719,6 +4009,36 @@ export default function AdminTagsPage() {
                 >
                   JSONでダウンロード
                 </button>
+                {(() => {
+                  const failed = simBatchResult.results.filter(r => !r.success);
+                  const failedWorkIds = [...new Set(failed.map(r => r.workId))];
+                  return failedWorkIds.length > 0 ? (
+                    <button
+                      onClick={async () => {
+                        if (!adminToken) return;
+                        if (!confirm(`失敗作品 ${failedWorkIds.length} 件を要確認に追加しますか？\n使用作品DBで「要確認のみ表示」で確認できます。`)) return;
+                        try {
+                          const res = await fetch('/api/admin/works/update', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+                            body: JSON.stringify({ action: 'setNeedsReview', workIds: failedWorkIds, needsReview: true }),
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            alert(`${data.updated ?? failedWorkIds.length} 件を要確認に追加しました。使用作品DBで「要確認のみ表示」で確認できます。`);
+                          } else {
+                            alert('追加に失敗しました');
+                          }
+                        } catch (e) {
+                          alert('追加に失敗しました');
+                        }
+                      }}
+                      style={{ padding: '0.4rem 0.8rem', background: '#e65100', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem' }}
+                    >
+                      失敗作品をすべて要確認に追加（{failedWorkIds.length}件）
+                    </button>
+                  ) : null;
+                })()}
               </div>
 
               {/* 全作品一覧（ページネーション） */}
@@ -3888,6 +4208,31 @@ export default function AdminTagsPage() {
                         >
                           {simModalRetryLoading ? '実行中...' : '🔄 もう1度試行'}
                         </button>
+                        {!simResultModal.success && simResultModal.targetWorkId && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!adminToken || !simResultModal?.targetWorkId) return;
+                              try {
+                                const res = await fetch('/api/admin/works/update', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+                                  body: JSON.stringify({ action: 'setNeedsReview', workId: simResultModal.targetWorkId, needsReview: true }),
+                                });
+                                if (res.ok) {
+                                  alert('要確認に追加しました。使用作品DBで「要確認のみ表示」で確認できます。');
+                                } else {
+                                  alert('追加に失敗しました');
+                                }
+                              } catch (e) {
+                                alert('追加に失敗しました');
+                              }
+                            }}
+                            style={{ padding: '0.4rem 1rem', background: '#e65100', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.9rem' }}
+                          >
+                            ✓ 要確認に追加
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setSimResultModal(null)}
@@ -4031,7 +4376,38 @@ export default function AdminTagsPage() {
                                         </span>
                                       )}
                                     </span>
-                                    {step.question.displayText}
+                                    {(() => {
+                                      const key = `simResultModal-${idx}`;
+                                      const editable = !isReveal && ((step.question.kind === 'EXPLORE_TAG' && step.question.exploreTagKind !== 'summary') || step.question.kind === 'SOFT_CONFIRM' || step.question.kind === 'SPECIAL_QUESTION');
+                                      const isEditing = editingQuestionKey === key;
+                                      if (editable && isEditing) {
+                                        return (
+                                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', marginLeft: '0.25rem' }}>
+                                            <input
+                                              type="text"
+                                              value={editingQuestionValue}
+                                              onChange={(e) => setEditingQuestionValue(e.target.value)}
+                                              style={{ minWidth: '200px', padding: '0.2rem 0.4rem', fontSize: '0.9rem' }}
+                                              autoFocus
+                                            />
+                                            <button type="button" onClick={() => handleSaveSimQuestionText('simResultModal', idx, step, editingQuestionValue)} disabled={editingQuestionLoading} style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}>保存</button>
+                                            <button type="button" onClick={() => { setEditingQuestionKey(null); }} style={{ padding: '0.2rem 0.5rem', fontSize: '0.8rem' }}>キャンセル</button>
+                                          </span>
+                                        );
+                                      }
+                                      if (editable) {
+                                        return (
+                                          <span
+                                            onClick={() => { setEditingQuestionKey(key); setEditingQuestionValue(step.question.displayText); }}
+                                            style={{ marginLeft: '0.25rem', cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+                                            title="クリックで編集"
+                                          >
+                                            {step.question.displayText}
+                                          </span>
+                                        );
+                                      }
+                                      return <span style={{ marginLeft: '0.25rem' }}>{step.question.displayText}</span>;
+                                    })()}
                                     {revealMiss && <span style={{ marginLeft: '0.5rem', color: '#c62828', fontWeight: 'bold' }}>← 不正解！</span>}
                                     {stepExt.preferHighP && (
                                       <span style={{ marginLeft: '0.25rem', padding: '0.1rem 0.3rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.75rem' }}>当たり狙い</span>

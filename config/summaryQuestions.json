@@ -1,6 +1,6 @@
 {
   "description": "まとめ質問。個別タグの質問は残しつつ、複数タグをORでまとめた質問を用意する。",
-  "updatedAt": "2026-02-16",
+  "updatedAt": "2026-03-03",
   "summaryQuestions": [
     {
       "id": "battle",
@@ -50,7 +50,7 @@
     {
       "id": "ntr",
       "label": "NTR・寝取り",
-      "questionText": "……NTRとか、寝取り、そういう要素、ある……？",
+      "questionText": "……NTRとかそういう要素、ある……？",
       "displayNames": [
         "NTR",
         "寝取られ・NTR",
@@ -79,7 +79,7 @@
     {
       "id": "fantasy",
       "label": "魔物・ファンタジー",
-      "questionText": "魔物とか、ファンタジーな子が登場する？",
+      "questionText": "ファンタジーな衣装や舞台が登場する？",
       "displayNames": [
         "サキュバス/淫魔",
         "ネコミミ・ケモミミ",
@@ -126,7 +126,7 @@
     {
       "id": "love",
       "label": "恋愛・ラブコメ",
-      "questionText": "恋愛とか、ラブコメの話、ある？",
+      "questionText": "恋愛とかラブコメの話？",
       "displayNames": [
         "恋愛",
         "ラブコメ",
@@ -143,7 +143,7 @@
     {
       "id": "occupation",
       "label": "職業",
-      "questionText": "先生とか、秘書とか、そういう職業が登場する？",
+      "questionText": "特殊な職業の話？",
       "displayNames": [
         "教師",
         "女教師",
@@ -161,7 +161,7 @@
     {
       "id": "cosoutfit",
       "label": "コス・衣装",
-      "questionText": "制服とかコスプレとか、そういう衣装が登場する？",
+      "questionText": "制服とか、コスプレとか登場する？",
       "displayNames": [
         "制服",
         "セーラー服",
@@ -178,7 +178,7 @@
     {
       "id": "choukyou",
       "label": "調教・拘束",
-      "questionText": "拘束とか、洗脳とか…… そういう描写、ある……？",
+      "questionText": "拘束とか、洗脳とか、そういう描写…ある？",
       "displayNames": [
         "洗脳",
         "常識改変",
@@ -197,7 +197,7 @@
     {
       "id": "taikei",
       "label": "体型",
-      "questionText": "体型に特徴がある？",
+      "questionText": "特徴ある体型の子が登場する？",
       "displayNames": [
         "巨乳",
         "貧乳・微乳",
@@ -226,7 +226,7 @@
     {
       "id": "huku",
       "label": "服装・アクセサリー",
-      "questionText": "服装とかアクセサリーとかに特徴ある？",
+      "questionText": "特徴のある服装や、アクセサリーを付けてる？",
       "displayNames": [
         "制服",
         "セーラー服",

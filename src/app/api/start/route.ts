@@ -12,7 +12,7 @@ import {
 } from '@/server/game/engine';
 import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
-import type { MvpConfig } from '@/server/config/schema';
+import { DEFAULT_THINKING, type MvpConfig } from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { QuestionResponse, SessionStateResponse } from '@/server/api/types';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
       question: questionResponse,
       sessionState,
       effectiveCandidates,
+      thinking: config.thinking ?? DEFAULT_THINKING,
       ...(debug ? { debug } : {}),
     };
 

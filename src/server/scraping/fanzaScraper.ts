@@ -1,9 +1,78 @@
 /**
  * FANZA商品ページスクレイピング
  * Puppeteerを使用して年齢確認を突破し、作品コメントを取得
+ * ブラウザプール管理で起動コストを削減
  */
 
+import fs from 'fs';
+import path from 'path';
 import puppeteer, { type Browser, type Page } from 'puppeteer';
+
+/** 失敗時スクリーンショット保存先 */
+const DEBUG_SCREENSHOT_DIR = path.join(process.cwd(), 'data', 'debug-screenshots');
+
+const BROWSER_ARGS = [
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--disable-accelerated-2d-canvas',
+  '--disable-gpu',
+  '--disable-extensions',
+  '--disable-background-networking',
+  '--disable-default-apps',
+];
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// --- Browser Pool ---
+let _poolBrowser: Browser | null = null;
+let _poolRefCount = 0;
+let _poolCloseTimer: ReturnType<typeof setTimeout> | null = null;
+const POOL_IDLE_TIMEOUT_MS = 60_000;
+
+async function acquireBrowser(headless: boolean): Promise<Browser> {
+  if (_poolCloseTimer) { clearTimeout(_poolCloseTimer); _poolCloseTimer = null; }
+
+  if (_poolBrowser && _poolBrowser.connected) {
+    _poolRefCount++;
+    return _poolBrowser;
+  }
+
+  _poolBrowser = await puppeteer.launch({ headless, args: BROWSER_ARGS });
+  _poolRefCount = 1;
+  return _poolBrowser;
+}
+
+function releaseBrowser(): void {
+  _poolRefCount = Math.max(0, _poolRefCount - 1);
+  if (_poolRefCount === 0 && _poolBrowser) {
+    if (_poolCloseTimer) clearTimeout(_poolCloseTimer);
+    _poolCloseTimer = setTimeout(async () => {
+      if (_poolRefCount === 0 && _poolBrowser) {
+        try { await _poolBrowser.close(); } catch { /* */ }
+        _poolBrowser = null;
+      }
+    }, POOL_IDLE_TIMEOUT_MS);
+  }
+}
+
+async function saveScreenshotOnFail(
+  page: Page | null,
+  productUrl: string,
+  reason: string
+): Promise<void> {
+  if (!page) return;
+  try {
+    fs.mkdirSync(DEBUG_SCREENSHOT_DIR, { recursive: true });
+    const cid = productUrl.match(/cid=([^/?#]+)/)?.[1] ?? 'unknown';
+    const safeReason = reason.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const filename = `${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}_${cid}_${safeReason}.png`;
+    const filepath = path.join(DEBUG_SCREENSHOT_DIR, filename);
+    await page.screenshot({ path: filepath, fullPage: true });
+    console.error(`  [スクレイピング] 失敗時スクリーンショット保存: ${filepath}`);
+  } catch (e) {
+    console.error(`  [スクレイピング] スクリーンショット保存失敗:`, e);
+  }
+}
 
 export interface ScrapedWorkData {
   productUrl: string;
@@ -17,26 +86,20 @@ export interface ScrapedWorkData {
   reviewCount: number | null;
   reviewAverage: number | null;
   isAi: 'AI' | 'HAND' | 'UNKNOWN' | null;
+  commentSkippedReason?: 'too_short' | 'not_found';
 }
 
-/**
- * 文字列を正規化（tampermonkeyと同じロジック）
- */
 function norm(s: unknown): string {
   return String(s ?? '').replace(/\s+/g, ' ').trim();
 }
 
-/**
- * 年齢確認を突破して商品詳細ページにアクセス
- */
 async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
   try {
     await page.goto(productUrl, { 
-      waitUntil: 'networkidle2',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 15000,
     });
 
-    // 年齢確認ページかどうかを判定
     const isAgeGate = await page.evaluate(() => {
       const title = document.title;
       const bodyText = document.body?.textContent || '';
@@ -48,8 +111,6 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
 
     if (!isAgeGate) return true;
 
-    // 年齢確認ボタンを探す
-    // 複数のセレクタを試す
     const ageGateSelectors = [
       'button[type="submit"]',
       'button:has-text("はい")',
@@ -66,24 +127,22 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
         const button = await page.$(selector);
         if (button) {
           await button.click();
-          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+          await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 });
           clicked = true;
           break;
         }
-      } catch (e) {
-        // 次のセレクタを試す
+      } catch {
         continue;
       }
     }
 
     if (!clicked) {
-      // フォールバック: ページ内の「はい」や「18歳以上」を含むボタンを探す
       const allButtons = await page.$$('button, a, input[type="submit"]');
       for (const button of allButtons) {
         const text = await page.evaluate(el => el.textContent || '', button);
         if (text.includes('はい') || text.includes('18歳以上') || text.includes('同意')) {
           await button.click();
-          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+          await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 });
           clicked = true;
           break;
         }
@@ -92,7 +151,6 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
 
     if (!clicked) return false;
 
-    // 年齢確認を通過したか確認
     const stillAgeGate = await page.evaluate(() => {
       const title = document.title;
       return title.includes('年齢認証') || title.includes('年齢確認');
@@ -106,9 +164,6 @@ async function bypassAgeGate(page: Page, productUrl: string): Promise<boolean> {
   }
 }
 
-/**
- * 作品コメントを抽出（tampermonkeyと同じロジック）
- */
 async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedWorkData> {
   const result: ScrapedWorkData = {
     productUrl,
@@ -125,25 +180,21 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
   };
 
   try {
-    // cidを抽出
     const cidMatch = productUrl.match(/\/cid=([^\/?&#]+)\//);
     result.cid = cidMatch ? cidMatch[1] : null;
 
-    // タイトルを取得
     const titleRaw = await page.evaluate(() => {
       const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content');
       return ogTitle || document.title;
     });
     result.title = norm(titleRaw);
 
-    // サムネイルURLを取得
     const thumbnailRaw = await page.evaluate(() => {
       const ogImage = document.querySelector('meta[property="og:image"]')?.getAttribute('content');
       return ogImage || null;
     });
     result.thumbnailUrl = thumbnailRaw ? norm(thumbnailRaw) : null;
 
-    // 作者名を取得
     const authorNameRaw = await page.evaluate(() => {
       const labels = ['作者', 'サークル', '著者', '作家'];
       for (const label of labels) {
@@ -162,7 +213,6 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
     });
     result.authorName = authorNameRaw ? norm(authorNameRaw) : null;
 
-    // 公式タグを取得
     const tagsRaw = await page.evaluate(() => {
       const labels = ['ジャンル', 'タグ'];
       const tags: string[] = [];
@@ -186,16 +236,13 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
         }
       }
       
-      // 重複を除去し、除外タグをフィルタ
       const uniqueTags = Array.from(new Set(tags));
       return uniqueTags.filter((t: string) => !['オプション', '新作', 'セール品'].includes(t));
     });
     result.officialTags = tagsRaw;
 
-    // rawTextを抽出（tampermonkeyと同じロジック）
     const rawParts: string[] = [];
 
-    // dt/ddテキスト
     const dtDdText = await page.evaluate(() => {
       const parts: string[] = [];
       const dts = Array.from(document.querySelectorAll('dt'));
@@ -211,7 +258,6 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
     });
     rawParts.push(...dtDdText);
 
-    // description的なブロック
     const descSelectors = [
       '[itemprop="description"]',
       '#detail',
@@ -220,15 +266,20 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
       '.dcd-productDetail__text',
     ];
 
+    const DESC_MIN_LENGTH = 5;
     for (const selector of descSelectors) {
       const text = await page.evaluate((sel: string) => {
         const el = document.querySelector(sel);
         if (!el) return null;
         const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
-        return t && t.length >= 20 ? t : null;
+        return t || null;
       }, selector);
 
       if (text) {
+        if (text.length < DESC_MIN_LENGTH) {
+          result.commentSkippedReason = 'too_short';
+          continue;
+        }
         rawParts.push(text);
       }
     }
@@ -239,28 +290,26 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
       result.rawText = result.rawText.slice(0, RAW_TEXT_MAX);
     }
 
-    // 作品コメントを抽出（rawTextから「作品コメント」以降を取得）
     if (result.rawText) {
       const marker = '作品コメント';
       const idx = result.rawText.indexOf(marker);
       if (idx !== -1) {
         result.commentText = result.rawText.slice(idx).trim();
+      } else if (!result.commentSkippedReason) {
+        result.commentSkippedReason = 'not_found';
       }
+    } else if (!result.commentSkippedReason) {
+      result.commentSkippedReason = 'not_found';
     }
 
-    // レビュー情報を抽出
     const reviewInfo = await page.evaluate(() => {
-      // レビュー数と平均点を取得
-      // FANZAのページ構造に基づいてセレクタを調整
       const reviewText = document.body?.textContent || '';
       
-      // レビュー数のパターン: "レビュー: 123件" や "レビュー数: 123" や "(123)"
       let reviewCount: number | null = null;
       const reviewCountMatch = reviewText.match(/レビュー[数:]?\s*(\d+)\s*件/);
       if (reviewCountMatch) {
         reviewCount = parseInt(reviewCountMatch[1], 10);
       }
-      // パターン2: "レビュー（14）" や "レビュー(14)" 形式
       if (!reviewCount) {
         const reviewCountMatch2 = reviewText.match(/レビュー[（(]\s*(\d+)\s*[）)]/);
         if (reviewCountMatch2) {
@@ -268,68 +317,32 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
         }
       }
       
-      // レビュー平均のパターン（複数のパターンを試す）
       let reviewAverage: number | null = null;
       
-      // パターン0: FANZAの専用セレクタを探す（優先度高）
-      // d-reviewstars__average, review-average, rating-average など
       const avgSelectors = [
-        '.d-reviewstars__average',
-        '.review-average',
-        '.rating-average',
-        '[class*="reviewstars"] [class*="average"]',
-        '[class*="review"] [class*="average"]',
-        '[data-average]',
-        '[data-rating]',
+        '.d-reviewstars__average', '.review-average', '.rating-average',
+        '[class*="reviewstars"] [class*="average"]', '[class*="review"] [class*="average"]',
+        '[data-average]', '[data-rating]',
       ];
       for (const sel of avgSelectors) {
         const el = document.querySelector(sel);
         if (el) {
-          // data属性をチェック
           const dataAvg = el.getAttribute('data-average') || el.getAttribute('data-rating');
-          if (dataAvg) {
-            const parsed = parseFloat(dataAvg);
-            if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-              reviewAverage = parsed;
-              break;
-            }
-          }
-          // テキストコンテンツをチェック
+          if (dataAvg) { const p = parseFloat(dataAvg); if (!isNaN(p) && p > 0 && p <= 5) { reviewAverage = p; break; } }
           const text = String(el.textContent || '').trim();
           const match = text.match(/(\d+\.?\d*)/);
-          if (match) {
-            const parsed = parseFloat(match[1]);
-            if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-              reviewAverage = parsed;
-              break;
-            }
-          }
+          if (match) { const p = parseFloat(match[1]); if (!isNaN(p) && p > 0 && p <= 5) { reviewAverage = p; break; } }
         }
       }
       
-      // パターン1: テキストから直接検索 "平均: 4.5" や "評価: 4.5"
       if (!reviewAverage) {
-        const avgMatch1 = reviewText.match(/(?:平均|評価)[:：]\s*(\d+\.?\d*)/);
-        if (avgMatch1) {
-          const parsed = parseFloat(avgMatch1[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-            reviewAverage = parsed;
-          }
-        }
+        const m = reviewText.match(/(?:平均|評価)[:：]\s*(\d+\.?\d*)/);
+        if (m) { const p = parseFloat(m[1]); if (!isNaN(p) && p > 0 && p <= 5) reviewAverage = p; }
       }
-      
-      // パターン2: 星マークの後 "★4.5" や "☆4.5"
       if (!reviewAverage) {
-        const avgMatch2 = reviewText.match(/[★☆]\s*(\d+\.?\d*)/);
-        if (avgMatch2) {
-          const parsed = parseFloat(avgMatch2[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-            reviewAverage = parsed;
-          }
-        }
+        const m = reviewText.match(/[★☆]\s*(\d+\.?\d*)/);
+        if (m) { const p = parseFloat(m[1]); if (!isNaN(p) && p > 0 && p <= 5) reviewAverage = p; }
       }
-      
-      // パターン3: dt/dd形式で「評価」や「平均」を探す
       if (!reviewAverage) {
         const dts = Array.from(document.querySelectorAll('dt'));
         for (const dt of dts) {
@@ -337,58 +350,29 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
           if (dtText === '評価' || dtText === '平均' || dtText === 'レビュー平均') {
             const dd = dt.nextElementSibling;
             if (dd && dd.tagName.toLowerCase() === 'dd') {
-              const ddText = String(dd.textContent || '').replace(/\s+/g, ' ').trim();
-              const avgMatch = ddText.match(/(\d+\.?\d*)/);
-              if (avgMatch) {
-                const parsed = parseFloat(avgMatch[1]);
-                if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-                  reviewAverage = parsed;
-                  break;
-                }
-              }
+              const m = String(dd.textContent || '').trim().match(/(\d+\.?\d*)/);
+              if (m) { const p = parseFloat(m[1]); if (!isNaN(p) && p > 0 && p <= 5) { reviewAverage = p; break; } }
             }
           }
         }
       }
-      
-      // パターン4: 数値/5形式（例: "4.5/5"）
       if (!reviewAverage) {
-        const avgMatch4 = reviewText.match(/(\d+\.?\d*)\s*\/\s*5/);
-        if (avgMatch4) {
-          const parsed = parseFloat(avgMatch4[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-            reviewAverage = parsed;
-          }
-        }
+        const m = reviewText.match(/(\d+\.?\d*)\s*\/\s*5/);
+        if (m) { const p = parseFloat(m[1]); if (!isNaN(p) && p > 0 && p <= 5) reviewAverage = p; }
       }
-      
-      // パターン5: "4.50点" や "4.5点" 形式
       if (!reviewAverage) {
-        const avgMatch5 = reviewText.match(/(\d+\.?\d*)\s*点/);
-        if (avgMatch5) {
-          const parsed = parseFloat(avgMatch5[1]);
-          if (!isNaN(parsed) && parsed > 0 && parsed <= 5) {
-            reviewAverage = parsed;
-          }
-        }
+        const m = reviewText.match(/(\d+\.?\d*)\s*点/);
+        if (m) { const p = parseFloat(m[1]); if (!isNaN(p) && p > 0 && p <= 5) reviewAverage = p; }
       }
-      
-      // パターン6: レビューセクション内の数値（例: "4.50"が単独で表示）
-      // レビュー数の近くにある4.xx形式の数値を探す
       if (!reviewAverage && reviewCount) {
-        // レビュー関連の要素を探す
         const reviewElements = document.querySelectorAll('[class*="review"], [id*="review"]');
         for (const el of reviewElements) {
           const text = String(el.textContent || '');
-          // 4.xx形式（レビュー平均は通常1.00-5.00）
           const matches = text.match(/\b([1-5]\.\d{1,2})\b/g);
           if (matches) {
             for (const m of matches) {
-              const parsed = parseFloat(m);
-              if (!isNaN(parsed) && parsed >= 1 && parsed <= 5) {
-                reviewAverage = parsed;
-                break;
-              }
+              const p = parseFloat(m);
+              if (!isNaN(p) && p >= 1 && p <= 5) { reviewAverage = p; break; }
             }
             if (reviewAverage) break;
           }
@@ -399,36 +383,20 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
     });
     result.reviewCount = reviewInfo.reviewCount;
     result.reviewAverage = reviewInfo.reviewAverage;
-    
 
-    // isAiを判定（タイトルの左上のカテゴリラベルから）
-    // FANZAでは「コミック」または「コミック・AI」という表記がある
     const categoryLabel = await page.evaluate(() => {
-      // タイトルの近くのカテゴリラベルを探す
-      // 複数のセレクタを試す
       const selectors = [
-        '.dcd-productDetail__category',
-        '.product-category',
-        '.category-label',
-        '.genre-label',
-        '[class*="category"]',
-        '[class*="genre"]',
-        'h1 + .category',
-        '.dcd-productDetail__title + *',
+        '.dcd-productDetail__category', '.product-category', '.category-label',
+        '.genre-label', '[class*="category"]', '[class*="genre"]',
+        'h1 + .category', '.dcd-productDetail__title + *',
       ];
-      
       for (const selector of selectors) {
         const elements = document.querySelectorAll(selector);
         for (const el of elements) {
           const text = String(el.textContent || '').trim();
-          // 「コミック・AI」または「コミック」を含むテキストを探す
-          if (text.includes('コミック')) {
-            return text;
-          }
+          if (text.includes('コミック')) return text;
         }
       }
-      
-      // フォールバック: タイトル周辺のテキストから探す
       const titleEl = document.querySelector('h1, .dcd-productDetail__title, [itemprop="name"]');
       if (titleEl) {
         const parent = titleEl.parentElement;
@@ -436,18 +404,14 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
           const siblings = Array.from(parent.children);
           for (const sibling of siblings) {
             const text = String(sibling.textContent || '').trim();
-            if (text.includes('コミック')) {
-              return text;
-            }
+            if (text.includes('コミック')) return text;
           }
         }
       }
-      
       return null;
     });
     
     if (categoryLabel) {
-      // 「コミック・AI」を含む場合はAI、「コミック」のみの場合は手書き
       if (categoryLabel.includes('コミック・AI') || categoryLabel.includes('コミック・ AI')) {
         result.isAi = 'AI';
       } else if (categoryLabel.includes('コミック')) {
@@ -456,23 +420,12 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
         result.isAi = 'UNKNOWN';
       }
     } else {
-      // カテゴリラベルが見つからない場合は、rawTextから判定（フォールバック）
       if (result.rawText) {
         const aiKeywords = ['AI', '人工知能', '機械学習', 'AI生成', 'AIイラスト', 'AI作品'];
         const rawTextLower = result.rawText.toLowerCase();
-        const hasAiKeyword = aiKeywords.some(keyword => 
-          rawTextLower.includes(keyword.toLowerCase())
-        );
-        
-        const hasAiTag = result.officialTags.some(tag => 
-          aiKeywords.some(keyword => tag.toLowerCase().includes(keyword.toLowerCase()))
-        );
-        
-        if (hasAiKeyword || hasAiTag) {
-          result.isAi = 'AI';
-        } else {
-          result.isAi = 'UNKNOWN';
-        }
+        const hasAiKeyword = aiKeywords.some(keyword => rawTextLower.includes(keyword.toLowerCase()));
+        const hasAiTag = result.officialTags.some(tag => aiKeywords.some(keyword => tag.toLowerCase().includes(keyword.toLowerCase())));
+        result.isAi = (hasAiKeyword || hasAiTag) ? 'AI' : 'UNKNOWN';
       } else {
         result.isAi = 'UNKNOWN';
       }
@@ -486,54 +439,60 @@ async function extractWorkData(page: Page, productUrl: string): Promise<ScrapedW
 }
 
 /**
- * 単一の商品ページから作品コメントを取得
+ * 単一の商品ページから作品コメントを取得（ブラウザプール使用）
  */
 export async function scrapeWorkComment(
   productUrl: string,
   options: {
     headless?: boolean;
     timeout?: number;
+    visible?: boolean;
+    screenshotOnFail?: boolean;
   } = {}
 ): Promise<ScrapedWorkData | null> {
-  const { headless = true, timeout = 30000 } = options;
+  const envVisible = process.env.SCRAPE_VISIBLE === '1' || process.env.SCRAPE_DEBUG === '1';
+  const envScreenshot = process.env.SCRAPE_SCREENSHOT_ON_FAIL === '1' || envVisible;
 
-  let browser: Browser | null = null;
+  const headless = options.visible || envVisible ? false : (options.headless ?? true);
+  const screenshotOnFail = options.screenshotOnFail ?? envScreenshot;
+
+  let page: Page | null = null;
   try {
-    browser = await puppeteer.launch({
-      headless,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-      ],
-    });
-
-    const page = await browser.newPage();
+    const browser = await acquireBrowser(headless);
+    page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1080 });
+    await page.setUserAgent(UA);
 
-    // User-Agentを設定
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    );
-
-    // 年齢確認を突破
     const ageGatePassed = await bypassAgeGate(page, productUrl);
-    if (!ageGatePassed) return null;
+    if (!ageGatePassed) {
+      if (screenshotOnFail) await saveScreenshotOnFail(page, productUrl, 'age_gate_failed');
+      return null;
+    }
 
-    // 作品データを抽出
+    try {
+      await page.waitForSelector('dt, dd, [itemprop="description"]', { timeout: 8000 });
+    } catch {
+      // 要素が見つからなくても抽出を試行
+    }
+
     const data = await extractWorkData(page, productUrl);
 
+    if (!data?.commentText && screenshotOnFail) {
+      await saveScreenshotOnFail(page, productUrl, 'comment_extract_failed');
+    }
 
     return data;
   } catch (error) {
     console.error(`[スクレイピング] エラー:`, error);
+    if (screenshotOnFail && page) {
+      await saveScreenshotOnFail(page, productUrl, 'exception');
+    }
     return null;
   } finally {
-    if (browser) {
-      await browser.close();
+    if (page) {
+      try { await page.close(); } catch { /* */ }
     }
+    releaseBrowser();
   }
 }
 
@@ -545,19 +504,17 @@ export async function scrapeWorkComments(
   options: {
     headless?: boolean;
     timeout?: number;
-    concurrency?: number; // 並列処理数（デフォルト: 1）
+    concurrency?: number;
   } = {}
 ): Promise<Array<{ url: string; data: ScrapedWorkData | null; error?: string }>> {
   const { concurrency = 1 } = options;
   const results: Array<{ url: string; data: ScrapedWorkData | null; error?: string }> = [];
 
-  // 並列処理数が1の場合は順次処理
   if (concurrency === 1) {
     for (const url of productUrls) {
       try {
         const data = await scrapeWorkComment(url, options);
         results.push({ url, data });
-        // レート制限対策: リクエスト間に遅延
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
         results.push({
@@ -570,8 +527,6 @@ export async function scrapeWorkComments(
     return results;
   }
 
-  // 並列処理（複数のブラウザインスタンスを使用）
-  // 注意: リソース消費が大きいため、concurrencyは小さく設定することを推奨
   const chunks: string[][] = [];
   for (let i = 0; i < productUrls.length; i += concurrency) {
     chunks.push(productUrls.slice(i, i + concurrency));
@@ -594,9 +549,8 @@ export async function scrapeWorkComments(
     const chunkResults = await Promise.all(promises);
     results.push(...chunkResults);
 
-    // チャンク間の遅延
     if (chunks.indexOf(chunk) < chunks.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
   }
 

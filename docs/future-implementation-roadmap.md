@@ -45,7 +45,11 @@
 ## ③ 頭文字チェック＆編集 ✅ 実装済み（2026-02-26）
 
 ### 概要
-約6,000作品の `titleReadingInitial` に漢字由来のミスがある。ミスがあるとゲーム精度に影響するため、チェック・編集用のタブを用意したい。
+`titleReadingInitial` の未設定・誤りはゲーム精度に影響するため、チェック・編集用のタブを用意したい。
+
+### 事実（実装・コードに基づく）
+- **ひらがな/カタカナ始まり**: `getTitleReadingInitialFromTitle` で機械的に算出可能。`npm run backfill:title-reading-initial` で一括設定。Phase0 でも機械設定で上書き。
+- **漢字始まり**: 機械算出不可（null）。Phase0 タグ付け時に AI が設定する。Phase0 未通過・AI 未設定の作品は null のまま。improvement-roadmap の分析では漢字始まりの約 59% が null（DONT_CARE 扱い）。設定済みのものにも AI の誤りがあり、手直しが必須。
 
 ### 実装内容
 - 管理画面「作品頭文字」タブ
@@ -97,3 +101,10 @@ eronator_mvp0_ws_v1_5_3/
 ```
 
 主要テーブル: Work, Tag, WorkTag, Session, PlayHistory, Log
+
+---
+
+## 所感（AI・2026-02-26）
+
+- **③ titleReadingInitial**: 「漢字のフリガナは自動でついている」という認識は、実装上は「Phase0 通過作品のみ AI が設定する」に相当する。漢字始まりの約 59% が null という分析結果と合わせると、多くの作品で未設定 or 手直し待ちの状態。作品頭文字タブでの確認・修正は、improvement-roadmap の P1（最優先）と整合しており、継続運用が重要。
+- **成功率 91%**: improvement-roadmap の amb.1 91% は、workTagMatrix が最新の状態でのシミュ結果。workTagMatrix が古いと（例: 500件シミュで 66%）、タグなし作品が多数含まれて成功率が大きく下がる。シミュ前に `npm run generate:worktag-matrix` を実行する前提を明文化しておくとよい。

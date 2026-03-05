@@ -89,6 +89,10 @@ const FlowSchema = z.object({
    */
   titleInitialTopN: z.number().int().min(1).optional(),
   /**
+   * 21問目以降、unified の前に HARD_CONFIRM（タイトル頭文字・作者・キャラ）を試す確率。0〜1。0で無効。未設定時は 0.25。
+   */
+  hardConfirmInjectionRatio: z.number().min(0).max(1).optional(),
+  /**
    * Special Question を挿入する質問番号（1-based）。例: [3, 5, 9, 16] で Q3, Q5, Q9, Q16。
    * 未設定時は [3, 5, 9, 16]。
    */
@@ -118,8 +122,27 @@ const PopularitySchema = z.object({
   playBonusOnSuccess: z.number().nonnegative(),
 }).strict();
 
+/** 「考え中」表示の文言・表示モード。各レベル最大5件まで。 */
+const ThinkingSchema = z.object({
+  /** 複数文言の表示方法: random=ランダム, sequential=順番 */
+  displayMode: z.enum(['random', 'sequential']),
+  early: z.array(z.string()).min(1).max(5),
+  mid: z.array(z.string()).min(1).max(5),
+  late: z.array(z.string()).min(1).max(5),
+  closing: z.array(z.string()).min(1).max(5),
+}).strict();
+
+export const DEFAULT_THINKING = {
+  displayMode: 'sequential' as const,
+  early: ['考え中…'],
+  mid: ['なんとなく見えてきた…'],
+  late: ['おっ……これは……！'],
+  closing: ['わかったかも……！'],
+};
+
 export const MvpConfigSchema = z.object({
   version: z.literal('v1.5'),
+  thinking: ThinkingSchema.optional(),
   confirm: ConfirmSchema,
   algo: AlgoSchema,
   flow: FlowSchema,

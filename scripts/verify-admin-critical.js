@@ -17,10 +17,10 @@ const path = require('path');
 const CHECKS = {
   'src/app/admin/components/ManualTagging.tsx': [
     'Phase1+2連続',
-    'groq-check-batch',
-    'groq-check-phase1',
-    'groq-check-phase2',
-    'groq-tag-batch',
+    'openai-check-batch',
+    'openai-check-phase1',
+    'openai-check-phase2',
+    'openai-tag-batch',
     'has_issues',
     'showBatchResults',
     'batchProgress',

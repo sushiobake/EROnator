@@ -8,21 +8,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import pLimit from 'p-limit';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import {
   readBulkProgress,
   writeBulkProgress,
+  completeBulkProgress,
   updatePhaseProgress,
-  clearBulkProgress,
+  appendPhaseRoundTiming,
   shouldBulkCancel,
   clearBulkCancel,
+  consumeQueuedJob,
   type BulkProgress,
 } from '@/server/bulk/progressStore';
-
-/** Puppeteer コメント取得の同時実行数 */
-const SCRAPE_CONCURRENCY = 12;
 
 /** 1ラウンド＝8作品 */
 const ROUND_SIZE = 8;
@@ -46,72 +44,6 @@ function getOrigin(request: NextRequest): string {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000';
   }
-}
-
-async function fetchCommentsForWorkIds(
-  workIds: string[],
-  prismaClient: typeof prisma,
-  onProgress?: (done: number, total: number) => void
-): Promise<{ success: number; failed: number }> {
-  const { scrapeWorkComment } = await import('@/server/scraping/fanzaScraper');
-
-  function computePopularityBase(reviewCount: number | null, reviewAverage: number | null): number {
-    const rc = reviewCount ?? 0;
-    let base = 0;
-    if (rc >= 100) base = 50;
-    else if (rc >= 10) base = 30;
-    else if (rc >= 1) base = 10;
-    if (reviewAverage != null && !isNaN(reviewAverage)) base += Math.round(reviewAverage);
-    return Math.max(0, Math.min(55, base));
-  }
-
-  const works = await prismaClient.work.findMany({
-    where: { workId: { in: workIds } },
-    select: { workId: true, productUrl: true, commentText: true, manualTaggingFolder: true },
-  });
-
-  let success = 0;
-  let failed = 0;
-  const limit = pLimit(SCRAPE_CONCURRENCY);
-
-  const toProcess = works.filter((w) => !w.commentText);
-  await Promise.all(
-    toProcess.map((work) =>
-      limit(async () => {
-        try {
-          const data = await scrapeWorkComment(work.productUrl, { headless: true, timeout: 30000 });
-
-          if (data?.commentText) {
-            const updateData: Record<string, unknown> = {
-              commentText: data.commentText,
-              manualTaggingFolder: work.manualTaggingFolder == null || work.manualTaggingFolder === '' ? 'untagged' : undefined,
-            };
-            if (data.reviewCount != null || data.reviewAverage != null) {
-              updateData.reviewCount = data.reviewCount;
-              updateData.reviewAverage = data.reviewAverage;
-              updateData.popularityBase = computePopularityBase(data.reviewCount, data.reviewAverage);
-            }
-            if (data.isAi && data.isAi !== 'UNKNOWN') updateData.isAi = data.isAi;
-
-            await prismaClient.work.update({
-              where: { workId: work.workId },
-              data: updateData,
-            });
-            success++;
-          } else {
-            failed++;
-          }
-        } catch (err) {
-          failed++;
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(`[bulk-comment-phase012] コメント取得失敗 workId=${work.workId}:`, msg);
-        }
-        onProgress?.(success + failed, workIds.length);
-      })
-    )
-  );
-
-  return { success, failed };
 }
 
 async function consumeStream(
@@ -144,15 +76,17 @@ async function consumeStream(
 
 async function runBulk(
   params: {
+    jobId: string;
     count: number;
     totalRounds: number;
     origin: string;
     adminToken: string;
     send: (obj: object) => void;
     persistProgress?: (job: 'comment' | 'phase0' | 'phase12', data: Partial<BulkProgress>) => void;
+    appendRoundTiming?: (job: 'comment' | 'phase0' | 'phase12', round: number, elapsedSec: number) => void;
   }
 ): Promise<number> {
-  const { count, totalRounds, origin, adminToken, send, persistProgress } = params;
+  const { jobId, count, totalRounds, origin, adminToken, send, persistProgress, appendRoundTiming } = params;
   let processedCount = 0;
 
   if (shouldBulkCancel()) {
@@ -206,10 +140,24 @@ async function runBulk(
         roundTotal: totalRounds,
       });
       persistProgress?.('comment', { phase: 'comment', done: 0, total: count, round, roundTotal: totalRounds });
-      const { success: fetched, failed } = await fetchCommentsForWorkIds(workIds, prisma, (done, total) => {
-        send({ type: 'progress', job: 'comment', done, total: count, round, roundTotal: totalRounds });
-        persistProgress?.('comment', { phase: 'comment', done, total: count, round, roundTotal: totalRounds });
+      const commentRoundStart = Date.now();
+      const commentRes = await fetch(`${origin}/api/admin/tags/fetch-comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({
+          workIds,
+          overwrite: false,
+          bulkJobId: jobId,
+          progressContext: { doneOffset: 0, total: count, round: 1, roundTotal: totalRounds },
+        }),
       });
+      const commentData = await commentRes.json();
+      if (!commentRes.ok || !commentData.success) {
+        throw new Error(commentData.error ?? `fetch-comments failed: ${commentRes.status}`);
+      }
+      const fetched = commentData.fetched ?? 0;
+      const failed = commentData.failed ?? 0;
+      appendRoundTiming?.('comment', round, Math.round((Date.now() - commentRoundStart) / 1000));
       send({
         type: 'progress',
         job: 'comment',
@@ -303,15 +251,15 @@ async function runBulk(
       return phase12Count;
     };
 
-    const runPipelineForRound = async (): Promise<number> => {
+    const runPipelineForRound = async (): Promise<{ phase0Cnt: number; phase12Cnt: number }> => {
       let cnt = 0;
+      const phase0Start = Date.now();
       for (let retries = 0; retries < MAX_WAIT_RETRIES; retries++) {
         cnt = await runPhase0(ROUND_SIZE);
         if (cnt > 0) break;
         if (shouldBulkCancel()) throw new Error('停止要求により中断しました');
         if (round === totalRounds) {
-          // ② 最終ラウンドで0件＝これ以上ない＝正常終了
-          return 0;
+          return { phase0Cnt: 0, phase12Cnt: 0 };
         }
         send({ type: 'progress', job: 'phase0', done: (round - 1) * ROUND_SIZE, total: count, round, roundTotal: totalRounds, detail: `untagged 待機中… (${retries + 1}/${MAX_WAIT_RETRIES})` });
         persistProgress?.('phase0', { phase: 'phase0', done: (round - 1) * ROUND_SIZE, total: count, round, roundTotal: totalRounds, detail: `untagged 待機中` });
@@ -321,11 +269,13 @@ async function runBulk(
         const doneCount = (round - 1) * ROUND_SIZE;
         throw new Error(`Phase0: ${MAX_WAIT_RETRIES * (WAIT_INTERVAL_MS / 1000)}秒待機しても作品が来ませんでした（${doneCount}件まで処理済み）`);
       }
+      appendRoundTiming?.('phase0', round, Math.round((Date.now() - phase0Start) / 1000));
 
       send({ type: 'progress', job: 'phase0', done: (round - 1) * ROUND_SIZE + cnt, total: count, round, roundTotal: totalRounds });
       send({ type: 'progress', job: 'phase12', done: (round - 1) * ROUND_SIZE, total: count, round, roundTotal: totalRounds });
 
       let phase12Count = 0;
+      const phase12Start = Date.now();
       for (let retries = 0; retries < MAX_WAIT_RETRIES; retries++) {
         phase12Count = await runPhase12(cnt);
         if (phase12Count > 0) break;
@@ -338,27 +288,47 @@ async function runBulk(
         const doneCount = (round - 1) * ROUND_SIZE + cnt;
         throw new Error(`Phase12: ${MAX_WAIT_RETRIES * (WAIT_INTERVAL_MS / 1000)}秒待機しても作品が来ませんでした（${doneCount}件まで処理済み）`);
       }
+      appendRoundTiming?.('phase12', round, Math.round((Date.now() - phase12Start) / 1000));
 
-      return cnt;
+      return { phase0Cnt: cnt, phase12Cnt: phase12Count };
     };
 
     let phase0Count: number;
+    let phase12Count: number;
     if (hasNext && nextWorkIds.length > 0) {
       const nextRound = round + 1;
-      const [cnt, parallelResult] = await Promise.all([
-        runPipelineForRound(),
-        fetchCommentsForWorkIds(nextWorkIds, prisma, (done, total) => {
-          const doneOverall = round * ROUND_SIZE + done;
-          send({ type: 'progress', job: 'comment', done: doneOverall, total: count, round: nextRound, roundTotal: totalRounds });
-          persistProgress?.('comment', { phase: 'comment', done: doneOverall, total: count, round: nextRound, roundTotal: totalRounds });
-        }),
-      ]);
-      phase0Count = cnt;
+      const commentNextStart = Date.now();
+      const fetchNextComments = (async () => {
+        try {
+          const res = await fetch(`${origin}/api/admin/tags/fetch-comments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+            body: JSON.stringify({
+              workIds: nextWorkIds,
+              overwrite: false,
+              bulkJobId: jobId,
+              progressContext: { doneOffset: round * ROUND_SIZE, total: count, round: nextRound, roundTotal: totalRounds },
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) return { success: 0, failed: nextWorkIds.length };
+          return { success: data.fetched ?? 0, failed: data.failed ?? 0 };
+        } catch (e) {
+          console.error('[bulk-comment-phase012] 次ラウンドコメント取得エラー:', e);
+          return { success: 0, failed: nextWorkIds.length };
+        }
+      })();
+      const [pipelineResult, parallelResult] = await Promise.all([runPipelineForRound(), fetchNextComments]);
+      appendRoundTiming?.('comment', nextRound, Math.round((Date.now() - commentNextStart) / 1000));
+      phase0Count = pipelineResult.phase0Cnt;
+      phase12Count = pipelineResult.phase12Cnt;
       if (parallelResult.success === 0 && parallelResult.failed > 0) {
-        console.warn(`[bulk-comment-phase012] ラウンド${round}: 並列コメント取得が全て失敗`);
+        console.warn(`[bulk-comment-phase012] ラウンド${nextRound}: 並列コメント取得が全て失敗`);
       }
     } else {
-      phase0Count = await runPipelineForRound();
+      const pipelineResult = await runPipelineForRound();
+      phase0Count = pipelineResult.phase0Cnt;
+      phase12Count = pipelineResult.phase12Cnt;
     }
 
     if (phase0Count === 0 && round === totalRounds) {
@@ -366,19 +336,34 @@ async function runBulk(
       break;
     }
 
-    processedCount = round * ROUND_SIZE;
+    processedCount = (round - 1) * ROUND_SIZE + phase0Count;
     send({
       type: 'progress',
       job: 'phase12',
-      done: (round - 1) * ROUND_SIZE + ROUND_SIZE,
+      done: (round - 1) * ROUND_SIZE + phase12Count,
       total: count,
       round,
       roundTotal: totalRounds,
       roundDone: round,
     });
-    persistProgress?.('phase12', { phase: 'phase12', done: (round - 1) * ROUND_SIZE + ROUND_SIZE, total: count, round, roundTotal: totalRounds });
+    persistProgress?.('phase12', { phase: 'phase12', done: (round - 1) * ROUND_SIZE + phase12Count, total: count, round, roundTotal: totalRounds });
   }
   return processedCount;
+}
+
+async function startQueuedJobIfAny(origin: string, adminToken: string): Promise<void> {
+  const queued = consumeQueuedJob();
+  if (!queued) return;
+  console.log(`[bulk-comment-phase012] 予約ジョブ開始: ${queued.count}件`);
+  try {
+    await fetch(`${origin}/api/admin/bulk-comment-phase012?background=1`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+      body: JSON.stringify({ count: queued.count }),
+    });
+  } catch (e) {
+    console.error('[bulk-comment-phase012] 予約ジョブ開始失敗:', e);
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -443,25 +428,31 @@ export async function POST(request: NextRequest) {
             detail: data.detail,
           });
         };
+        const appendRoundTiming = (job: 'comment' | 'phase0' | 'phase12', round: number, elapsedSec: number) => {
+          appendPhaseRoundTiming(jobId, job, round, elapsedSec);
+        };
         try {
           const processed = await runBulk({
+            jobId,
             count: effectiveCount,
             totalRounds: effectiveRounds,
             origin,
             adminToken,
             send,
             persistProgress,
+            appendRoundTiming,
           });
           const done = readBulkProgress();
           if (done && done.jobId === jobId) {
-            writeBulkProgress({ ...done, status: 'done', done: processed, total: effectiveCount });
-            setTimeout(() => clearBulkProgress(), 5000);
+            completeBulkProgress({ ...done, status: 'done', done: processed, total: effectiveCount });
           }
+          // 予約ジョブがあれば自動開始
+          await startQueuedJobIfAny(origin, adminToken);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const current = readBulkProgress();
           if (current && current.jobId === jobId) {
-            writeBulkProgress({ ...current, status: 'error', error: msg });
+            completeBulkProgress({ ...current, status: 'error', error: msg });
           }
         }
       })();
@@ -474,24 +465,63 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const jobId = `bulk-${Date.now()}`;
+    const streamProgress: BulkProgress = {
+      jobId,
+      status: 'running',
+      phase: 'comment',
+      done: 0,
+      total: effectiveCount,
+      round: 1,
+      roundTotal: effectiveRounds,
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    writeBulkProgress(streamProgress);
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         const send = (obj: object) => {
           controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
         };
+        const persistProgress = (job: 'comment' | 'phase0' | 'phase12', data: Partial<BulkProgress>) => {
+          updatePhaseProgress(jobId, job, {
+            done: data.done ?? 0,
+            total: data.total ?? 0,
+            round: data.round,
+            roundTotal: data.roundTotal,
+            currentWorkId: data.currentWorkId,
+            detail: data.detail,
+          });
+        };
+        const appendRoundTiming = (job: 'comment' | 'phase0' | 'phase12', round: number, elapsedSec: number) => {
+          appendPhaseRoundTiming(jobId, job, round, elapsedSec);
+        };
 
         try {
           const processed = await runBulk({
+            jobId,
             count: effectiveCount,
             totalRounds: effectiveRounds,
             origin,
             adminToken,
             send,
+            persistProgress,
+            appendRoundTiming,
           });
+          const done = readBulkProgress();
+          if (done && done.jobId === jobId) {
+            completeBulkProgress({ ...done, status: 'done', done: processed, total: effectiveCount });
+          }
           send({ type: 'done', success: true, totalProcessed: processed });
+          startQueuedJobIfAny(origin, adminToken).catch(() => {});
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          const current = readBulkProgress();
+          if (current && current.jobId === jobId) {
+            completeBulkProgress({ ...current, status: 'error', error: msg });
+          }
           send({ type: 'error', error: msg });
           send({ type: 'done', success: false, error: msg });
         } finally {

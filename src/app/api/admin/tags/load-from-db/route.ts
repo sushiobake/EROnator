@@ -4,8 +4,24 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+
+function getTagRanks(): Record<string, 'A' | 'B' | 'C' | ''> {
+  try {
+    const ranksPath = path.join(process.cwd(), 'config', 'tagRanks.json');
+    if (fs.existsSync(ranksPath)) {
+      const content = fs.readFileSync(ranksPath, 'utf-8');
+      const data = JSON.parse(content);
+      return data.ranks || {};
+    }
+  } catch (e) {
+    console.warn('[load-from-db] Failed to load tag ranks:', e);
+  }
+  return {};
+}
 
 type WorkWithTags = Awaited<
   ReturnType<
@@ -35,6 +51,9 @@ export interface LoadFromDbResponse {
       displayName: string;
       confidence: number;
       category: string | null;
+      rank?: string;
+      tagKey?: string;
+      source?: string;
     }>;
     characterTags: string[];
     metaText: string;
@@ -47,6 +66,12 @@ export interface LoadFromDbResponse {
     seriesInfo: string | null; // JSON string
     gameRegistered?: boolean; // ゲーム・シミュレーションで使用（エロネーター登録）
     tagSource?: 'human' | 'ai' | null; // タグの由来（human=人力タグ付け、ai=AI分析、null=未タグ）
+    // Phase0/1/AIチェック用（詳細モーダル表示）
+    lastTaggingReasoning?: Record<string, unknown> | null;
+    lastCheckReasoning?: Record<string, unknown> | null;
+    lastCheckTagChanges?: { added?: string[]; removed?: string[]; newProposal?: string } | null;
+    /** 現在のフォルダ（タグ済・要注意・チェック待ち等） */
+    manualTaggingFolder?: string | null;
   }>;
   stats?: {
     total: number;
@@ -67,27 +92,39 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // ページネーションパラメータ・フィルタを取得
+    // ページネーションパラメータを取得
     const body = await request.json().catch(() => ({}));
     const page = typeof body.page === 'number' ? body.page : 1;
-    const pageSize = typeof body.pageSize === 'number' ? body.pageSize : 100;
-    const filter = body.filter === 'registered' || body.filter === 'unregistered' ? body.filter : 'all';
+    const rawPageSize = typeof body.pageSize === 'number' ? body.pageSize : 100;
+    const pageSize = Math.min(10000, Math.max(1, rawPageSize));
     const skip = (page - 1) * pageSize;
+    const needsReviewFilter = body.needsReviewFilter as 'exclude' | 'only' | undefined;
     await ensurePrismaConnected();
 
-    // 作品数（フィルタ適用）。gameRegistered 列が未存在のDBではフィルタを無視
-    let workWhere: Record<string, unknown> = {};
-    if (filter === 'registered') workWhere = { gameRegistered: true, needsReview: false };
-    else if (filter === 'unregistered') workWhere = { gameRegistered: false };
+    // 使用作品DB: タグチェックのゲーム使用フォルダ（タグ済・人間確認・チェック待ち・旧AIタグ）
+    const GAME_FOLDERS = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'] as const;
+    let workWhere: Record<string, unknown>;
+    if (needsReviewFilter === 'only') {
+      // 要確認のみ: ゲーム使用フォルダ内で needsReview=true の作品（シミュ失敗追加分）
+      // 要注意（needs_review フォルダ）は除外＝作品DBはゲーム使用作品のみ
+      workWhere = {
+        manualTaggingFolder: { in: [...GAME_FOLDERS] },
+        needsReview: true,
+      };
+    } else {
+      workWhere = {
+        manualTaggingFolder: { in: [...GAME_FOLDERS] },
+        OR: [{ needsReview: false }, { needsReview: null }],
+      };
+    }
 
     let workCount: number;
+    let effectiveWhere: Record<string, unknown> = workWhere;
     try {
-      workCount = await prisma.work.count({
-        where: Object.keys(workWhere).length ? workWhere : undefined,
-      });
+      workCount = await prisma.work.count({ where: workWhere as any });
     } catch (err) {
-      console.warn('[load-from-db] count with gameRegistered failed (column may not exist), using all works:', err);
-      workWhere = {};
+      console.warn('[load-from-db] count failed (manualTaggingFolder/needsReview may not exist), fallback to all:', err);
+      effectiveWhere = {};
       workCount = await prisma.work.count();
     }
 
@@ -102,7 +139,7 @@ export async function POST(request: NextRequest) {
     let works: WorkWithTags;
     try {
       works = await prisma.work.findMany({
-        where: Object.keys(workWhere).length ? workWhere : undefined,
+        where: Object.keys(effectiveWhere).length ? (effectiveWhere as any) : undefined,
         include: {
           workTags: {
             include: {
@@ -120,7 +157,6 @@ export async function POST(request: NextRequest) {
       // Prisma はスキーマの全カラムを SELECT するため、gameRegistered 列が無いDBでは
       // findMany を再度呼んでも失敗する。生SQLで gameRegistered を除いて取得する。
       console.warn('[load-from-db] findMany failed (gameRegistered column may not exist), using raw SQL fallback:', err);
-      workWhere = {};
       const rawRows = await prisma.$queryRawUnsafe<
         Array<{
           id: string;
@@ -174,10 +210,12 @@ export async function POST(request: NextRequest) {
         tagSource: null,
         aiAnalyzed: null,
         humanChecked: null,
+        manualTaggingFolder: null,
       })) as WorkWithTags;
-      // gameRegistered 列が無いDBでは「登録済み」フィルタは 0 件とする（未登録のみ表示可能）
-      if (filter === 'registered') works = [];
     }
+
+    // タグランクを取得（derivedTags の A/B/C 表示用）
+    const tagRanks = getTagRanks();
 
     // 作品データを変換
     const worksData: LoadFromDbResponse['works'] = [];
@@ -207,6 +245,9 @@ export async function POST(request: NextRequest) {
             displayName: tag.displayName,
             confidence: workTag.derivedConfidence ?? 0.5,
             category: tag.category,
+            rank: tagRanks[tag.displayName] || '',
+            tagKey: tag.tagKey,
+            source: workTag.derivedSource || undefined,
           });
         } else if (tag.tagType === 'STRUCTURAL' && tag.category === 'CHARACTER') {
           characterTags.push(tag.displayName);
@@ -267,6 +308,22 @@ export async function POST(request: NextRequest) {
               seriesInfo,
               gameRegistered: (work as { gameRegistered?: boolean }).gameRegistered ?? false,
               tagSource: (work as { tagSource?: string | null }).tagSource as 'human' | 'ai' | null ?? null,
+              lastTaggingReasoning: (() => {
+                const v = (work as { lastTaggingReasoning?: string | null }).lastTaggingReasoning;
+                if (!v) return null;
+                try { return JSON.parse(v) as Record<string, unknown>; } catch { return null; }
+              })(),
+              lastCheckReasoning: (() => {
+                const v = (work as { lastCheckReasoning?: string | null }).lastCheckReasoning;
+                if (!v) return null;
+                try { return JSON.parse(v) as Record<string, unknown>; } catch { return null; }
+              })(),
+              lastCheckTagChanges: (() => {
+                const v = (work as { lastCheckTagChanges?: string | null }).lastCheckTagChanges;
+                if (!v) return null;
+                try { return JSON.parse(v) as { added?: string[]; removed?: string[]; newProposal?: string }; } catch { return null; }
+              })(),
+              manualTaggingFolder: (work as { manualTaggingFolder?: string | null }).manualTaggingFolder ?? null,
             });
     }
 

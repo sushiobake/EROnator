@@ -437,22 +437,21 @@ export async function PATCH(
     const isPostgres = (process.env.DATABASE_URL ?? '').startsWith('postgres');
     const gameEnabledFolders = ['tagged', 'needs_human_check', 'pending', 'legacy_ai'];
     const setGameEnabled = gameEnabledFolders.includes(manualTaggingFolder);
+    // needsReview と manualTaggingFolder の統一: 要注意フォルダなら needsReview=true、それ以外は needsReview=false
+    const setNeedsReview = manualTaggingFolder === 'needs_review';
+
     if (manualTaggingFolder === 'tagged') {
       const taggedAtIso = new Date().toISOString();
       if (isPostgres) {
         await prisma.$executeRawUnsafe(
-          setGameEnabled
-            ? 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $3'
-            : 'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL WHERE "workId" = $3',
+          'UPDATE "Work" SET manualTaggingFolder = $1, taggedAt = $2::timestamptz, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $3',
           manualTaggingFolder,
           taggedAtIso,
           workId
         );
       } else {
         await prisma.$executeRawUnsafe(
-          setGameEnabled
-            ? 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
-            : 'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+          'UPDATE Work SET manualTaggingFolder = ?, taggedAt = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?',
           manualTaggingFolder,
           taggedAtIso,
           workId
@@ -463,7 +462,9 @@ export async function PATCH(
         await prisma.$executeRawUnsafe(
           setGameEnabled
             ? 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL, "gameRegistered" = true, "needsReview" = false WHERE "workId" = $2'
-            : 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL WHERE "workId" = $2',
+            : setNeedsReview
+              ? 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL, "gameRegistered" = false, "needsReview" = true WHERE "workId" = $2'
+              : 'UPDATE "Work" SET manualTaggingFolder = $1, lastCheckTagChanges = NULL, "needsReview" = false WHERE "workId" = $2',
           manualTaggingFolder,
           workId
         );
@@ -471,7 +472,9 @@ export async function PATCH(
         await prisma.$executeRawUnsafe(
           setGameEnabled
             ? 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL, gameRegistered = 1, needsReview = 0 WHERE workId = ?'
-            : 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL WHERE workId = ?',
+            : setNeedsReview
+              ? 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL, gameRegistered = 0, needsReview = 1 WHERE workId = ?'
+              : 'UPDATE Work SET manualTaggingFolder = ?, lastCheckTagChanges = NULL, needsReview = 0 WHERE workId = ?',
           manualTaggingFolder,
           workId
         );

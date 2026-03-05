@@ -53,3 +53,6 @@ next-env.d.ts
 
 # sync timestamp (各環境で個別に管理)
 /data/last-sync.json
+
+# スクレイピング失敗時デバッグ用スクリーンショット
+/data/debug-screenshots/

@@ -102,12 +102,13 @@ export default function ImportWorkflow() {
   // 作品リスト
   const [workList, setWorkList] = useState<WorkListItem[]>([]);
   const [workListLoading, setWorkListLoading] = useState(false);
-  const [workListFilter, setWorkListFilter] = useState<'all' | 'noComment' | 'noTags' | 'needsReview'>('all');
+  // 作品＆コメント取得: コメント未取得の作品のみ表示（使用作品DBと被らない）
+  const workListFilter = 'noComment' as const;
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [selectedWorkIds, setSelectedWorkIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [totalWorks, setTotalWorks] = useState(0);
-  const PAGE_SIZE = 100;
+  const PAGE_SIZE = 200;
   
   // 一括・ChatGPT 折りたたみ
   const [bulkSectionOpen, setBulkSectionOpen] = useState(false);
@@ -128,6 +129,8 @@ export default function ImportWorkflow() {
   const [bulkCommentPhase012Running, setBulkCommentPhase012Running] = useState(false);
   const [bulkCommentPhase012Rounds, setBulkCommentPhase012Rounds] = useState(10);
   const [bulkCommentPhase012Background, setBulkCommentPhase012Background] = useState(false);
+  const [reserving, setReserving] = useState(false);
+  const [serverJobRunning, setServerJobRunning] = useState(false);
   
   // ファイルインポート（折りたたみ）
   const [showFileImport, setShowFileImport] = useState(false);
@@ -159,12 +162,6 @@ export default function ImportWorkflow() {
   const [approveLoading, setApproveLoading] = useState(false);
   /** プレビューで「ナシ」にしたタグ（承認時に取り込まない）key: workId_matched_displayName / workId_suggested_displayName / workId_character */
   const [rejectedPreviewKeys, setRejectedPreviewKeys] = useState<Set<string>>(new Set());
-
-  // タグ追加モーダル
-  const [addTagModal, setAddTagModal] = useState<{ workId: string; title: string } | null>(null);
-  const [addTagInput, setAddTagInput] = useState('');
-  const [addTagSuggestions, setAddTagSuggestions] = useState<Array<{ displayName: string; tagKey: string }>>([]);
-  const [addTagLoading, setAddTagLoading] = useState(false);
 
   // 統計を取得
   const fetchStats = async () => {
@@ -214,23 +211,36 @@ export default function ImportWorkflow() {
     }
   }, []);
 
+  // マウント時（タブ切替時含む）にサーバーのジョブ状態を確認
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('eronator.adminToken') : null;
+    if (!token) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const res = await fetch('/api/admin/bulk-job-status', { headers: { 'x-eronator-admin-token': token } });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && data.status === 'running') {
+          setServerJobRunning(true);
+          setBulkCommentPhase012Running(true);
+        }
+      } catch { /* ignore */ }
+    };
+    check();
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     if (!adminToken) return;
     fetchStats();
-    fetchWorkList('all', 1);
+    fetchWorkList('noComment', 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminToken]);
 
   useEffect(() => {
     if (!adminToken) return;
-    setCurrentPage(1);
-    fetchWorkList(workListFilter, 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workListFilter, adminToken]);
-
-  useEffect(() => {
-    if (!adminToken) return;
-    fetchWorkList(workListFilter, currentPage);
+    fetchWorkList('noComment', currentPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, adminToken]);
 
@@ -286,7 +296,7 @@ export default function ImportWorkflow() {
           setApiOffset(data.stats.nextSuggestedOffset);
         }
         fetchStats();
-        fetchWorkList(workListFilter);
+        fetchWorkList('noComment');
       } else {
         const errorMsg = data.error || 'インポート失敗';
         console.error('[ImportWorkflow] API error:', errorMsg, data);
@@ -336,7 +346,7 @@ export default function ImportWorkflow() {
       if (data.success) {
         setCommentResult({ success: data.fetched, failed: data.failed });
         fetchStats();
-        fetchWorkList(workListFilter);
+        fetchWorkList('noComment');
         setSelectedWorkIds(new Set());
       } else {
         alert(data.error || 'コメント取得失敗');
@@ -408,7 +418,7 @@ export default function ImportWorkflow() {
           };
         });
         setAnalysisPreview(preview);
-        fetchWorkList(workListFilter);
+        fetchWorkList('noComment');
         setSelectedWorkIds(new Set());
       } else if (data.error) {
         alert(data.error);
@@ -450,7 +460,7 @@ export default function ImportWorkflow() {
         setAnalysisPreview({});
         setAnalyzeResult([]);
         fetchStats();
-        fetchWorkList(workListFilter, currentPage);
+        fetchWorkList('noComment', currentPage);
         alert(`✅ ${data.stats?.saved ?? entries.length}件を保存しました`);
       } else {
         alert(data.error || '保存に失敗しました');
@@ -518,7 +528,7 @@ export default function ImportWorkflow() {
       const fetched = commentData.fetched ?? commentData.stats?.success ?? 0;
       setApiCommentBulkLog(prev => [...prev, `✅ コメント取得完了: ${fetched}件`]);
       fetchStats();
-      fetchWorkList(workListFilter);
+      fetchWorkList('noComment');
       setApiCommentBulkLog(prev => [...prev, '🎉 一括完了']);
     } catch (e) {
       setApiCommentBulkLog(prev => [...prev, `❌ エラー: ${e}`]);
@@ -581,7 +591,7 @@ export default function ImportWorkflow() {
       setBatchLog(prev => [...prev, '🎉 一括処理完了！']);
 
       fetchStats();
-      fetchWorkList(workListFilter);
+      fetchWorkList('noComment');
     } catch (error) {
       setBatchLog(prev => [...prev, `❌ エラー: ${error}`]);
     } finally {
@@ -650,15 +660,11 @@ export default function ImportWorkflow() {
                 });
               }
             } else if (obj.type === 'done') {
-              if (obj.success !== false) {
-                setProgress('comment', null);
-                setProgress('phase0', null);
-                setProgress('phase12', null);
-              }
+              // ProgressPanel のポーリングが done→履歴保存→クリアを処理するため
+              // ここでは即座にクリアしない（サーバー側 progressStore が自動管理）
               fetchStats();
-              fetchWorkList(workListFilter);
+              fetchWorkList('noComment');
             } else if (obj.type === 'error') {
-              // ① エラー時も進捗は残す（Phase12が消えたように見える問題を回避）
               alert(obj.error || 'エラーが発生しました');
             }
           } catch {
@@ -670,15 +676,9 @@ export default function ImportWorkflow() {
         try {
           const obj = JSON.parse(buffer) as { type?: string; success?: boolean; error?: string };
           if (obj.type === 'done') {
-            if (obj.success !== false) {
-              setProgress('comment', null);
-              setProgress('phase0', null);
-              setProgress('phase12', null);
-            }
             fetchStats();
-            fetchWorkList(workListFilter);
+            fetchWorkList('noComment');
           } else if (obj.type === 'error') {
-            // ① エラー時も進捗は残す
             alert(obj.error || 'エラーが発生しました');
           }
         } catch {
@@ -686,91 +686,33 @@ export default function ImportWorkflow() {
         }
       }
     } catch (e) {
-      // ① エラー時も進捗は残す
       alert(e instanceof Error ? e.message : '一括実行に失敗しました');
     } finally {
       setBulkCommentPhase012Running(false);
+      setServerJobRunning(false);
     }
   };
 
-  // 要注意フラグを更新
-  const handleToggleNeedsReview = async (workId: string, currentValue: boolean) => {
+  const handleReserveBulk = async () => {
+    if (!adminToken) { alert('管理トークンを入力してください'); return; }
+    const count = bulkCommentPhase012Rounds * 8;
+    setReserving(true);
     try {
-      const res = await fetch('/api/admin/works/update', {
+      const res = await fetch('/api/admin/bulk-job-queue', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'setNeedsReview',
-          workId,
-          needsReview: !currentValue
-        }),
-      });
-      if (res.ok) {
-        setWorkList(prev => prev.map(w => 
-          w.workId === workId ? { ...w, needsReview: !currentValue } : w
-        ));
-      }
-    } catch (error) {
-      console.error('Failed to update needsReview:', error);
-    }
-  };
-
-  // タグ候補を検索
-  const searchTagSuggestions = async (query: string) => {
-    if (!adminToken) return;
-    if (query.length < 1) {
-      setAddTagSuggestions([]);
-      return;
-    }
-    try {
-      const res = await fetch(`/api/admin/works/update?q=${encodeURIComponent(query)}`, {
-        headers: { 'x-eronator-admin-token': adminToken },
-      });
-      const data = await res.json();
-      setAddTagSuggestions(data.tags || []);
-    } catch (error) {
-      console.error('Failed to search tags:', error);
-    }
-  };
-
-  // タグを追加
-  const handleAddTag = async (workId: string, tagName: string) => {
-    if (!adminToken) {
-      alert('管理トークンを入力してください');
-      return;
-    }
-    if (!tagName.trim()) return;
-    
-    setAddTagLoading(true);
-    try {
-      const res = await fetch('/api/admin/works/update', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-eronator-admin-token': adminToken,
-        },
-        body: JSON.stringify({
-          action: 'addTag',
-          workId,
-          tagName: tagName.trim()
-        }),
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({ count }),
       });
       const data = await res.json();
       if (data.success) {
-        const scrollY = window.scrollY;
-        await fetchWorkList(workListFilter, currentPage);
-        requestAnimationFrame(() => { window.scrollTo(0, scrollY); });
-        setAddTagModal(null);
-        setAddTagInput('');
-        setAddTagSuggestions([]);
+        alert(`${count}件を予約しました`);
       } else {
-        alert(data.error || 'タグの追加に失敗しました');
+        alert(data.message || '予約失敗');
       }
-    } catch (error) {
-      console.error('Failed to add tag:', error);
-      alert('タグの追加に失敗しました');
+    } catch {
+      alert('予約失敗');
     } finally {
-      setAddTagLoading(false);
+      setReserving(false);
     }
   };
 
@@ -797,7 +739,7 @@ export default function ImportWorkflow() {
         }),
       });
       if (res.ok) {
-        await fetchWorkList(workListFilter, currentPage);
+        await fetchWorkList('noComment', currentPage);
         requestAnimationFrame(() => { window.scrollTo(0, scrollY); });
       }
     } catch (error) {
@@ -1133,7 +1075,7 @@ export default function ImportWorkflow() {
                               setRejectedPreviewKeys(new Set());
                               const scrollY = window.scrollY;
                               fetchStats();
-                              await fetchWorkList(workListFilter, currentPage);
+                              await fetchWorkList('noComment', currentPage);
                               requestAnimationFrame(() => { window.scrollTo(0, scrollY); });
                             } else {
                               alert(`インポートエラー: ${data.error}`);
@@ -1303,17 +1245,31 @@ export default function ImportWorkflow() {
           </label>
           <button
             onClick={handleBulkCommentPhase012}
-            disabled={bulkCommentPhase012Running || !adminToken}
+            disabled={bulkCommentPhase012Running || serverJobRunning || !adminToken}
             style={{
               padding: '6px 14px',
-              backgroundColor: bulkCommentPhase012Running || !adminToken ? '#ccc' : '#28a745',
+              backgroundColor: bulkCommentPhase012Running || serverJobRunning || !adminToken ? '#ccc' : '#28a745',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: bulkCommentPhase012Running || !adminToken ? 'not-allowed' : 'pointer',
+              cursor: bulkCommentPhase012Running || serverJobRunning || !adminToken ? 'not-allowed' : 'pointer',
             }}
           >
-            {bulkCommentPhase012Running ? '実行中...' : '一括（コメント+Phase0+1+2）'}
+            {bulkCommentPhase012Running || serverJobRunning ? '実行中...' : '一括（コメント+Phase0+1+2）'}
+          </button>
+          <button
+            onClick={handleReserveBulk}
+            disabled={reserving || !adminToken}
+            style={{
+              padding: '6px 14px',
+              backgroundColor: reserving || !adminToken ? '#ccc' : '#1976d2',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: reserving || !adminToken ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {reserving ? '予約中...' : '予約'}
           </button>
         </div>
         {commentResult && (
@@ -1448,7 +1404,7 @@ export default function ImportWorkflow() {
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <h3 style={{ margin: 0 }}>📋 作品リスト ({totalWorks}件中 {workList.length}件表示)</h3>
+            <h3 style={{ margin: 0 }}>📋 コメント未取得の作品リスト ({totalWorks}件中 {workList.length}件表示・最大{PAGE_SIZE}件)</h3>
             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
               <button onClick={handleSelectAll} style={{ padding: '5px 10px', fontSize: '12px', cursor: 'pointer' }}>
                 全選択
@@ -1459,26 +1415,10 @@ export default function ImportWorkflow() {
               <span style={{ fontSize: '13px', color: '#666' }}>選択中: {selectedWorkIds.size}件</span>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '5px' }}>
-            {(['all', 'noComment', 'noTags', 'needsReview'] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setWorkListFilter(f)}
-                style={{
-                  padding: '8px 15px',
-                  backgroundColor: workListFilter === f ? (f === 'needsReview' ? '#dc3545' : '#007bff') : '#e9ecef',
-                  color: workListFilter === f ? 'white' : 'black',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '13px'
-                }}
-              >
-                {f === 'all' ? '全て' : f === 'noComment' ? 'コメント未取得' : f === 'noTags' ? 'タグ未抽出' : '⚠️ 要注意'}
-              </button>
-            ))}
+          <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+            <span style={{ fontSize: '13px', color: '#666' }}>コメント未取得の作品のみ</span>
             <button
-              onClick={() => { fetchStats(); fetchWorkList(workListFilter, currentPage); }}
+              onClick={() => { fetchStats(); fetchWorkList('noComment', currentPage); }}
               style={{
                 padding: '8px 15px',
                 backgroundColor: '#6c757d',
@@ -1501,20 +1441,19 @@ export default function ImportWorkflow() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ backgroundColor: '#e0e0e0' }}>
-                  <th style={{ padding: '10px', textAlign: 'center', width: '50px' }}>選択</th>
-                  <th style={{ padding: '10px', textAlign: 'left' }}>タイトル</th>
-                  <th style={{ padding: '10px', textAlign: 'left', width: '400px' }}>
+                  <th style={{ padding: '4px 6px', textAlign: 'center', width: '40px' }}>選択</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', minWidth: '180px' }}>タイトル</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', minWidth: '380px' }}>
                     タグ
-                    <div style={{ fontSize: '10px', fontWeight: 'normal', color: '#666', marginTop: '2px' }}>
-                      <span style={{ backgroundColor: '#e8d5ff', padding: '1px 4px', borderRadius: '4px', marginRight: '4px' }}>S</span>
-                      <span style={{ backgroundColor: '#d4edda', padding: '1px 4px', borderRadius: '4px', marginRight: '4px' }}>A</span>
-                      <span style={{ backgroundColor: '#fff3cd', padding: '1px 4px', borderRadius: '4px', marginRight: '4px' }}>B</span>
-                      <span style={{ backgroundColor: '#e9ecef', padding: '1px 4px', borderRadius: '4px', marginRight: '4px' }}>★未分類</span>
-                      <span style={{ backgroundColor: '#cfe2ff', padding: '1px 4px', borderRadius: '4px' }}>X</span>
+                    <div style={{ fontSize: '9px', fontWeight: 'normal', color: '#666', marginTop: '1px' }}>
+                      <span style={{ backgroundColor: '#e8d5ff', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>S</span>
+                      <span style={{ backgroundColor: '#d4edda', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>A</span>
+                      <span style={{ backgroundColor: '#fff3cd', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>B</span>
+                      <span style={{ backgroundColor: '#e9ecef', padding: '1px 3px', borderRadius: '3px', marginRight: '3px' }}>★未分類</span>
+                      <span style={{ backgroundColor: '#cfe2ff', padding: '1px 3px', borderRadius: '3px' }}>X</span>
                     </div>
                   </th>
-                  <th style={{ padding: '10px', textAlign: 'left', width: '350px' }}>コメント</th>
-                  <th style={{ padding: '10px', textAlign: 'center', width: '40px' }} title="要注意フラグ">⚠️</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', minWidth: '280px' }}>コメント</th>
                 </tr>
               </thead>
               <tbody>
@@ -1523,10 +1462,10 @@ export default function ImportWorkflow() {
                     key={work.workId} 
                     style={{ 
                       borderBottom: '1px solid #ddd',
-                      backgroundColor: work.needsReview ? '#fff5f5' : selectedWorkIds.has(work.workId) ? '#e8f4ff' : 'transparent'
+                      backgroundColor: selectedWorkIds.has(work.workId) ? '#e8f4ff' : 'transparent'
                     }}
                   >
-                    <td style={{ padding: '10px', textAlign: 'center' }}>
+                    <td style={{ padding: '4px 6px', textAlign: 'center', verticalAlign: 'top' }}>
                       <input 
                         type="checkbox" 
                         checked={selectedWorkIds.has(work.workId)}
@@ -1543,10 +1482,10 @@ export default function ImportWorkflow() {
                         }}
                       />
                     </td>
-                    <td style={{ padding: '10px' }}>
-                      <strong>{work.title}</strong>
-                      <div style={{ fontSize: '12px', color: '#666' }}>{work.authorName}</div>
-                      <div style={{ fontSize: '11px', color: '#999' }}>{work.workId}</div>
+                    <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
+                      <strong style={{ fontSize: '12px' }}>{work.title}</strong>
+                      <div style={{ fontSize: '11px', color: '#666' }}>{work.authorName}</div>
+                      <div style={{ fontSize: '10px', color: '#999' }}>{work.workId}</div>
                       {/* タイトル不一致の警告 */}
                       {importPreview && (() => {
                         const previewWork = importPreview.works.find(pw => pw.workId === work.workId);
@@ -1560,7 +1499,7 @@ export default function ImportWorkflow() {
                         return null;
                       })()}
                     </td>
-                    <td style={{ padding: '10px' }}>
+                    <td style={{ padding: '4px 6px', verticalAlign: 'top' }}>
                       {/* 作品リスト・タグ欄: S / 追加S / A / B / C を色とラベルで統一 */}
                       {work.officialTags && work.officialTags.length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginBottom: '4px' }}>
@@ -1810,61 +1749,20 @@ export default function ImportWorkflow() {
                             {tag.displayName}
                           </span>
                         ))}
-                        {/* タグ追加ボタン */}
-                        <button
-                          onClick={() => setAddTagModal({ workId: work.workId, title: work.title })}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '22px',
-                            height: '22px',
-                            backgroundColor: '#007bff',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '50%',
-                            cursor: 'pointer',
-                            fontSize: '14px',
-                            fontWeight: 'bold',
-                            lineHeight: 1
-                          }}
-                          title="タグを手動追加"
-                        >+</button>
                       </div>
                       
                       {/* タグが一切ない場合（OFFICIALもDERIVEDもない場合） */}
                       {(!work.officialTags || work.officialTags.length === 0) && (!work.additionalSTags || work.additionalSTags.length === 0) && work.derivedTags.length === 0 && !work.structuralTags?.length && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ color: '#999', fontSize: '12px' }}>
-                            {work.commentText ? 'タグなし' : 'コメント未取得'}
-                          </span>
-                          <button
-                            onClick={() => setAddTagModal({ workId: work.workId, title: work.title })}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              width: '22px',
-                              height: '22px',
-                              backgroundColor: '#007bff',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '50%',
-                              cursor: 'pointer',
-                              fontSize: '14px',
-                              fontWeight: 'bold',
-                              lineHeight: 1
-                            }}
-                            title="タグを手動追加"
-                          >+</button>
-                        </div>
+                        <span style={{ color: '#999', fontSize: '11px' }}>
+                          {work.commentText ? 'タグなし' : 'コメント未取得'}
+                        </span>
                       )}
                     </td>
-                    <td style={{ padding: '10px', fontSize: '12px', color: '#666' }}>
+                    <td style={{ padding: '4px 6px', fontSize: '11px', color: '#666', verticalAlign: 'top' }}>
                       {work.commentText ? (
                         <div>
                           <div style={{ 
-                            maxHeight: expandedComments.has(work.workId) ? 'none' : '60px',
+                            maxHeight: expandedComments.has(work.workId) ? 'none' : '44px',
                             overflow: 'hidden',
                             whiteSpace: 'pre-wrap',
                             wordBreak: 'break-word'
@@ -1900,19 +1798,6 @@ export default function ImportWorkflow() {
                       ) : (
                         <span style={{ color: '#dc3545' }}>❌ 未取得</span>
                       )}
-                    </td>
-                    <td style={{ padding: '10px', textAlign: 'center' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={work.needsReview}
-                        onChange={() => handleToggleNeedsReview(work.workId, work.needsReview)}
-                        title="要注意フラグ"
-                        style={{ 
-                          width: '18px', 
-                          height: '18px',
-                          accentColor: '#dc3545'
-                        }}
-                      />
                     </td>
                   </tr>
                 ))}
@@ -2032,126 +1917,6 @@ export default function ImportWorkflow() {
           </div>
         )}
       </div>
-
-      {/* タグ追加モーダル */}
-      {addTagModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            width: '400px',
-            maxHeight: '80vh',
-            overflowY: 'auto'
-          }}>
-            <h3 style={{ marginTop: 0 }}>タグを手動追加</h3>
-            <p style={{ fontSize: '13px', color: '#666', marginBottom: '15px' }}>
-              {addTagModal.title}
-            </p>
-            
-            <div style={{ marginBottom: '15px' }}>
-              <input
-                type="text"
-                value={addTagInput}
-                onChange={e => {
-                  setAddTagInput(e.target.value);
-                  searchTagSuggestions(e.target.value);
-                }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && addTagInput.trim()) {
-                    handleAddTag(addTagModal.workId, addTagInput);
-                  }
-                }}
-                placeholder="タグ名を入力..."
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  fontSize: '14px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  boxSizing: 'border-box'
-                }}
-                autoFocus
-              />
-              
-              {/* 候補リスト */}
-              {addTagSuggestions.length > 0 && (
-                <div style={{
-                  marginTop: '5px',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  maxHeight: '150px',
-                  overflowY: 'auto'
-                }}>
-                  {addTagSuggestions.map((tag, i) => (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        setAddTagInput(tag.displayName);
-                        setAddTagSuggestions([]);
-                      }}
-                      style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        backgroundColor: i % 2 === 0 ? '#f8f9fa' : 'white',
-                        borderBottom: i < addTagSuggestions.length - 1 ? '1px solid #eee' : 'none'
-                      }}
-                      onMouseOver={e => (e.currentTarget.style.backgroundColor = '#e8f4ff')}
-                      onMouseOut={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? '#f8f9fa' : 'white')}
-                    >
-                      {tag.displayName}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setAddTagModal(null);
-                  setAddTagInput('');
-                  setAddTagSuggestions([]);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#e9ecef',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => handleAddTag(addTagModal.workId, addTagInput)}
-                disabled={addTagLoading || !addTagInput.trim()}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: addTagLoading || !addTagInput.trim() ? '#ccc' : '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: addTagLoading || !addTagInput.trim() ? 'not-allowed' : 'pointer'
-                }}
-              >
-                {addTagLoading ? '追加中...' : '追加'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* AI指示プレビュー用モーダル */}
       {aiPromptModal.open && (

@@ -64,11 +64,20 @@ export async function toQuestionResponse(
     };
   }
   if (entry.kind === 'HARD_CONFIRM') {
+    let displayText: string;
+    if (entry.hardConfirmType === 'TITLE_INITIAL') {
+      displayText = `タイトルが「${entry.hardConfirmValue}」から始まる？`;
+    } else if (entry.hardConfirmType === 'CHARACTER') {
+      const tag = entry.hardConfirmValue
+        ? await prisma.tag.findUnique({ where: { tagKey: entry.hardConfirmValue }, select: { displayName: true } })
+        : null;
+      displayText = tag?.displayName ? `${tag.displayName}というキャラクターが登場する？` : '〇〇というキャラクターが登場する？';
+    } else {
+      displayText = `作者（サークル）は「${entry.hardConfirmValue}」ですか？`;
+    }
     return {
       kind: entry.kind,
-      displayText: entry.hardConfirmType === 'TITLE_INITIAL'
-        ? `タイトルが「${entry.hardConfirmValue}」から始まる？`
-        : `作者（サークル）は「${entry.hardConfirmValue}」ですか？`,
+      displayText,
       hardConfirmType: entry.hardConfirmType,
       hardConfirmValue: entry.hardConfirmValue,
       exploreTagKind: entry.exploreTagKind,

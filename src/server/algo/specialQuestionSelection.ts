@@ -15,6 +15,7 @@ import {
   getAuthorCharTypeQuestionText,
 } from '@/server/config/specialQuestionsLoader';
 import { prisma } from '@/server/db/client';
+import { getSimWorkDataMap, type SimWorkData } from '@/server/game/engine';
 import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
 
 export type SpecialQuestionType =
@@ -36,6 +37,11 @@ export interface SpecialQuestionResult {
   popularityThreshold?: number;
   /** Type TITLE_SYLLABLE / TITLE_SYLLABLE_2: 対象文字（titleReadingInitial が含まれるか） */
   syllableChars?: string[];
+  /** Type TITLE_SYLLABLE: ranges[].id（編集用） */
+  titleSyllableRangeId?: string;
+  /** Type TITLE_SYLLABLE_2: 親rangeId と 枝（編集用） */
+  titleSyllable2RangeId?: string;
+  titleSyllable2Branch?: 'yesBranch' | 'noBranch';
   /** Type AUTHOR_CHAR_TYPE: 聞く文字種 */
   authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
 }
@@ -183,10 +189,13 @@ export async function selectSpecialQuestion(
 
   // Type 5: タイトル文字種（漢字 vs ひらがなorカタカナ の2択からランダム）
   if ((!allowedTypes || allowedTypes.includes('TITLE_CHAR_TYPE')) && !usedSpecialTypes.has('TITLE_CHAR_TYPE')) {
-    const works = await prisma.work.findMany({
-      where: { workId: { in: workIds } },
-      select: { workId: true, title: true },
-    });
+    const _swd = getSimWorkDataMap();
+    const works = _swd
+      ? workIds.map(id => _swd.get(id)).filter((w): w is SimWorkData => w != null)
+      : await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true, title: true },
+        });
     const workCharTypeMap = new Map<string, TitleCharType>();
     for (const w of works) {
       workCharTypeMap.set(w.workId, getTitleCharType(w.title ?? ''));
@@ -220,10 +229,13 @@ export async function selectSpecialQuestion(
   // Type 2: 有名度（config.POPULARITY.popularityThreshold、デフォルト30）
   if ((!allowedTypes || allowedTypes.includes('POPULARITY')) && !usedSpecialTypes.has('POPULARITY')) {
     const threshold = config.POPULARITY?.popularityThreshold ?? 30;
-    const works = await prisma.work.findMany({
-      where: { workId: { in: workIds } },
-      select: { workId: true, popularityBase: true, popularityPlayBonus: true },
-    });
+    const _swd2 = getSimWorkDataMap();
+    const works = _swd2
+      ? workIds.map(id => _swd2.get(id)).filter((w): w is SimWorkData => w != null)
+      : await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true, popularityBase: true, popularityPlayBonus: true },
+        });
     const workPopularityMap = new Map<string, number>();
     for (const w of works) {
       const total = (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
@@ -258,10 +270,13 @@ export async function selectSpecialQuestion(
         ? config.TITLE_SYLLABLE
         : [];
     if (syllableOptions.length > 0) {
-      const works = await prisma.work.findMany({
-        where: { workId: { in: workIds } },
-        select: { workId: true, titleReadingInitial: true },
-      });
+      const _swd3 = getSimWorkDataMap();
+      const works = _swd3
+        ? workIds.map(id => _swd3.get(id)).filter((w): w is SimWorkData => w != null)
+        : await prisma.work.findMany({
+            where: { workId: { in: workIds } },
+            select: { workId: true, titleReadingInitial: true },
+          });
       const workInitialMap = new Map<string, string | null>();
       for (const w of works) {
         workInitialMap.set(w.workId, w.titleReadingInitial ?? null);
@@ -288,6 +303,7 @@ export async function selectSpecialQuestion(
             specialQuestionType: 'TITLE_SYLLABLE',
             displayText: questionText,
             syllableChars: [...opt.chars],
+            titleSyllableRangeId: opt.id,
           },
         });
       }
@@ -305,10 +321,13 @@ export async function selectSpecialQuestion(
       const branch = rangeId ? branches[rangeId] : null;
       const subBranch = lastSyllable.answer === 'YES' ? branch?.yesBranch : branch?.noBranch;
       if (subBranch?.chars?.length) {
-        const works = await prisma.work.findMany({
-          where: { workId: { in: workIds } },
-          select: { workId: true, titleReadingInitial: true },
-        });
+        const _swd4 = getSimWorkDataMap();
+        const works = _swd4
+          ? workIds.map(id => _swd4.get(id)).filter((w): w is SimWorkData => w != null)
+          : await prisma.work.findMany({
+              where: { workId: { in: workIds } },
+              select: { workId: true, titleReadingInitial: true },
+            });
         const workInitialMap = new Map<string, string | null>();
         for (const w of works) {
           workInitialMap.set(w.workId, w.titleReadingInitial ?? null);
@@ -328,6 +347,8 @@ export async function selectSpecialQuestion(
             specialQuestionType: 'TITLE_SYLLABLE_2',
             displayText: questionText,
             syllableChars: [...subBranch.chars],
+            titleSyllable2RangeId: rangeId ?? undefined,
+            titleSyllable2Branch: lastSyllable.answer === 'YES' ? 'yesBranch' : 'noBranch',
           },
         });
       }
@@ -336,10 +357,13 @@ export async function selectSpecialQuestion(
 
   // 救済: AUTHOR_CHAR_TYPE（作者名の文字種）
   if ((!allowedTypes || allowedTypes.includes('AUTHOR_CHAR_TYPE')) && !usedSpecialTypes.has('AUTHOR_CHAR_TYPE')) {
-    const works = await prisma.work.findMany({
-      where: { workId: { in: workIds } },
-      select: { workId: true, authorName: true },
-    });
+    const _swd5 = getSimWorkDataMap();
+    const works = _swd5
+      ? workIds.map(id => _swd5.get(id)).filter((w): w is SimWorkData => w != null)
+      : await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true, authorName: true },
+        });
     const workAuthorCharMap = new Map<string, ReturnType<typeof getAuthorCharType>>();
     for (const w of works) {
       workAuthorCharMap.set(w.workId, getAuthorCharType(w.authorName ?? ''));

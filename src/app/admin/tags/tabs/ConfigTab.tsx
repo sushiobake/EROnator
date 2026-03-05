@@ -6,6 +6,7 @@
 
 import { JSX, useState, type ReactNode } from 'react';
 import { RANK_BG, RANK_TEXT } from '@/app/admin/constants/rankColors';
+import { DEFAULT_THINKING } from '@/server/config/schema';
 
 interface ConfigTabProps {
   config: any;
@@ -157,6 +158,9 @@ export default function ConfigTab({
               <FlowRow q="Q24" chips={[{ ...FLOW_COLORS.rescue, label: '救済（条件満たすときのみ）' }]} />
               <FlowRow q={`Q25-${config?.flow?.maxQuestions ?? 35}`} chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }, { ...FLOW_COLORS.reveal, label: 'REVEAL' }]} />
             </div>
+            <p style={{ marginTop: '0.5rem', marginBottom: 0, fontSize: '0.85rem', color: '#555' }}>
+              確認（黄）の補足: 20問目まで＝タイトル頭文字を優先。21問目以降＝タイトル頭文字・作者・キャラクターの3種類をランダムに選択（キャラがなければ2種類）。
+            </p>
             <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               <span style={{ background: FLOW_COLORS.normal.bg, color: FLOW_COLORS.normal.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>紫: 通常</span>
               <span style={{ background: FLOW_COLORS.special.bg, color: FLOW_COLORS.special.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>濃紫: 特別</span>
@@ -165,6 +169,63 @@ export default function ConfigTab({
               <span style={{ background: FLOW_COLORS.rescue.bg, color: FLOW_COLORS.rescue.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>オレンジ: 救済</span>
             </div>
           </section>
+
+          {/* 「考え中」の表記（折りたたみ） */}
+          <CollapsibleSection id="config-thinking" title="「考え中」の表記" defaultOpen={true}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '1rem' }}>
+              回答送信後、次の質問が返るまでの「考え中」表示の文言を編集できます。有効候補数（EC）に応じて early / mid / late / closing の4段階で切り替わります。各レベルに最大5個まで登録でき、ランダムまたは順番に表示されます。
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label>
+                <strong>表示方法</strong>
+                <span style={{ display: 'block', marginTop: '0.35rem' }}>複数文言があるときの出し方。sequential＝順番に（同じ文言の連続を避ける）、random＝ランダム。</span>
+                <select
+                  value={(config.thinking ?? DEFAULT_THINKING).displayMode}
+                  onChange={(e) => {
+                    const cur = config.thinking ?? DEFAULT_THINKING;
+                    updateConfig(['thinking'], { ...cur, displayMode: e.target.value as 'random' | 'sequential' });
+                  }}
+                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                >
+                  <option value="sequential">順番に表示</option>
+                  <option value="random">ランダムに表示</option>
+                </select>
+              </label>
+            </div>
+            {(['early', 'mid', 'late', 'closing'] as const).map((level) => {
+              const labels = { early: 'early（EC&gt;500）', mid: 'mid（50&lt;EC≤500）', late: 'late（10&lt;EC≤50）', closing: 'closing（EC≤10）' };
+              const texts = (config.thinking ?? DEFAULT_THINKING)[level];
+              return (
+                <div key={level} style={{ marginBottom: '1rem', padding: '0.75rem', border: '1px solid #eee', borderRadius: '4px' }}>
+                  <strong>{labels[level]}</strong>
+                  <span style={{ display: 'block', marginTop: '0.25rem', fontWeight: 'normal', color: '#666', fontSize: '0.9rem' }}>最大5件</span>
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} style={{ marginTop: '0.5rem' }}>
+                      <input
+                        type="text"
+                        value={texts[i] ?? ''}
+                        onChange={(e) => {
+                          const cur = config.thinking ?? DEFAULT_THINKING;
+                          const next = [...texts];
+                          const v = e.target.value;
+                          if (v) {
+                            next[i] = v;
+                          } else {
+                            next.splice(i, 1);
+                          }
+                          const filtered = next.filter(Boolean);
+                          const final = filtered.length > 0 ? filtered : [DEFAULT_THINKING[level][0]];
+                          updateConfig(['thinking'], { ...cur, [level]: final });
+                        }}
+                        placeholder={i === 0 ? '文言を入力（1件以上必須）' : '追加（任意）'}
+                        style={{ width: '100%', padding: '0.5rem' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </CollapsibleSection>
 
           {/* 答え合わせ・確認質問（折りたたみ） */}
           <CollapsibleSection id="config-reveal" title="答え合わせ・確認質問のタイミング">
