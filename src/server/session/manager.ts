@@ -307,7 +307,7 @@ export class SessionManager {
 
   /**
    * 重みのスナップショットを保存（修正機能用）
-   * 別テーブル SessionWeightsSnapshot に 1 行挿入するだけ（セッション行は触らない）
+   * 別テーブル SessionWeightsSnapshot に upsert（REVEAL→NO の二重クリック等で重複時は上書き）
    */
   static async saveWeightsSnapshot(
     sessionId: string,
@@ -318,12 +318,11 @@ export class SessionManager {
     for (const w of weights) {
       weightsMap[w.workId] = w.weight;
     }
-    await prisma.sessionWeightsSnapshot.create({
-      data: {
-        sessionId,
-        qIndex,
-        weightsJson: JSON.stringify(weightsToStored(weightsMap)),
-      },
+    const weightsJson = JSON.stringify(weightsToStored(weightsMap));
+    await prisma.sessionWeightsSnapshot.upsert({
+      where: { sessionId_qIndex: { sessionId, qIndex } },
+      create: { sessionId, qIndex, weightsJson },
+      update: { weightsJson },
     });
   }
 
