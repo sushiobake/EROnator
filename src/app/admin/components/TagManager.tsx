@@ -604,8 +604,8 @@ export default function TagManager({ adminToken }: Props) {
           if (diff !== 0) return mult * diff;
         }
         if (sortBy === 'rank') {
-          const ra = RANK_ORDER[(ta ? getUnifiedRank(ta) : (a.rank as UnifiedRank)) ?? 'N'];
-          const rb = RANK_ORDER[(tb ? getUnifiedRank(tb) : (b.rank as UnifiedRank)) ?? 'N'];
+          const ra = RANK_ORDER[(ta ? getUnifiedRank(ta) : (a.type === 'orphan' ? (a.rank as UnifiedRank) : 'N')) ?? 'N'];
+          const rb = RANK_ORDER[(tb ? getUnifiedRank(tb) : (b.type === 'orphan' ? (b.rank as UnifiedRank) : 'N')) ?? 'N'];
           const diff = ra - rb;
           if (diff !== 0) return mult * diff;
         }

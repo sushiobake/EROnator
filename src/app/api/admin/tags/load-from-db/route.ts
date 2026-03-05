@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
 
       // タグを分類
       const officialTags: string[] = [];
-      const derivedTags: Array<{ displayName: string; confidence: number; category: string | null }> = [];
+      const derivedTags: Array<{ displayName: string; confidence: number; category: string | null; rank?: string; tagKey?: string; source?: string }> = [];
       const characterTags: string[] = [];
 
       for (const workTag of work.workTags) {

@@ -2816,7 +2816,7 @@ export default function AdminTagsPage() {
               {/* 全選択/解除 */}
               <div style={{ marginBottom: '1rem' }}>
                 <button
-                  onClick={toggleAllSelection}
+                  onClick={() => toggleAllSelection(parseResult.works)}
                   style={{
                     padding: '0.5rem 1rem',
                     backgroundColor: '#666',
