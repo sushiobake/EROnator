@@ -122,7 +122,7 @@ interface StageProps {
   /** PCのみ：true で白板を広い幅に（おすすめ5件表示時）。USE_NARROW_WHITEBOARD が false のときは無視され常に広い */
   whiteboardWide?: boolean;
   /** characterVariant='thinking' のとき、どの考え中画像を使うか。未指定なら inari_thinking.png */
-  thinkingSubType?: 'opening' | 'early' | 'mid' | 'late' | 'closing' | 'endingCorrect' | 'endingWrong';
+  thinkingSubType?: 'opening' | 'early' | 'mid' | 'late' | 'closing' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList';
 }
 
 function getScale(): number {
