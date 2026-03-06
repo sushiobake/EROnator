@@ -6,6 +6,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useMediaQuery } from './useMediaQuery';
 
 interface DebugPayload {
   step: number;
@@ -97,6 +98,15 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanelProps) {
+  const isMobile = useMediaQuery(768);
+  const topGapAfter = useMemo(
+    () => (debug ? debug.after.top1Score - debug.after.top2Score : 0),
+    [debug?.after?.top1Score, debug?.after?.top2Score]
+  );
+
+  // スマホでは表示しない（フックは上で全て実行済み）
+  if (isMobile) return null;
+
   // 左上に固定。ヘッダー風ではなく常に角に配置。
   const topStyle = { top: '20px', left: '20px', width: '510px', maxWidth: 'calc(100vw - 48px)' };
 
@@ -143,10 +153,6 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
     );
   }
 
-  const topGapAfter = useMemo(() => {
-    return debug.after.top1Score - debug.after.top2Score;
-  }, [debug.after.top1Score, debug.after.top2Score]);
-
   return (
     <div
       style={{
@@ -157,7 +163,7 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
         border: '2px solid #0070f3',
         borderRadius: '8px',
         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        maxHeight: '65vh',
+        maxHeight: '88vh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

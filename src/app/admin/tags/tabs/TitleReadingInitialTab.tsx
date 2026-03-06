@@ -177,7 +177,7 @@ export default function TitleReadingInitialTab({ adminToken }: Props) {
     <section style={{ marginBottom: '0.75rem' }}>
       <h2 style={{ marginBottom: '0.35rem', fontSize: '1.1rem', fontWeight: 600 }}>作品頭文字</h2>
       <p style={{ color: '#666', marginBottom: '0.35rem' }}>
-        漢字始まりの作品のみ表示（コメント取得済み or ゲーム使用 or タグ済み）。頭文字を確認・編集し、確認済みにすると一覧から非表示になります。
+        漢字始まりの作品のみ表示。<strong>未確認</strong>＝ゲーム使用の作品のみ。<strong>確認済み</strong>＝従来どおり（コメント取得済み or ゲーム使用 or タグ済み）の確認済み。頭文字を確認・編集し、確認済みにすると一覧から非表示になります。
       </p>
 
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>

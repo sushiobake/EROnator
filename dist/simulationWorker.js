@@ -812,16 +812,25 @@ function setWorkTagMatrixDirect(data) {
   cachedMatrix = data;
 }
 function getWorkTagMatrix() {
-  if (process.env.DISABLE_WORKTAG_MATRIX === "1") return null;
+  if (process.env.DISABLE_WORKTAG_MATRIX === "1") {
+    console.log("[perf] getWorkTagMatrix: DISABLED");
+    return null;
+  }
   if (cachedMatrix) return cachedMatrix;
   try {
     const p = import_path.default.join(process.cwd(), "data", "workTagMatrix.json");
-    if (!import_fs.default.existsSync(p)) return null;
+    if (!import_fs.default.existsSync(p)) {
+      console.log("[perf] getWorkTagMatrix: NULL(file not found)");
+      return null;
+    }
+    const t0 = Date.now();
     const raw = JSON.parse(import_fs.default.readFileSync(p, "utf-8"));
     cachedMatrix = raw;
+    console.log("[perf] getWorkTagMatrix: LOADED", Date.now() - t0, "ms");
     return cachedMatrix;
   } catch (err) {
     console.error("[WorkTag] Matrix load failed:", err);
+    console.log("[perf] getWorkTagMatrix: NULL(error)");
     return null;
   }
 }
@@ -1019,6 +1028,23 @@ function filterTagsByPValueBandForIG(availableTags, probabilities, workHasTag, p
     }
   }
   return filtered;
+}
+function limitTagsByPValueNearHalf(tags, probabilities, workHasTag, maxCount) {
+  if (tags.length <= maxCount) return tags;
+  const withP = tags.map((tag) => {
+    let pYes = 0;
+    for (const prob of probabilities) {
+      const hasTag = workHasTag(prob.workId, tag.tagKey);
+      const likeYes = hasTag ? L_YES_HAS : L_NO_HAS;
+      pYes += prob.probability * likeYes;
+    }
+    return { tag, distanceFromHalf: Math.abs(pYes - 0.5) };
+  });
+  withP.sort((a, b) => {
+    if (a.distanceFromHalf !== b.distanceFromHalf) return a.distanceFromHalf - b.distanceFromHalf;
+    return a.tag.tagKey.localeCompare(b.tag.tagKey);
+  });
+  return withP.slice(0, maxCount).map((x) => x.tag);
 }
 function selectExploreTagByIG(availableTags, probabilities, workHasTag, pValueBand) {
   if (availableTags.length === 0) return null;
@@ -1981,13 +2007,16 @@ function loadEroticDisplayNames() {
 }
 async function fetchWorkTags(workIds, options) {
   if (workIds.length === 0) return [];
+  const tFetch = Date.now();
   const t = perfStart("fetchWorkTags");
   const matrix = getWorkTagMatrix();
   if (matrix) {
     const out = getWorkTagsFromMatrix(workIds, options);
     perfEnd("fetchWorkTags", t);
+    console.log("[perf] fetchWorkTags: matrix", Date.now() - tFetch, "ms");
     return out;
   }
+  console.log("[perf] fetchWorkTags: DB start (matrix=null)");
   const result = await prisma.workTag.findMany({
     where: {
       workId: { in: workIds },
@@ -1996,6 +2025,7 @@ async function fetchWorkTags(workIds, options) {
     select: { workId: true, tagKey: true, derivedConfidence: true }
   });
   perfEnd("fetchWorkTags", t);
+  console.log("[perf] fetchWorkTags: DB", Date.now() - tFetch, "ms");
   return result.map((r) => ({
     workId: r.workId,
     tagKey: r.tagKey,
@@ -2022,8 +2052,10 @@ function filterWorksByAiGate(works, aiGateChoice) {
 }
 async function selectNextQuestion(weights, probabilities, questionCount, questionHistory, config, options) {
   const t = perfStart("selectNextQuestion");
+  const tSelectNext = Date.now();
   try {
     await ensureTagCacheLoaded();
+    console.log("[perf] selectNextQuestion: after ensureTagCacheLoaded", Date.now() - tSelectNext, "ms qIndex=", questionCount + 1);
     const questionIndex = questionCount + 1;
     const usedSummaryIds = new Set(
       questionHistory.filter((q) => !!q.summaryQuestionId).map((q) => q.summaryQuestionId)
@@ -2123,6 +2155,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     }
     if (specialSlotIndices.includes(qIndex)) {
+      console.log("[perf] selectNextQuestion: specialSlot branch start", Date.now() - tSelectNext, "ms");
       const usedSpecialTypes = new Set(
         questionHistory.filter(
           (q) => q.kind === "SPECIAL_QUESTION" && !!q.specialQuestionType
@@ -2138,6 +2171,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         syllableChars: q.syllableChars,
         answer: q.answer
       }));
+      const tSpecial = Date.now();
       const specialResult = await selectSpecialQuestion(
         probabilities,
         usedSpecialTypes,
@@ -2146,6 +2180,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         titleCharTypeAnsweredUnknown,
         historyForRescue
       );
+      console.log("[perf] selectNextQuestion: selectSpecialQuestion", Date.now() - tSpecial, "ms");
       if (specialResult) {
         return {
           kind: "SPECIAL_QUESTION",
@@ -2173,6 +2208,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     );
     if (shouldConfirm) {
+      console.log("[perf] selectNextQuestion: confirm branch start", Date.now() - tSelectNext, "ms");
       const tConfirm = perfStart("selectNextQuestion_confirm");
       try {
         const usedHardTypes = questionHistory.filter((q) => q.kind === "HARD_CONFIRM").map((q) => q.hardConfirmType).filter((t2) => !!t2);
@@ -2464,7 +2500,10 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       const hardInjected = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
       if (hardInjected) return hardInjected;
     }
+    console.log("[perf] selectNextQuestion: selectUnifiedExploreOrSummary start", Date.now() - tSelectNext, "ms");
+    const tUnified = Date.now();
     const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
+    console.log("[perf] selectNextQuestion: selectUnifiedExploreOrSummary", Date.now() - tUnified, "ms");
     if (unified) return unified;
     const fallbackEnabled = config.algo.explorePValueFallbackEnabled !== false && getExplorePValueBand(config) != null;
     if (fallbackEnabled) {
@@ -2474,7 +2513,10 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     }
     if (qIndex >= 4) {
+      console.log("[perf] selectNextQuestion: selectExploreQuestion start", Date.now() - tSelectNext, "ms");
+      const tExplore = Date.now();
       const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
+      console.log("[perf] selectNextQuestion: selectExploreQuestion", Date.now() - tExplore, "ms");
       if (exploreResult) return exploreResult;
       if (fallbackEnabled) {
         const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
@@ -2830,17 +2872,16 @@ async function selectUnifiedExploreOrSummary(questionIndex, weights, probabiliti
     const useIG = config.algo.useIGForExploreSelection !== false;
     const pValueBand = getExplorePValueBand(config);
     let selectedKey;
-    const effectiveCandidates = calculateEffectiveCandidates(probabilities);
-    const topNIGThreshold = 100;
-    const topNForIG = 20;
-    const probsForIG = effectiveCandidates < topNIGThreshold && effectiveCandidates > 0 ? (() => {
+    const topNForIG = 300;
+    const probsForIG = (() => {
       const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
       const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
       const sum = topN.reduce((s, p) => s + p.probability, 0);
       return sum > 0 ? topN.map((p) => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
-    })() : probabilities;
+    })();
     if (useIG && !preferHighP) {
-      const tagsForIG = pValueBand ? filterTagsByPValueBandForIG(tagsForSelection, probsForIG, workHasTag, pValueBand) : tagsForSelection;
+      let tagsForIG = pValueBand ? filterTagsByPValueBandForIG(tagsForSelection, probsForIG, workHasTag, pValueBand) : tagsForSelection;
+      tagsForIG = limitTagsByPValueNearHalf(tagsForIG, probsForIG, workHasTag, 50);
       selectedKey = selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand);
     } else {
       selectedKey = selectExploreTag(
@@ -2855,7 +2896,8 @@ async function selectUnifiedExploreOrSummary(questionIndex, weights, probabiliti
     }
     if (!selectedKey && pValueBand) {
       if (useIG && !preferHighP) {
-        selectedKey = selectExploreTagByIG(tagsForSelection, probsForIG, workHasTag, void 0);
+        const tagsRetry = limitTagsByPValueNearHalf(tagsForSelection, probsForIG, workHasTag, 50);
+        selectedKey = selectExploreTagByIG(tagsRetry, probsForIG, workHasTag, void 0);
       } else {
         selectedKey = selectExploreTag(
           tagsForSelection,
@@ -3023,16 +3065,15 @@ async function selectExploreQuestion(weights, probabilities, questionHistory, co
     const topWorkId = sorted[0]?.workId ?? null;
     const pValueBand = getExplorePValueBand(config);
     const useIG = config.algo.useIGForExploreSelection !== false;
-    const effectiveCandidates = calculateEffectiveCandidates(probabilities);
-    const topNIGThreshold = 100;
-    const topNForIG = 20;
-    const probsForIG = useIG && effectiveCandidates < topNIGThreshold && effectiveCandidates > 0 ? (() => {
+    const topNForIG = 300;
+    const probsForIG = (() => {
       const sorted2 = [...probabilities].sort((a, b) => b.probability - a.probability);
       const topN = sorted2.slice(0, Math.min(topNForIG, sorted2.length));
       const sum = topN.reduce((s, p) => s + p.probability, 0);
       return sum > 0 ? topN.map((p) => ({ workId: p.workId, probability: p.probability / sum })) : probabilities;
-    })() : probabilities;
-    const tagsForIG = useIG && pValueBand ? filterTagsByPValueBandForIG(availableTags, probsForIG, workHasTag, pValueBand) : availableTags;
+    })();
+    let tagsForIG = useIG && pValueBand ? filterTagsByPValueBandForIG(availableTags, probsForIG, workHasTag, pValueBand) : availableTags;
+    tagsForIG = useIG ? limitTagsByPValueNearHalf(tagsForIG, probsForIG, workHasTag, 50) : tagsForIG;
     const selectedTagKey = useIG ? selectExploreTagByIG(tagsForIG, probsForIG, workHasTag, pValueBand) : selectExploreTag(
       availableTags,
       probabilities,

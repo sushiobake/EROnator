@@ -51,6 +51,9 @@ interface WorkListItem {
 
 type Step = 'api' | 'comment' | 'analyze';
 
+/** 優先度指定コメント取得で選択できる年（2026～2016、DMMインポートに合わせる） */
+const PRIORITY_YEARS = Array.from({ length: 11 }, (_, i) => 2026 - i);
+
 export default function ImportWorkflow() {
   const { setProgress } = useAdminProgress();
   // 管理トークン
@@ -115,6 +118,19 @@ export default function ImportWorkflow() {
   const [chatgptSectionOpen, setChatgptSectionOpen] = useState(false);
   // AIプロバイダ表示用（GPT のみ）
   const [aiProvider, setAiProvider] = useState<string | null>(null);
+
+  // 優先度指定コメント取得（年ごと件数）
+  const [priorityAllocations, setPriorityAllocations] = useState<Record<string, number>>(() => {
+    const o: Record<string, number> = {};
+    PRIORITY_YEARS.forEach((y) => { o[String(y)] = 0; });
+    return o;
+  });
+  const [priorityCommentLoading, setPriorityCommentLoading] = useState(false);
+  const [priorityCommentResult, setPriorityCommentResult] = useState<{
+    success: number;
+    failed: number;
+    failedDetails?: Array<{ workId: string; title: string; reason: string }>;
+  } | null>(null);
 
   // 一括: API → コメント取得
   const [apiBulkRounds, setApiBulkRounds] = useState(3);
@@ -276,7 +292,7 @@ export default function ImportWorkflow() {
           target: 100,
           sort: apiSort,
           offset: apiOffset,
-          rounds: Math.max(1, Math.min(20, apiRounds)),
+          rounds: Math.max(1, Math.min(100, apiRounds)),
           ...(apiYearFilter && {
             gte_date: `${apiYearFilter}-01-01T00:00:00`,
             lte_date: `${apiYearFilter}-12-31T23:59:59`,
@@ -356,6 +372,57 @@ export default function ImportWorkflow() {
       alert('コメント取得中にエラーが発生しました');
     } finally {
       setCommentLoading(false);
+    }
+  };
+
+  // 優先度指定でコメント取得（年ごと・有名順）
+  const handlePriorityCommentFetch = async () => {
+    if (!adminToken) {
+      alert('管理トークンを入力してください');
+      return;
+    }
+    const allocations = PRIORITY_YEARS.filter((y) => (priorityAllocations[String(y)] ?? 0) > 0).map((y) => ({
+      year: y,
+      limit: Math.max(0, Math.min(10000, priorityAllocations[String(y)] ?? 0)),
+    }));
+    if (allocations.length === 0) {
+      alert('各年の取得件数を指定してください（0より大きい値）');
+      return;
+    }
+    const total = allocations.reduce((s, a) => s + a.limit, 0);
+    if (total > 10000) {
+      alert('合計は最大10000件までです');
+      return;
+    }
+    if (!confirm(`合計${total}件を有名順でコメント取得します。よろしいですか？`)) return;
+    setPriorityCommentLoading(true);
+    setPriorityCommentResult(null);
+    try {
+      const res = await fetch('/api/admin/tags/fetch-comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-eronator-admin-token': adminToken,
+        },
+        body: JSON.stringify({ allocations, overwrite: false }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPriorityCommentResult({
+          success: data.fetched ?? 0,
+          failed: data.failed ?? 0,
+          failedDetails: data.failedDetails ?? [],
+        });
+        fetchStats();
+        fetchWorkList('noComment');
+      } else {
+        alert(data.error || 'コメント取得失敗');
+      }
+    } catch (error) {
+      console.error('Priority comment fetch failed:', error);
+      alert('コメント取得中にエラーが発生しました');
+    } finally {
+      setPriorityCommentLoading(false);
     }
   };
 
@@ -500,7 +567,7 @@ export default function ImportWorkflow() {
           target: 100,
           sort: apiSort,
           offset: apiOffset,
-          rounds: Math.max(1, Math.min(20, apiBulkRounds)),
+          rounds: Math.max(1, Math.min(100, apiBulkRounds)),
           ...(apiYearFilter && {
             gte_date: `${apiYearFilter}-01-01T00:00:00`,
             lte_date: `${apiYearFilter}-12-31T23:59:59`,
@@ -805,10 +872,10 @@ export default function ImportWorkflow() {
                 <input
                   type="number"
                   value={apiBulkRounds}
-                  onChange={e => setApiBulkRounds(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                  onChange={e => setApiBulkRounds(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                   style={{ width: '60px', padding: '8px' }}
                   min={1}
-                  max={20}
+                  max={100}
                 />
                 <span style={{ fontSize: '13px' }}>（1ラウンド＝最大100件）</span>
                 <span style={{ marginLeft: '8px' }}>コメント取得 最大:</span>
@@ -1144,10 +1211,10 @@ export default function ImportWorkflow() {
               <input
                 type="number"
                 value={apiRounds}
-                onChange={e => setApiRounds(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                onChange={e => setApiRounds(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
                 style={{ width: '50px', padding: '6px', fontSize: '13px' }}
                 min={1}
-                max={20}
+                max={100}
               />
               <span style={{ color: '#666', fontSize: '12px' }}>×100件</span>
             </div>
@@ -1192,6 +1259,69 @@ export default function ImportWorkflow() {
             </div>
           )}
         </div>
+
+      {/* 優先度を指定してコメント取得（年ごと・有名順・最大10000件） */}
+      <div style={{ padding: '12px 14px', border: '1px solid #0d6efd', borderRadius: '6px', marginBottom: '12px', backgroundColor: '#f0f7ff' }}>
+        <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px' }}>優先度を指定してコメント取得</div>
+        <p style={{ color: '#555', fontSize: '12px', marginBottom: '10px' }}>
+          年ごとに「有名順で何件取得するか」を指定。合計最大10000件。未取得のみ対象。失敗した作品は飛ばして次へ進みます。
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px 10px', marginBottom: '10px' }}>
+          {PRIORITY_YEARS.map((y) => (
+            <div key={y} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <label style={{ fontSize: '13px', minWidth: '40px' }}>{y}年</label>
+              <input
+                type="number"
+                min={0}
+                max={10000}
+                step={100}
+                value={priorityAllocations[String(y)] ?? 0}
+                onChange={(e) => setPriorityAllocations((prev) => ({ ...prev, [String(y)]: Math.max(0, Math.min(10000, parseInt(e.target.value, 10) || 0)) }))}
+                style={{ width: '64px', padding: '5px 6px', fontSize: '13px' }}
+              />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <span style={{ fontWeight: 'bold', fontSize: '13px' }}>
+            合計: {PRIORITY_YEARS.reduce((s, y) => s + (priorityAllocations[String(y)] ?? 0), 0)}件
+          </span>
+          <button
+            onClick={handlePriorityCommentFetch}
+            disabled={priorityCommentLoading || PRIORITY_YEARS.every((y) => (priorityAllocations[String(y)] ?? 0) <= 0)}
+            style={{
+              padding: '6px 14px',
+              backgroundColor: priorityCommentLoading || PRIORITY_YEARS.every((y) => (priorityAllocations[String(y)] ?? 0) <= 0) ? '#ccc' : '#0d6efd',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: priorityCommentLoading || PRIORITY_YEARS.every((y) => (priorityAllocations[String(y)] ?? 0) <= 0) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {priorityCommentLoading ? '取得中...' : 'コメント取得（優先度指定）'}
+          </button>
+        </div>
+        {priorityCommentResult && (
+          <div style={{ marginTop: '8px', fontSize: '12px' }}>
+            <div style={{ padding: '6px 10px', backgroundColor: '#d4edda', borderRadius: '4px' }}>
+              ✅ {priorityCommentResult.success}件成功, {priorityCommentResult.failed}件失敗
+            </div>
+            {priorityCommentResult.failedDetails && priorityCommentResult.failedDetails.length > 0 && (
+              <details style={{ marginTop: '6px' }}>
+                <summary style={{ cursor: 'pointer', color: '#856404', fontWeight: 600 }}>失敗した作品の理由（{priorityCommentResult.failedDetails.length}件）</summary>
+                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px', backgroundColor: '#fff3cd', borderRadius: '4px', padding: '6px 8px 6px 18px', maxHeight: '120px', overflowY: 'auto' }}>
+                  {priorityCommentResult.failedDetails.map(({ workId, title, reason }) => (
+                    <li key={workId} style={{ marginBottom: '4px' }} title={workId}>
+                      <span style={{ fontWeight: 600 }}>{title || workId}</span>
+                      <span style={{ color: '#666', fontSize: '11px', marginLeft: '4px' }}>{workId}</span> — {reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ② コメント取得（常時表示） */}
       <div style={{ padding: '10px 12px', border: '1px solid #ddd', borderRadius: '6px', marginBottom: '12px' }}>

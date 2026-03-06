@@ -11,17 +11,34 @@ import { ChangelogSection } from './ChangelogSection';
 import { useMediaQuery } from './useMediaQuery';
 
 interface TopScreenProps {
+  /** トップの文言（行配列）。{workCount} は作品数に置換。未指定時は従来の固定文 */
+  topLines?: string[];
   onPlay: () => void;
   onRecommend?: () => void;
   streamerMode?: boolean;
   onToggleStreamerMode?: () => void;
 }
 
-export function TopScreen({ onPlay, onRecommend, streamerMode, onToggleStreamerMode }: TopScreenProps) {
+const DEFAULT_TOP_LINES = [
+  '有名な同人誌を妄想してみて。',
+  '{workCount}作品の中から当ててあげるわ。',
+  '私は何でもお見通しだから。',
+];
+
+type HoveredButton = 'play' | 'recommend' | null;
+
+const hoverStyle = {
+  backgroundColor: '#dbeafe',
+  color: 'var(--color-primary)',
+  boxShadow: 'inset 0 0 0 2px var(--color-primary)',
+};
+
+export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggleStreamerMode }: TopScreenProps) {
   const isMobile = useMediaQuery(768);
   const subSize = isMobile ? 15 : 13;
   const [workCount, setWorkCount] = useState<number | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [hoveredButton, setHoveredButton] = useState<HoveredButton>(null);
 
   useEffect(() => {
     fetch('/api/stats')
@@ -46,97 +63,183 @@ export function TopScreen({ onPlay, onRecommend, streamerMode, onToggleStreamerM
 
   const workCountText = workCount !== null ? workCount.toString() : '…';
   const fontSize = isMobile ? 24 : 17;
+  const lines = (topLines && topLines.length > 0) ? topLines : DEFAULT_TOP_LINES;
+
+  const speechContent = (
+    <p
+      style={{
+        margin: 0,
+        fontWeight: 500,
+        color: 'var(--color-text)',
+        fontSize,
+        lineHeight: 1.15,
+        maxWidth: isMobile ? '100%' : '24em',
+      }}
+    >
+      {lines.map((line, i) => {
+        const key = `line-${i}`;
+        if (line.includes('{workCount}')) {
+          const parts = line.split(/{workCount}/g);
+          return (
+            <span key={key}>
+              {i > 0 && <br />}
+              {parts[0]}
+              <span style={{ color: '#c62828', fontWeight: 800, fontSize: '1.35em', letterSpacing: '0.02em', textShadow: '0 1px 2px rgba(0,0,0,0.08)' }}>
+                {workCountText}
+              </span>
+              {parts[1]}
+              {i < lines.length - 1 && <br />}
+            </span>
+          );
+        }
+        return <span key={key}>{i > 0 && <br />}{line}{i < lines.length - 1 && <br />}</span>;
+      })}
+    </p>
+  );
 
   return (
     <Stage
       showLogo
       characterVariant="usually"
-      characterSpeech={
-        <p style={{ margin: 0, fontWeight: 500, color: 'var(--color-text)', fontSize, lineHeight: 1.6 }}>
-          お気に入りの同人誌、心に浮かべてみて。
-          <br />
-          <span
-            style={{
-              color: '#c62828',
-              fontWeight: 800,
-              fontSize: '1.35em',
-              letterSpacing: '0.02em',
-              textShadow: '0 1px 2px rgba(0,0,0,0.08)',
-            }}
-          >
-            {workCountText}作品
-          </span>
-          の中から当ててあげるわ。
-          <br />
-          何でもお見通しだから。
-        </p>
-      }
+      characterSpeech={speechContent}
       mobileBelowCanvas={isMobile ? <ChangelogSection variant="mobile" hideVersion /> : undefined}
     >
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: isMobile ? 'auto' : 220 }}>
         <p style={{ margin: 0, fontSize: subSize, color: 'var(--color-text-muted)' }}>
-          このコンテンツは18歳以上の方を対象としています。
+          このコンテンツは<strong style={{ fontWeight: 700, textDecoration: 'underline' }}>18歳以上</strong>の方を対象としています。
         </p>
-        <div style={{ marginTop: isMobile ? 12 : 16 }}>
-          <button
-            type="button"
-            onClick={onPlay}
+        <div
+          style={{
+            marginTop: isMobile ? 12 : 16,
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'flex-start' : 'stretch',
+            gap: isMobile ? 0 : 8,
+            maxWidth: isMobile ? '100%' : 520,
+            width: '100%',
+          }}
+        >
+          <div
             style={{
-              padding: isMobile ? '16px 36px' : '18px 48px',
-              minHeight: isMobile ? 52 : 56,
-              fontSize: isMobile ? 20 : 19,
-              fontWeight: 700,
-              cursor: 'pointer',
-              backgroundColor: 'var(--color-surface)',
-              color: 'var(--color-text)',
-              border: '3px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              maxWidth: isMobile ? '100%' : 320,
+              width: '100%',
             }}
           >
-            プレイする（18歳以上）
-          </button>
+            <button
+              type="button"
+              onClick={onPlay}
+              onMouseEnter={() => setHoveredButton('play')}
+              onMouseLeave={() => setHoveredButton(null)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                width: '90%',
+                padding: isMobile ? '18px 20px 18px 20px' : '20px 26px 20px 28px',
+                minHeight: isMobile ? 56 : 60,
+                fontSize: isMobile ? 20 : 19,
+                fontWeight: 700,
+                cursor: 'pointer',
+                backgroundColor: hoveredButton === 'play' ? hoverStyle.backgroundColor : 'var(--color-surface)',
+                color: hoveredButton === 'play' ? hoverStyle.color : 'var(--color-text)',
+                border: '3px solid var(--color-border)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: hoveredButton === 'play' ? hoverStyle.boxShadow : '0 4px 12px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1)',
+                transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
+              }}
+            >
+              <span style={{ fontSize: isMobile ? 13 : 12, fontWeight: 500, color: hoveredButton === 'play' ? 'var(--color-primary)' : 'var(--color-text-muted)', marginBottom: 4 }}>
+                同人誌エロネイターを
+              </span>
+              <span style={{ whiteSpace: 'nowrap', marginLeft: '1em', fontSize: '1.45em' }}>プレイする</span>
+            </button>
+            <div
+              style={{
+                marginTop: isMobile ? 12 : 14,
+                width: '90%',
+                display: 'flex',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => onRecommend?.()}
+                onMouseEnter={() => setHoveredButton('recommend')}
+                onMouseLeave={() => setHoveredButton(null)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  padding: isMobile ? '12px 20px' : '14px 28px',
+                  minHeight: isMobile ? 44 : 48,
+                  fontSize: isMobile ? 15 : 14,
+                  fontWeight: 700,
+                  cursor: onRecommend ? 'pointer' : 'default',
+                  opacity: onRecommend ? 1 : 0.7,
+                  backgroundColor: hoveredButton === 'recommend' ? hoverStyle.backgroundColor : 'rgba(255,255,255,0.9)',
+                  color: hoveredButton === 'recommend' ? hoverStyle.color : 'var(--color-text)',
+                  border: '3px solid var(--color-border)',
+                  borderRadius: 'var(--radius-lg)',
+                  boxShadow: hoveredButton === 'recommend' ? hoverStyle.boxShadow : '0 2px 8px rgba(0,0,0,0.08)',
+                  transition: 'background-color 0.1s, color 0.1s, box-shadow 0.1s',
+                }}
+              >
+                <span style={{ fontSize: isMobile ? 13 : 12, fontWeight: 500, color: hoveredButton === 'recommend' ? 'var(--color-primary)' : 'var(--color-text-muted)', marginBottom: 4 }}>
+                  稲荷さんに同人誌を
+                </span>
+                <span style={{ whiteSpace: 'nowrap', marginLeft: '1em', fontSize: '1.1em' }}>推薦してもらう</span>
+              </button>
+            </div>
+          </div>
+          {!isMobile && (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                flex: '0 0 auto',
+                alignSelf: 'center',
+                marginRight: 12,
+              }}
+            >
+              <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
+                ※配信（全年齢）モード
+              </span>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
+                <input
+                  type="checkbox"
+                  checked={streamerMode ?? false}
+                  onChange={() => onToggleStreamerMode?.()}
+                  disabled={!onToggleStreamerMode}
+                  style={{ width: 20, height: 20, accentColor: 'var(--color-primary)' }}
+                />
+                <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 500 }}>オンにする</span>
+              </label>
+            </div>
+          )}
         </div>
-        <div style={{ marginTop: isMobile ? 12 : 14 }}>
-          <button
-            type="button"
-            disabled
-            style={{
-              padding: isMobile ? '14px 32px' : '16px 44px',
-              minHeight: isMobile ? 48 : 52,
-              fontSize: isMobile ? 17 : 16,
-              fontWeight: 700,
-              cursor: 'not-allowed',
-              opacity: 0.6,
-              backgroundColor: 'rgba(255,255,255,0.9)',
-              color: 'var(--color-text)',
-              border: '3px solid var(--color-border)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            }}
-          >
-            推薦モード（18歳以上）※近日実装
-          </button>
-        </div>
-        <div style={{ marginTop: isMobile ? 10 : 12 }}>
-          <button
-            type="button"
-            disabled
-            style={{
-              padding: '8px 20px',
-              fontSize: isMobile ? 14 : 13,
-              fontWeight: 600,
-              cursor: 'not-allowed',
-              opacity: 0.6,
-              backgroundColor: 'rgba(255,255,255,0.7)',
-              color: 'var(--color-text-muted)',
-              border: '2px solid var(--color-border-light)',
-              borderRadius: 'var(--radius-lg)',
-            }}
-          >
-            配信モード ※近日実装
-          </button>
-        </div>
+        {isMobile && (
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
+              ※配信（全年齢）モード
+            </span>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
+              <input
+                type="checkbox"
+                checked={streamerMode ?? false}
+                onChange={() => onToggleStreamerMode?.()}
+                disabled={!onToggleStreamerMode}
+                style={{ width: 20, height: 20, accentColor: 'var(--color-primary)' }}
+              />
+              <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 500 }}>オンにする</span>
+            </label>
+          </div>
+        )}
         {isMobile && appVersion && (
           <p style={{ margin: 0, marginTop: 14, fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>
             {appVersion}

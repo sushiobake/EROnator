@@ -2391,7 +2391,7 @@ export default function AdminTagsPage() {
                               <strong>現在のフォルダ:</strong>{' '}
                               {(() => {
                                 const folder = (work as { manualTaggingFolder?: string | null }).manualTaggingFolder;
-                                const labels: Record<string, string> = { tagged: 'タグ済', needs_review: '要注意', needs_human_check: '人間確認', pending: 'チェック待ち', legacy_ai: '旧AIタグ', has_issues: '問題あり', untagged: '未タグ', ab_test: 'ABテスト' };
+                                const labels: Record<string, string> = { tagged: 'タグ済', needs_review: '要注意', needs_human_check: '人間確認', pending: 'チェック待ち', legacy_ai: '旧AIタグ', has_issues: '問題あり', untagged: '未タグ', ab_test: 'ABテスト', priority_untagged_1: '未タグ（優先順位①）', priority_untagged_2: '未タグ（優先順位②）' };
                                 return folder ? (labels[folder] ?? folder) : '（未設定）';
                               })()}
                             </div>

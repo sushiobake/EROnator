@@ -415,13 +415,14 @@ export async function POST(request: NextRequest) {
         questionCount,
       })) break;
 
-      // 次の質問を選択
+      // 次の質問を選択（断定で外した作品は候補から除外）
       const question = await selectNextQuestion(
         weights,
         probabilities,
         questionCount,
         questionHistory,
-        config
+        config,
+        { revealRejectedWorkIds: revealedWrongWorkIds.size > 0 ? [...revealedWrongWorkIds] : undefined }
       );
 
       if (!question) {
@@ -1323,7 +1324,8 @@ async function runSimulation(
         probabilities,
         questionCount,
         questionHistory,
-        config
+        config,
+        { revealRejectedWorkIds: revealedWrongWorkIds.size > 0 ? [...revealedWrongWorkIds] : undefined }
       );
 
       if (!question) {

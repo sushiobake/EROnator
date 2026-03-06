@@ -6,7 +6,7 @@
 
 import { JSX, useState, type ReactNode } from 'react';
 import { RANK_BG, RANK_TEXT } from '@/app/admin/constants/rankColors';
-import { DEFAULT_THINKING } from '@/server/config/schema';
+import { DEFAULT_THINKING, DEFAULT_GAME_COPY } from '@/server/config/schema';
 
 interface ConfigTabProps {
   config: any;
@@ -170,61 +170,129 @@ export default function ConfigTab({
             </div>
           </section>
 
-          {/* 「考え中」の表記（折りたたみ） */}
-          <CollapsibleSection id="config-thinking" title="「考え中」の表記" defaultOpen={true}>
-            <p style={{ color: '#666', marginTop: 0, marginBottom: '1rem' }}>
-              回答送信後、次の質問が返るまでの「考え中」表示の文言を編集できます。有効候補数（EC）に応じて early / mid / late / closing の4段階で切り替わります。各レベルに最大5個まで登録でき、ランダムまたは順番に表示されます。
-            </p>
-            <div style={{ marginBottom: '1rem' }}>
-              <label>
-                <strong>表示方法</strong>
-                <span style={{ display: 'block', marginTop: '0.35rem' }}>複数文言があるときの出し方。sequential＝順番に（同じ文言の連続を避ける）、random＝ランダム。</span>
-                <select
-                  value={(config.thinking ?? DEFAULT_THINKING).displayMode}
-                  onChange={(e) => {
-                    const cur = config.thinking ?? DEFAULT_THINKING;
-                    updateConfig(['thinking'], { ...cur, displayMode: e.target.value as 'random' | 'sequential' });
-                  }}
-                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
-                >
-                  <option value="sequential">順番に表示</option>
-                  <option value="random">ランダムに表示</option>
-                </select>
-              </label>
-            </div>
-            {(['early', 'mid', 'late', 'closing'] as const).map((level) => {
-              const labels = { early: 'early（EC&gt;500）', mid: 'mid（50&lt;EC≤500）', late: 'late（10&lt;EC≤50）', closing: 'closing（EC≤10）' };
-              const texts = (config.thinking ?? DEFAULT_THINKING)[level];
+          {/* ゲーム文言（コンパクト） */}
+          <CollapsibleSection id="config-game-copy" title="ゲーム文言（トップ・質問・断定・正解・外れ・おすすめ・AI_GATE）" defaultOpen={false}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.8rem' }}>トップは行ごと。{'{workCount}'} は作品数に置換。</p>
+            {(() => {
+              const gc = config.gameCopy ?? DEFAULT_GAME_COPY;
+              const small = { fontSize: '0.8rem' as const, marginBottom: '0.35rem' };
+              const gameCopyFields: { key: string; label: string }[] = [
+                { key: 'questionPreamble', label: '質問の前段（各質問の直上に表示する1行）' },
+                { key: 'revealPreamble', label: '断定の前段（「この作品で合ってる？」画面の上の淡い文）' },
+                { key: 'revealMain', label: '断定のメイン（「この作品で合ってる？」の太い文）' },
+                { key: 'successSpeech', label: '正解時のキャラ台詞（正解画面でキャラが言う一言）' },
+                { key: 'successTitle', label: '正解時のタイトル（正解画面の作品上の見出し）' },
+                { key: 'recommendTitle', label: 'おすすめ見出し（正解・惜しかった画面の「おすすめ5件」の上）' },
+                { key: 'failListSpeech', label: '外れ①メイン（全部外してリスト表示になったときのキャラの一言）' },
+                { key: 'failListSubMobile', label: '外れ①サブ・スマホ（リスト画面でスマホ時の2行目）' },
+                { key: 'failListSubPc', label: '外れ①サブ・PC（リスト画面でPC時の2行目）' },
+                { key: 'almostSuccessSpeech', label: '外れ②惜しかった（リストから選んだときの「それか～～～！」の一言）' },
+                { key: 'aiGatePreamble', label: 'AIゲートの前段（最初の「AI生成？」の上の淡い文）' },
+                { key: 'aiGateMain', label: 'AIゲートのメイン（最初の「AI生成作品ではない？」）' },
+              ];
               return (
-                <div key={level} style={{ marginBottom: '1rem', padding: '0.75rem', border: '1px solid #eee', borderRadius: '4px' }}>
-                  <strong>{labels[level]}</strong>
-                  <span style={{ display: 'block', marginTop: '0.25rem', fontWeight: 'normal', color: '#666', fontSize: '0.9rem' }}>最大5件</span>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} style={{ marginTop: '0.5rem' }}>
-                      <input
-                        type="text"
-                        value={texts[i] ?? ''}
-                        onChange={(e) => {
-                          const cur = config.thinking ?? DEFAULT_THINKING;
-                          const next = [...texts];
-                          const v = e.target.value;
-                          if (v) {
-                            next[i] = v;
-                          } else {
-                            next.splice(i, 1);
-                          }
-                          const filtered = next.filter(Boolean);
-                          const final = filtered.length > 0 ? filtered : [DEFAULT_THINKING[level][0]];
-                          updateConfig(['thinking'], { ...cur, [level]: final });
-                        }}
-                        placeholder={i === 0 ? '文言を入力（1件以上必須）' : '追加（任意）'}
-                        style={{ width: '100%', padding: '0.5rem' }}
-                      />
+                <div style={{ fontSize: '0.85rem' }}>
+                  <div style={small}><strong>トップ行（トップ画面の挨拶。行ごと）</strong></div>
+                  {(gc.topLines ?? []).map((line: string, i: number) => (
+                    <input key={i} type="text" value={line} onChange={(e) => {
+                      const next = [...(gc.topLines ?? [])];
+                      next[i] = e.target.value;
+                      updateConfig(['gameCopy'], { ...gc, topLines: next });
+                    }} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.25rem', fontSize: '0.8rem' }} />
+                  ))}
+                  {gameCopyFields.map(({ key, label }) => (
+                    <div key={key} style={small}>
+                      <strong>{label}</strong>
+                      <input type="text" value={(gc as Record<string, string>)[key] ?? ''} onChange={(e) => updateConfig(['gameCopy'], { ...gc, [key]: e.target.value })} style={{ width: '100%', padding: '0.35rem', fontSize: '0.8rem' }} />
                     </div>
                   ))}
                 </div>
               );
-            })}
+            })()}
+          </CollapsibleSection>
+
+          {/* 「考え中」9種（opening / inGame early,mid,late,closing / endingCorrect / endingWrong / failListSelect / failListNotInList） */}
+          <CollapsibleSection id="config-thinking" title="「考え中」の表記（9種）" defaultOpen={false}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.8rem' }}>
+              各場面の文言と、表示する画像ファイル名。画像は <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>public/ilust</code> フォルダに、下に書いた名前で入れてください。
+            </p>
+            <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '0.75rem', padding: '0.5rem', background: '#f9f9f9', borderRadius: '4px', border: '1px solid #eee' }}>
+              <strong>考え中で使う画像ファイル一覧（ilust に置くもの）</strong>
+              <ul style={{ margin: '0.35rem 0 0 1rem', paddingLeft: 0 }}>
+                <li><code>inari_thinking_opening.png</code>（開始〜1問目）</li>
+                <li><code>inari_thinking_early.png</code>（質問後・候補多め）</li>
+                <li><code>inari_thinking_mid.png</code>（質問後・候補やや絞れ）</li>
+                <li><code>inari_thinking_late.png</code>（質問後・候補少なめ）</li>
+                <li><code>inari_thinking_closing.png</code>（質問後・候補少ない）</li>
+                <li><code>inari_thinking_ending_correct.png</code>（正解後）</li>
+                <li><code>inari_thinking_ending_wrong.png</code>（断定で外れた後）</li>
+                <li><code>inari_thinking_fail_list_select.png</code>（失敗リストで作品を選んだとき）</li>
+                <li><code>inari_thinking_fail_list_not_in_list.png</code>（失敗リストで「リストにない」を送ったとき）</li>
+              </ul>
+              <div style={{ marginTop: '0.35rem', fontSize: '0.7rem', color: '#888' }}>未配置の種類は <code>inari_thinking.png</code> にフォールバックします。</div>
+            </div>
+            {(() => {
+              const th = config.thinking ?? DEFAULT_THINKING;
+              const inGame = th.inGame ?? DEFAULT_THINKING.inGame;
+              const small = { fontSize: '0.8rem' as const, marginBottom: '0.35rem' };
+              return (
+                <div style={{ fontSize: '0.85rem' }}>
+                  <div style={small}><strong>開始〜1問目まで（1文）</strong></div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_opening.png</code> を ilust に入れる</div>
+                  <input type="text" value={th.opening?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, opening: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }} />
+                  <div style={small}><strong>正解したあと〜おすすめ表示まで（1文）</strong></div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_ending_correct.png</code> を ilust に入れる</div>
+                  <input type="text" value={th.endingCorrect?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, endingCorrect: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }} />
+                  <div style={small}><strong>断定で外れたあと〜次へ（1文）</strong></div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_ending_wrong.png</code> を ilust に入れる</div>
+                  <input type="text" value={th.endingWrong?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, endingWrong: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.75rem', fontSize: '0.8rem' }} />
+                  <div style={{ ...small, marginTop: '0.5rem' }}><strong>質問に答えたあと〜次の質問が返るまで（inGame）表示方法</strong></div>
+                  <select value={inGame.displayMode} onChange={(e) => updateConfig(['thinking'], { ...th, inGame: { ...inGame, displayMode: e.target.value as 'random' | 'sequential' } })} style={{ padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }}>
+                    <option value="sequential">順番</option>
+                    <option value="random">ランダム</option>
+                  </select>
+                  {(['early', 'mid', 'late', 'closing'] as const).map((level) => {
+                    const labels: Record<string, string> = {
+                      early: 'early（候補まだ多い・EC&gt;500）',
+                      mid: 'mid（候補やや絞れた・50&lt;EC≤500）',
+                      late: 'late（候補少なめ・10&lt;EC≤50）',
+                      closing: 'closing（候補少ない・EC≤10）',
+                    };
+                    const imageNames: Record<string, string> = {
+                      early: 'inari_thinking_early.png',
+                      mid: 'inari_thinking_mid.png',
+                      late: 'inari_thinking_late.png',
+                      closing: 'inari_thinking_closing.png',
+                    };
+                    const defaultTexts = DEFAULT_THINKING.inGame[level].texts;
+                    const texts = inGame[level]?.texts ?? defaultTexts ?? ['考え中…'];
+                    return (
+                      <div key={level} style={{ marginBottom: '0.5rem', padding: '0.5rem', border: '1px solid #eee', borderRadius: '4px' }}>
+                        <strong style={{ fontSize: '0.8rem' }}>{labels[level]}</strong> 最大5件
+                        <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>{imageNames[level]}</code> を ilust に入れる</div>
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <input key={i} type="text" value={texts[i] ?? ''} onChange={(e) => {
+                            const next = [...texts];
+                            const v = e.target.value;
+                            if (v) next[i] = v; else next.splice(i, 1);
+                            const final = next.filter(Boolean).length > 0 ? next.filter(Boolean) : [defaultTexts[0]];
+                            updateConfig(['thinking'], { ...th, inGame: { ...inGame, [level]: { texts: final } } });
+                          }} placeholder={i === 0 ? '必須' : '任意'} style={{ width: '100%', padding: '0.35rem', marginTop: '0.25rem', fontSize: '0.8rem' }} />
+                        ))}
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: '0.75rem', marginBottom: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #eee' }}>
+                    <div style={small}><strong>失敗リストで作品を選んだとき（1文）</strong></div>
+                    <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_fail_list_select.png</code> を ilust に入れる</div>
+                    <input type="text" value={th.failListSelect?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, failListSelect: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }} />
+                    <div style={small}><strong>失敗リストで「リストにない」を送ったとき（1文）</strong></div>
+                    <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_fail_list_not_in_list.png</code> を ilust に入れる</div>
+                    <input type="text" value={th.failListNotInList?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, failListNotInList: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }} />
+                  </div>
+                </div>
+              );
+            })()}
           </CollapsibleSection>
 
           {/* 答え合わせ・確認質問（折りたたみ） */}

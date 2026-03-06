@@ -28,25 +28,16 @@ export function setWorkTagMatrixDirect(data: WorkTagMatrix | null) {
 }
 
 export function getWorkTagMatrix(): WorkTagMatrix | null {
-  if (process.env.DISABLE_WORKTAG_MATRIX === '1') {
-    console.log('[perf] getWorkTagMatrix: DISABLED');
-    return null;
-  }
+  if (process.env.DISABLE_WORKTAG_MATRIX === '1') return null;
   if (cachedMatrix) return cachedMatrix;
   try {
     const p = path.join(process.cwd(), 'data', 'workTagMatrix.json');
-    if (!fs.existsSync(p)) {
-      console.log('[perf] getWorkTagMatrix: NULL(file not found)');
-      return null;
-    }
-    const t0 = Date.now();
+    if (!fs.existsSync(p)) return null;
     const raw = JSON.parse(fs.readFileSync(p, 'utf-8')) as WorkTagMatrix;
     cachedMatrix = raw;
-    console.log('[perf] getWorkTagMatrix: LOADED', Date.now() - t0, 'ms');
     return cachedMatrix;
   } catch (err) {
     console.error('[WorkTag] Matrix load failed:', err);
-    console.log('[perf] getWorkTagMatrix: NULL(error)');
     return null;
   }
 }

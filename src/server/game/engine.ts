@@ -143,16 +143,13 @@ async function fetchWorkTags(
   options?: { tagKeys?: string[] }
 ): Promise<Array<{ workId: string; tagKey: string; derivedConfidence: number | null }>> {
   if (workIds.length === 0) return [];
-  const tFetch = Date.now();
   const t = perfStart('fetchWorkTags');
   const matrix = getWorkTagMatrix();
   if (matrix) {
     const out = getWorkTagsFromMatrix(workIds, options);
     perfEnd('fetchWorkTags', t);
-    console.log('[perf] fetchWorkTags: matrix', Date.now() - tFetch, 'ms');
     return out;
   }
-  console.log('[perf] fetchWorkTags: DB start (matrix=null)');
   const result = await prisma.workTag.findMany({
     where: {
       workId: { in: workIds },
@@ -161,7 +158,6 @@ async function fetchWorkTags(
     select: { workId: true, tagKey: true, derivedConfidence: true },
   });
   perfEnd('fetchWorkTags', t);
-  console.log('[perf] fetchWorkTags: DB', Date.now() - tFetch, 'ms');
   return result.map((r) => ({
     workId: r.workId,
     tagKey: r.tagKey,
@@ -286,6 +282,8 @@ export interface QuestionData {
 export interface SelectNextQuestionOptions {
   /** 直前に REVEAL で不正解だった。次の1問は頭文字・作者を優先して正解に当てに行く */
   afterRevealWrong?: boolean;
+  /** 断定で「いいえ」にした作品の workId 一覧。これらは候補から除外し、頭文字・REVEAL に使わない */
+  revealRejectedWorkIds?: string[];
 }
 
 /**
@@ -300,10 +298,17 @@ export async function selectNextQuestion(
   options?: SelectNextQuestionOptions
 ): Promise<QuestionData | null> {
   const t = perfStart('selectNextQuestion');
-  const tSelectNext = Date.now();
   try {
+  // 断定で「いいえ」にした作品を候補から除外（同じ作品の頭文字が後から出るのを防ぐ）
+  if (options?.revealRejectedWorkIds?.length) {
+    const rejectedSet = new Set(options.revealRejectedWorkIds);
+    const filtered = weights.filter(w => !rejectedSet.has(w.workId));
+    if (filtered.length === 0) return null;
+    weights = filtered;
+    probabilities = normalizeWeights(filtered);
+  }
+
   await ensureTagCacheLoaded();
-  console.log('[perf] selectNextQuestion: after ensureTagCacheLoaded', Date.now() - tSelectNext, 'ms qIndex=', questionCount + 1);
   const questionIndex = questionCount + 1; // 次の質問番号（1-based）
   const usedSummaryIds = new Set(
     questionHistory
@@ -428,7 +433,6 @@ export async function selectNextQuestion(
   }
 
   if (specialSlotIndices.includes(qIndex)) {
-    console.log('[perf] selectNextQuestion: specialSlot branch start', Date.now() - tSelectNext, 'ms');
     const usedSpecialTypes = new Set<SpecialQuestionType>(
       questionHistory
         .filter((q): q is QuestionHistoryEntry & { specialQuestionType: SpecialQuestionType } =>
@@ -446,7 +450,6 @@ export async function selectNextQuestion(
       syllableChars: q.syllableChars,
       answer: q.answer,
     }));
-    const tSpecial = Date.now();
     const specialResult = await selectSpecialQuestion(
       probabilities,
       usedSpecialTypes,
@@ -455,7 +458,6 @@ export async function selectNextQuestion(
       titleCharTypeAnsweredUnknown,
       historyForRescue
     );
-    console.log('[perf] selectNextQuestion: selectSpecialQuestion', Date.now() - tSpecial, 'ms');
     if (specialResult) {
       return {
         kind: 'SPECIAL_QUESTION',
@@ -486,7 +488,6 @@ export async function selectNextQuestion(
   );
 
   if (shouldConfirm) {
-    console.log('[perf] selectNextQuestion: confirm branch start', Date.now() - tSelectNext, 'ms');
     const tConfirm = perfStart('selectNextQuestion_confirm');
     try {
     // SOFT_CONFIRM vs HARD_CONFIRM選択
@@ -877,10 +878,7 @@ export async function selectNextQuestion(
     const hardInjected = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
     if (hardInjected) return hardInjected;
   }
-  console.log('[perf] selectNextQuestion: selectUnifiedExploreOrSummary start', Date.now() - tSelectNext, 'ms');
-  const tUnified = Date.now();
   const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
-  console.log('[perf] selectNextQuestion: selectUnifiedExploreOrSummary', Date.now() - tUnified, 'ms');
   if (unified) return unified;
 
   // p値バンドでEXPLOREが選べなかった場合のフォールバック: HARD_CONFIRM で頭文字/作者を聞く
@@ -894,10 +892,7 @@ export async function selectNextQuestion(
 
   // フォールバック: 通常タグのみ（Q4以降）
   if (qIndex >= 4) {
-    console.log('[perf] selectNextQuestion: selectExploreQuestion start', Date.now() - tSelectNext, 'ms');
-    const tExplore = Date.now();
     const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
-    console.log('[perf] selectNextQuestion: selectExploreQuestion', Date.now() - tExplore, 'ms');
     if (exploreResult) return exploreResult;
     if (fallbackEnabled) {
       const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
@@ -2175,13 +2170,14 @@ export async function handleAnswerResponse(
     }
   }
 
-  // 4. 次の質問を選択
+  // 4. 次の質問を選択（断定で外した作品は候補から除外）
   const nextQuestion = await selectNextQuestion(
     updatedWeights,
     probabilities,
     newQuestionCount,
     historyWithAnswer,
-    config
+    config,
+    { revealRejectedWorkIds: session.revealRejectedWorkIds ?? undefined }
   );
 
   if (!nextQuestion) {
@@ -2329,7 +2325,7 @@ export async function handleRevealResponse(
     return { state: 'FAIL_LIST', sessionUpdates: baseSessionUpdates };
   }
 
-  // QUIZ に戻る: 次の質問を選択
+  // QUIZ に戻る: 次の質問を選択（今回含め断定で外した作品は候補から除外）
   const penalizedProbabilities = normalizeWeights(penalizedWeights);
   const nextQuestion = await selectNextQuestion(
     penalizedWeights,
@@ -2337,7 +2333,7 @@ export async function handleRevealResponse(
     session.questionCount,
     session.questionHistory,
     config,
-    { afterRevealWrong: true }
+    { afterRevealWrong: true, revealRejectedWorkIds: newRejected }
   );
 
   if (!nextQuestion) {

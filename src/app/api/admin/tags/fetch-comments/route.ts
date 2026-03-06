@@ -43,13 +43,52 @@ export async function POST(request: NextRequest) {
     await ensurePrismaConnected();
 
     const body = await request.json();
-    const { workIds: rawWorkIds, overwrite = false, limit: rawLimit, bulkJobId, progressContext } = body;
+    const { workIds: rawWorkIds, overwrite = false, limit: rawLimit, allocations: rawAllocations, bulkJobId, progressContext } = body;
 
     const MAX_LIMIT = 500;
+    const MAX_TOTAL_PRIORITY = 10000;
     const limit = rawLimit != null ? Math.min(MAX_LIMIT, Math.max(1, parseInt(String(rawLimit), 10) || 50)) : null;
 
     let workIds: string[];
-    if (Array.isArray(rawWorkIds) && rawWorkIds.length > 0) {
+    if (Array.isArray(rawAllocations) && rawAllocations.length > 0) {
+      // 優先度指定: 年ごと・有名順で workIds を構築（コメント未取得のみ）
+      const collected: string[] = [];
+      const baseWhere = overwrite ? {} : { commentText: null };
+      for (const entry of rawAllocations) {
+        const lim = Math.max(0, Math.min(10000, parseInt(String(entry.limit), 10) || 0));
+        if (lim <= 0) continue;
+        const year = entry.year != null ? parseInt(String(entry.year), 10) : null;
+        const yearEnd = entry.yearEnd != null ? parseInt(String(entry.yearEnd), 10) : null;
+        const releaseDateFilter =
+          year != null && !isNaN(year)
+            ? { gte: `${year}-01-01`, lte: `${year}-12-31` }
+            : yearEnd != null && !isNaN(yearEnd)
+              ? { lte: `${yearEnd}-12-31` }
+              : null;
+        const where = releaseDateFilter
+          ? { ...baseWhere, releaseDate: releaseDateFilter }
+          : baseWhere;
+        const rows = await prisma.work.findMany({
+          where,
+          select: { workId: true },
+          orderBy: [{ reviewCount: 'desc' }, { createdAt: 'desc' }],
+          take: lim,
+        });
+        for (const r of rows) {
+          if (collected.length >= MAX_TOTAL_PRIORITY) break;
+          collected.push(r.workId);
+        }
+        if (collected.length >= MAX_TOTAL_PRIORITY) break;
+      }
+      workIds = collected;
+      if (workIds.length === 0) {
+        return NextResponse.json({
+          success: true,
+          stats: { success: 0, failed: 0, skipped: 0 },
+          fetched: 0,
+        });
+      }
+    } else if (Array.isArray(rawWorkIds) && rawWorkIds.length > 0) {
       workIds = rawWorkIds;
     } else if (limit != null) {
       const rows = await prisma.work.findMany({
@@ -68,7 +107,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       return NextResponse.json(
-        { success: false, error: 'workIds または limit を指定してください' },
+        { success: false, error: 'workIds / limit / allocations のいずれかを指定してください' },
         { status: 400 }
       );
     }
@@ -80,11 +119,14 @@ export async function POST(request: NextRequest) {
       },
       select: {
         workId: true,
+        title: true,
         productUrl: true,
         commentText: true, // 既に取得済みかチェック
         manualTaggingFolder: true, // 未タグ振り分け判定用
       },
     });
+    const orderIndex = new Map(workIds.map((id, i) => [id, i]));
+    works.sort((a, b) => (orderIndex.get(a.workId) ?? 0) - (orderIndex.get(b.workId) ?? 0));
 
     const toProcess = works.filter((w) => overwrite || !w.commentText);
     const skippedCount = works.length - toProcess.length;
@@ -98,7 +140,7 @@ export async function POST(request: NextRequest) {
 
     const results = await Promise.all(
       toProcess.map((work) =>
-        concurrencyLimit(async (): Promise<{ success: boolean; skippedReason?: string }> => {
+        concurrencyLimit(async (): Promise<{ success: boolean; skippedReason?: string; errorMessage?: string }> => {
           if (ctx) {
             updatePhaseProgress(bulkJobId, 'comment', {
               done: ctx.doneOffset + completedRef.count,
@@ -193,7 +235,8 @@ export async function POST(request: NextRequest) {
                 detail: 'エラー',
               });
             }
-            return { success: false };
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return { success: false, errorMessage };
           }
         })
       )
@@ -203,6 +246,19 @@ export async function POST(request: NextRequest) {
     const skippedTooShort = results.filter((r) => r.skippedReason === 'too_short').length;
     const skippedNotFound = results.filter((r) => r.skippedReason === 'not_found').length;
     const failedCount = results.length - successCount;
+    const failedDetails: Array<{ workId: string; title: string; reason: string }> = toProcess
+      .map((w, i) => ({ work: w, r: results[i] }))
+      .filter(({ r }) => !r.success)
+      .map(({ work, r }) => ({
+        workId: work.workId,
+        title: work.title ?? '',
+        reason:
+          r.skippedReason === 'too_short'
+            ? 'コメント短すぎ（要確認）'
+            : r.skippedReason === 'not_found'
+              ? 'コメント未検出（要確認）'
+              : r.errorMessage ?? 'エラー',
+      }));
 
     return NextResponse.json({
       success: true,
@@ -217,6 +273,7 @@ export async function POST(request: NextRequest) {
       failed: failedCount,
       skippedTooShort,
       skippedNotFound,
+      failedDetails,
     });
   } catch (error) {
     console.error('Error fetching comments:', error);

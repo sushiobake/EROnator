@@ -344,7 +344,14 @@ export async function runSimulation(
         questionCount,
       })) break;
 
-      const question = await selectNextQuestion(weights, probabilities, questionCount, questionHistory, config);
+      const question = await selectNextQuestion(
+        weights,
+        probabilities,
+        questionCount,
+        questionHistory,
+        config,
+        { revealRejectedWorkIds: revealedWrongWorkIds.size > 0 ? [...revealedWrongWorkIds] : undefined }
+      );
       if (!question) {
         endedBy = 'NO_MORE_QUESTIONS';
         const forceRevealWorkId = sorted[0]?.workId;

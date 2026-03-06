@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
     // offset を数値として検証（1以上）
     const offset = Math.max(1, parseInt(String(rawOffset), 10) || 1);
     // 連続ラウンド数（1＝従来どおり1回だけ。2以上でオフセットを自動で進めて複数回取得）
-    const rounds = Math.max(1, Math.min(20, parseInt(String(rawRounds), 10) || 1));
+    const rounds = Math.max(1, Math.min(100, parseInt(String(rawRounds), 10) || 1));
 
     // DMM API認証情報
     const apiId = process.env.DMM_API_ID;

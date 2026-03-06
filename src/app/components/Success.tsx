@@ -50,7 +50,7 @@ export function Success({
   sessionId,
   questionCount,
 }: SuccessProps) {
-  const linkText = '今すぐ読む';
+  const linkText = '読んでみる';
   const isMobile = useMediaQuery(768);
   const hideRecommendations = isMobile && mobileListBelow;
 
@@ -94,11 +94,11 @@ export function Success({
           <ExternalLink href={work.productUrl} linkText={linkText} sessionId={sessionId}>
             <span style={{
               display: 'inline-block',
-              padding: isMobile ? '8px 18px' : '10px 24px',
+              padding: isMobile ? '10px 22px' : '12px 29px',
               backgroundColor: '#ff6b35',
               color: '#fff',
               fontWeight: 700,
-              fontSize: isMobile ? 14 : 15,
+              fontSize: isMobile ? 17 : 18,
               borderRadius: 8,
               textDecoration: 'none',
               boxShadow: '0 2px 8px rgba(255,107,53,0.3)',
@@ -163,7 +163,7 @@ export function Success({
                     {rec.title}
                   </p>
                   <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
-                  <div style={{ fontSize: isMobile ? 9 : 12, color: 'var(--color-text-muted)' }}>
+                  <div style={{ fontSize: isMobile ? 11 : 14, color: 'var(--color-text-muted)' }}>
                     <ExternalLink href={rec.productUrl} linkText={linkText} sessionId={sessionId}>
                       {linkText}
                     </ExternalLink>
@@ -179,16 +179,16 @@ export function Success({
         <div
           style={{
             display: 'flex',
-            flexDirection: isMobile ? 'row' : undefined,
-            justifyContent: isMobile ? 'center' : 'space-between',
+            flexDirection: 'row',
+            justifyContent: 'flex-start',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: isMobile ? 8 : 12,
+            gap: 12,
             width: '100%',
-            marginTop: isMobile ? 12 : 24,
+            marginTop: isMobile ? 12 : 14,
           }}
         >
-          <RestartButton onRestart={onRestart} inline compact={isMobile} />
+          <RestartButton onRestart={onRestart} inline compact={isMobile} small={!isMobile} />
           <a
             href="#"
             onClick={(e) => {
@@ -205,9 +205,10 @@ export function Success({
               window.open(intent, '_blank', 'noopener,noreferrer');
             }}
             style={{
-              padding: isMobile ? '8px 14px' : '14px 24px',
-              minHeight: isMobile ? 36 : 48,
-              fontSize: isMobile ? 12 : 15,
+              padding: '8px 14px',
+              height: 36,
+              boxSizing: 'border-box',
+              fontSize: 12,
               fontWeight: 600,
               color: '#fff',
               backgroundColor: '#0f1419',
@@ -219,9 +220,10 @@ export function Success({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
+              lineHeight: 1,
             }}
           >
-            <svg width={isMobile ? 14 : 16} height={isMobile ? 14 : 16} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
             ポストする
           </a>
         </div>

@@ -78,17 +78,18 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
 
   return (
     <>
-      <div style={{ width: '100%', maxWidth: 320 }}>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            borderRadius: 10,
-                border: '1px solid var(--color-border)',
-            boxShadow: 'var(--shadow-md)',
-          }}
-        >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+        <div style={{ width: '100%', maxWidth: 320 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              borderRadius: 10,
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
           {visibleChoices.map((choice, index) => {
             const isBlocked = isBlockedDisabled && (SPECIAL_QUESTION_BLOCKED_VALUES as readonly string[]).includes(choice.value);
             const isDisabled = interactionDisabled || isBlocked;
@@ -132,9 +133,9 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             曖昧にしないで！わかるならちゃんと妄想して！
           </p>
         )}
-      </div>
-      {canGoBack && onBack && (
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        </div>
+        {canGoBack && onBack && (
+          <div style={{ marginTop: 16, width: '100%', maxWidth: 320, display: 'flex', justifyContent: 'flex-end' }}>
           <button
             onClick={handleBack}
             disabled={interactionDisabled}
@@ -166,8 +167,9 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
             </svg>
             <span>修正する</span>
           </button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </>
   );
 }

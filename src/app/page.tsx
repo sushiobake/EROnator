@@ -164,15 +164,24 @@ export default function Home() {
   const [effectiveCandidates, setEffectiveCandidates] = useState<number | null>(null);
   const [streamerMode, setStreamerMode] = useState(false);
   const questionShownAtRef = useRef<number>(0);
-  const [thinkingConfig, setThinkingConfig] = useState<{
-    displayMode: 'random' | 'sequential';
-    early: string[];
-    mid: string[];
-    late: string[];
-    closing: string[];
+  type ThinkingConfigState = {
+    inGame: { displayMode: 'random' | 'sequential'; early: { texts: string[] }; mid: { texts: string[] }; late: { texts: string[] }; closing: { texts: string[] } };
+    opening: { text: string };
+    endingCorrect: { text: string };
+    endingWrong: { text: string };
+    failListSelect?: { text: string };
+    failListNotInList?: { text: string };
+  };
+  const [gameCopy, setGameCopy] = useState<{
+    topLines?: string[]; questionPreamble?: string; revealPreamble?: string; revealMain?: string;
+    successSpeech?: string; successTitle?: string; recommendTitle?: string;
+    failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string;
+    almostSuccessSpeech?: string; aiGatePreamble?: string; aiGateMain?: string;
   } | null>(null);
+  const [thinkingConfig, setThinkingConfig] = useState<ThinkingConfigState | null>(null);
   const thinkingSeqIndexRef = useRef<Record<string, number>>({ early: 0, mid: 0, late: 0, closing: 0 });
   const [currentThinkingText, setCurrentThinkingText] = useState('考え中…');
+  const [pendingThinkingType, setPendingThinkingType] = useState<'opening' | 'inGame' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList' | null>(null);
 
   /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1000ms・本番 200ms */
   const MIN_THINKING_MS =
@@ -247,32 +256,56 @@ export default function Home() {
     localStorage.setItem('eronator.debugPanel.open', debugPanelOpen ? '1' : '0');
   }, [isClient, debugPanelOpen]);
 
-  /** 「考え中」設定を取得（AI_GATE表示時にプリロード） */
+  /** ゲーム文言・考え中設定を取得（TOP or AI_GATE で未取得なら） */
   useEffect(() => {
-    if (state === 'AI_GATE' && !thinkingConfig) {
-      fetch('/api/config/thinking')
+    if ((state === 'TOP' || state === 'AI_GATE') && !gameCopy) {
+      fetch('/api/config/game-ui')
         .then((r) => r.ok ? r.json() : null)
-        .then((t) => { if (t) setThinkingConfig(t); })
+        .then((d: { gameCopy?: NonNullable<typeof gameCopy>; thinking?: ThinkingConfigState } | null) => {
+          if (d?.gameCopy) setGameCopy(d.gameCopy);
+          if (d?.thinking) setThinkingConfig(d.thinking);
+        })
         .catch(() => {});
     }
-  }, [state, thinkingConfig]);
+  }, [state, gameCopy]);
 
-  /** isThinking になったタイミングで表示文言を決定（同じ thinking 中は固定） */
+  /** isThinking になったタイミングで表示文言を決定（7種: opening / inGame early,mid,late,closing / endingCorrect / endingWrong） */
   useEffect(() => {
-    if (!isThinking) return;
-    const cfg = thinkingConfig ?? { displayMode: 'sequential' as const, early: ['考え中…'], mid: ['なんとなく見えてきた…'], late: ['おっ……これは……！'], closing: ['わかったかも……！'] };
+    if (!isThinking || !pendingThinkingType) return;
+    const cfg = thinkingConfig;
+    if (pendingThinkingType === 'opening') {
+      setCurrentThinkingText(cfg?.opening?.text ?? '考え中…');
+      return;
+    }
+    if (pendingThinkingType === 'endingCorrect') {
+      setCurrentThinkingText(cfg?.endingCorrect?.text ?? 'わかった！');
+      return;
+    }
+    if (pendingThinkingType === 'endingWrong') {
+      setCurrentThinkingText(cfg?.endingWrong?.text ?? 'うーん…次は…');
+      return;
+    }
+    if (pendingThinkingType === 'failListSelect') {
+      setCurrentThinkingText(cfg?.failListSelect?.text ?? '考え中…');
+      return;
+    }
+    if (pendingThinkingType === 'failListNotInList') {
+      setCurrentThinkingText(cfg?.failListNotInList?.text ?? '考え中…');
+      return;
+    }
+    const inGame = cfg?.inGame ?? { displayMode: 'sequential' as const, early: { texts: ['考え中…'] }, mid: { texts: ['なんとなく見えてきた…'] }, late: { texts: ['おっ……これは……！'] }, closing: { texts: ['わかったかも……！'] } };
     const ec = effectiveCandidates;
     const level: 'early' | 'mid' | 'late' | 'closing' = (ec == null || ec > 500) ? 'early' : (ec > 50) ? 'mid' : (ec > 10) ? 'late' : 'closing';
-    const arr = (cfg[level] ?? ['考え中…']).filter(Boolean);
+    const arr = (inGame[level]?.texts ?? ['考え中…']).filter(Boolean);
     if (arr.length === 0) {
       setCurrentThinkingText('考え中…');
       return;
     }
-    const text = cfg.displayMode === 'random'
+    const text = inGame.displayMode === 'random'
       ? arr[Math.floor(Math.random() * arr.length)]
       : arr[thinkingSeqIndexRef.current[level]++ % arr.length];
     setCurrentThinkingText(text);
-  }, [isThinking, thinkingConfig, effectiveCandidates]);
+  }, [isThinking, pendingThinkingType, thinkingConfig, effectiveCandidates]);
 
   useEffect(() => {
     if (streamerMode) {
@@ -282,11 +315,11 @@ export default function Home() {
     }
   }, [streamerMode]);
 
-  /** 実機Safariでthinking画像が遅延表示される不具合対策：ゲーム画面表示前にプリロード */
+  /** 実機Safariでthinking画像が遅延表示される不具合対策：ゲーム画面表示前にプリロード（デフォルト＋7種） */
   useEffect(() => {
     if (!isClient) return;
-    const img = new Image();
-    img.src = '/ilust/inari_thinking.png';
+    const paths = ['/ilust/inari_thinking.png', '/ilust/inari_thinking_opening.png', '/ilust/inari_thinking_early.png', '/ilust/inari_thinking_mid.png', '/ilust/inari_thinking_late.png', '/ilust/inari_thinking_closing.png', '/ilust/inari_thinking_ending_correct.png', '/ilust/inari_thinking_ending_wrong.png', '/ilust/inari_thinking_fail_list_select.png', '/ilust/inari_thinking_fail_list_not_in_list.png'];
+    paths.forEach((src) => { const img = new Image(); img.src = src; });
   }, [isClient]);
 
 
@@ -307,8 +340,9 @@ export default function Home() {
   };
 
   const handleAiGateSelect = async (choice: 'YES' | 'NO' | 'DONT_CARE') => {
+    setPendingThinkingType('opening');
     setIsThinking(true);
-    const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
+    const minDelay = new Promise<void>(r => setTimeout(r, 0));
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (isClient && debugUIEnabled && debugEnabled && process.env.NEXT_PUBLIC_DEBUG_TOKEN) {
@@ -340,6 +374,7 @@ export default function Home() {
       setEffectiveCandidates(data.effectiveCandidates ?? null);
       setDebugData(data.debug || null);
       if (data.thinking) setThinkingConfig(data.thinking);
+      if (data.gameCopy) setGameCopy(data.gameCopy);
       setState('QUIZ');
     } catch (error) {
       console.error('Error starting session:', error);
@@ -347,12 +382,14 @@ export default function Home() {
       alert(`セッション開始に失敗しました: ${errorMessage}`);
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
   const handleQuizAnswer = async (choice: string) => {
     if (!sessionId) return;
 
+    setPendingThinkingType('inGame');
     setIsThinking(true);
     const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
@@ -399,12 +436,14 @@ export default function Home() {
       alert('回答の送信に失敗しました');
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
   const handleQuizBack = async () => {
     if (!sessionId) return;
 
+    setPendingThinkingType('inGame');
     setIsThinking(true);
     const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
@@ -441,6 +480,7 @@ export default function Home() {
       alert(error instanceof Error ? error.message : '前の質問に戻れませんでした');
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
@@ -454,6 +494,7 @@ export default function Home() {
   const handleRevealAnswer = async (answer: 'YES' | 'NO') => {
     if (!sessionId) return;
 
+    setPendingThinkingType(answer === 'YES' ? 'endingCorrect' : 'endingWrong');
     setIsThinking(true);
     const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
@@ -499,6 +540,7 @@ export default function Home() {
       alert('回答の送信に失敗しました');
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
@@ -522,6 +564,7 @@ export default function Home() {
   const handleFailListSelectWork = async (workId: string) => {
     if (!sessionId) return;
 
+    setPendingThinkingType('failListSelect');
     setIsThinking(true);
     const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
@@ -541,12 +584,14 @@ export default function Home() {
       alert('データの取得に失敗しました');
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
   const handleFailListNotInList = async (submittedTitleText: string) => {
     if (!sessionId) return;
 
+    setPendingThinkingType('failListNotInList');
     setIsThinking(true);
     const minDelay = new Promise<void>(r => setTimeout(r, MIN_THINKING_MS));
     try {
@@ -567,6 +612,7 @@ export default function Home() {
       alert('送信に失敗しました');
     } finally {
       setIsThinking(false);
+      setPendingThinkingType(null);
     }
   };
 
@@ -577,7 +623,7 @@ export default function Home() {
   if (state === 'TOP') {
     return (
       <>
-        <TopScreen onPlay={handleTopPlay} onRecommend={() => setState('RECOMMEND')} streamerMode={streamerMode} onToggleStreamerMode={() => {
+        <TopScreen topLines={gameCopy?.topLines} onPlay={handleTopPlay} onRecommend={() => setState('RECOMMEND')} streamerMode={streamerMode} onToggleStreamerMode={() => {
           const next = !streamerMode;
           setStreamerMode(next);
           if (next) {
@@ -615,6 +661,8 @@ export default function Home() {
   const thinkingSpeech = (
     <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{currentThinkingText}</p>
   );
+  const thinkingSubType = isThinking && pendingThinkingType ? (pendingThinkingType === 'inGame' ? confidenceLevel : pendingThinkingType) : undefined;
+  const gc = gameCopy;
 
   if (state === 'AI_GATE') {
     return (
@@ -629,13 +677,14 @@ export default function Home() {
         )}
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
+          thinkingSubType={thinkingSubType}
           characterSpeech={
             isThinking
               ? thinkingSpeech
               : (
                 <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
-                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>AI生成作品ではない？</p>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>{gc?.aiGatePreamble ?? 'あなたが妄想した作品は……'}</p>
+                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{gc?.aiGateMain ?? 'AI生成作品ではない？'}</p>
                 </div>
               )
           }
@@ -659,12 +708,13 @@ export default function Home() {
         )}
         <Stage
           characterVariant={isThinking ? thinkingVariants[confidenceLevel] : questionCharacterVariant}
+          thinkingSubType={thinkingSubType}
           characterSpeech={
             isThinking
               ? thinkingSpeech
               : (
                 <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>{gc?.questionPreamble ?? 'あなたが妄想した作品は……'}</p>
                   <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
                       {questionCount + 1}
@@ -702,13 +752,14 @@ export default function Home() {
         )}
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
+          thinkingSubType={thinkingSubType}
           characterSpeech={
             isThinking
               ? thinkingSpeech
               : (
                 <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>あなたが妄想した作品は……</p>
-                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>ズバリ！コレ…でしょ！</p>
+                  <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>{gc?.revealPreamble ?? 'あなたが妄想した作品は……'}</p>
+                  <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{gc?.revealMain ?? 'ズバリ！コレ…でしょ！'}</p>
                 </div>
               )
           }
@@ -735,12 +786,13 @@ export default function Home() {
           characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-              正解！？やっぱりね！
+              {gc?.successSpeech ?? '正解！？やっぱりね！'}
             </p>
           }
           mobileBelowCanvas={isMobile && successRecommendedWorks.length > 0 ? (
             <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} sessionId={sessionId} />
           ) : undefined}
+          whiteboardWide={true}
         >
           <Success
             work={successWork}
@@ -749,6 +801,8 @@ export default function Home() {
             mobileListBelow={isMobile}
             sessionId={sessionId}
             questionCount={questionCount}
+            successTitle={gc?.successTitle ?? '正解！？やっぱりね！'}
+            recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
           />
         </Stage>
       </>
@@ -770,13 +824,13 @@ export default function Home() {
           characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-              それか～～～！次回は当てるからね！
+              {gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
             </p>
           }
           mobileBelowCanvas={isMobile && almostSuccessRecommendedWorks.length > 0 ? (
             <SuccessRecommendationsVertical
               recommendedWorks={almostSuccessRecommendedWorks}
-              recommendTitle="そんなあなたには…おすすめもあるわ！"
+              recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
               sessionId={sessionId}
             />
           ) : undefined}
@@ -785,8 +839,8 @@ export default function Home() {
             work={almostSuccessWork}
             recommendedWorks={almostSuccessRecommendedWorks}
             onRestart={handleRestart}
-            successTitle="それか～～～！次回は当てるからね！"
-            recommendTitle="そんなあなたには…おすすめもあるわ！"
+            successTitle={gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
+            recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
             questionCount={questionCount}
             mobileListBelow={isMobile}
             sessionId={sessionId}
@@ -809,14 +863,15 @@ export default function Home() {
         )}
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
+          thinkingSubType={thinkingSubType}
           characterSpeech={
             isThinking
               ? thinkingSpeech
               : (
                 <div style={isMobile ? { textAlign: 'center' } : {}}>
-                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>うーん…ちょっとわからなかったわ。</p>
+                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{gc?.failListSpeech ?? 'うーん…ちょっとわからなかったわ。'}</p>
                   <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: isMobile ? 20 : 15 }}>
-                    {isMobile ? '下のリストにある？' : 'ちなみにこの中にはある？'}
+                    {isMobile ? (gc?.failListSubMobile ?? '下のリストにある？') : (gc?.failListSubPc ?? 'ちなみにこの中にはある？')}
                   </p>
                 </div>
               )

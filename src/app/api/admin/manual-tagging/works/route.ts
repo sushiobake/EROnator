@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 
-const FOLDERS = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const;
+const FOLDERS = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test', 'priority_untagged_1', 'priority_untagged_2'] as const;
 
 const baseWhere = {
   commentText: { not: null },

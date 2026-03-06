@@ -83,7 +83,7 @@ export function MobileWorkCardHorizontal({
         </h3>
         <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         {showFanzaLink && (
-          <div style={{ marginTop: 4, fontSize: 10 }}>
+          <div style={{ marginTop: 5, fontSize: 12 }}>
             <ExternalLink href={work.productUrl} linkText={LINK_TEXT} compact sessionId={sessionId}>
               {LINK_TEXT}
             </ExternalLink>

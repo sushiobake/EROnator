@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { MvpConfigSchema, DEFAULT_THINKING, type MvpConfig } from '@/server/config/schema';
+import { MvpConfigSchema, DEFAULT_THINKING, DEFAULT_GAME_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
 
 /**
  * GET: 現在の設定を取得
@@ -29,9 +29,11 @@ export async function GET(request: NextRequest) {
     const configPath = join(process.cwd(), 'config', 'mvpConfig.json');
     const fileContent = readFileSync(configPath, 'utf-8');
     const raw = JSON.parse(fileContent);
-    // thinking が無い既存設定に対応（デフォルトをマージ）
-    const config = { ...raw, thinking: raw.thinking ?? DEFAULT_THINKING };
-    
+    const config = {
+      ...raw,
+      gameCopy: raw.gameCopy ?? DEFAULT_GAME_COPY,
+      thinking: migrateThinking(raw.thinking ?? DEFAULT_THINKING),
+    };
     return NextResponse.json({
       success: true,
       config,

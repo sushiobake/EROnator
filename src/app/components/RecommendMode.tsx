@@ -223,7 +223,7 @@ function WorkCard({ work, isMobile }: { work: WorkResult; isMobile: boolean }) {
               ★{work.reviewAverage.toFixed(1)}（{work.reviewCount}件）
             </span>
           )}
-          <ExternalLink href={work.productUrl} linkText="今すぐ読む">
+          <ExternalLink href={work.productUrl} linkText="読んでみる">
             <span style={{
               display: 'inline-block',
               padding: '4px 12px',
@@ -234,7 +234,7 @@ function WorkCard({ work, isMobile }: { work: WorkResult; isMobile: boolean }) {
               borderRadius: 6,
               textDecoration: 'none',
             }}>
-              今すぐ読む
+              読んでみる
             </span>
           </ExternalLink>
         </div>

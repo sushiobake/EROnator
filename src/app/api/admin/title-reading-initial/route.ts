@@ -1,7 +1,8 @@
 /**
  * 作品頭文字チェック・編集 API
- * GET: 漢字始まりの作品一覧（50音順、1000件/ページ）
- * 対象: コメント取得済み OR ゲーム使用（phase0通過）の作品
+ * GET: 漢字始まりの作品一覧（50音順、100件/ページ）
+ * - 未確認: ゲーム使用（gameRegistered=true）の作品のみ
+ * - 確認済み: 従来どおり（コメント取得済み OR ゲーム使用 OR タグ済み）の確認済み作品
  * PATCH: 頭文字を1件更新
  * POST: 一括で確認済みにする
  */
@@ -35,16 +36,7 @@ export async function GET(request: NextRequest) {
     const limit = 100;
     const offset = (page - 1) * limit;
 
-    const confirmedConditions: Array<{ titleReadingInitialConfirmed: null | boolean }> = [];
-    if (includeUnconfirmed) {
-      confirmedConditions.push({ titleReadingInitialConfirmed: null });
-      confirmedConditions.push({ titleReadingInitialConfirmed: false });
-    }
-    if (includeConfirmed) {
-      confirmedConditions.push({ titleReadingInitialConfirmed: true });
-    }
-
-    if (confirmedConditions.length === 0) {
+    if (!includeUnconfirmed && !includeConfirmed) {
       return NextResponse.json({
         success: true,
         works: [],
@@ -54,19 +46,29 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const allWorks = await prisma.work.findMany({
-      where: {
-        AND: [
-          {
-            OR: [
-              { commentText: { not: null } },
-              { gameRegistered: true },
-              { manualTaggingFolder: 'tagged' },
-            ],
-          },
-          ...(confirmedConditions.length > 0 ? [{ OR: confirmedConditions }] : []),
+    const orConditions: Array<Record<string, unknown>> = [];
+    if (includeUnconfirmed) {
+      orConditions.push({
+        gameRegistered: true,
+        OR: [
+          { titleReadingInitialConfirmed: null },
+          { titleReadingInitialConfirmed: false },
         ],
-      },
+      });
+    }
+    if (includeConfirmed) {
+      orConditions.push({
+        titleReadingInitialConfirmed: true,
+        OR: [
+          { commentText: { not: null } },
+          { gameRegistered: true },
+          { manualTaggingFolder: 'tagged' },
+        ],
+      });
+    }
+
+    const allWorks = await prisma.work.findMany({
+      where: { OR: orConditions },
       select: {
         workId: true,
         title: true,

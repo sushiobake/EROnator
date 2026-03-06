@@ -6,7 +6,7 @@
 import path from 'path';
 import fs from 'fs';
 
-const FOLDERS = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const;
+const FOLDERS = ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test', 'priority_untagged_1', 'priority_untagged_2'] as const;
 
 function getSqlitePath(): string | null {
   const dbUrl = process.env.DATABASE_URL;

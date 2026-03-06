@@ -122,9 +122,79 @@ const PopularitySchema = z.object({
   playBonusOnSuccess: z.number().nonnegative(),
 }).strict();
 
-/** 「考え中」表示の文言・表示モード。各レベル最大5件まで。 */
+/** ゲーム内表示文言（トップ・質問前段・断定・正解・外れ・おすすめ・AI_GATE） */
+const GameCopySchema = z.object({
+  /** トップ画面。{workCount} は作品数に置換。行は配列で最大5行程度 */
+  topLines: z.array(z.string()).min(1).max(5),
+  /** 質問の前段（質問文の直上1行） */
+  questionPreamble: z.string(),
+  /** 断定画面：前段＋メイン */
+  revealPreamble: z.string(),
+  revealMain: z.string(),
+  /** 正解時：キャラ台詞＋成功タイトル＋おすすめタイトル */
+  successSpeech: z.string(),
+  successTitle: z.string(),
+  recommendTitle: z.string(),
+  /** 外れ① FAIL_LIST（リスト表示） */
+  failListSpeech: z.string(),
+  failListSubMobile: z.string(),
+  failListSubPc: z.string(),
+  /** 外れ② ALMOST_SUCCESS（惜しかった） */
+  almostSuccessSpeech: z.string(),
+  /** AI_GATE（最初のゲート）前段＋メイン */
+  aiGatePreamble: z.string(),
+  aiGateMain: z.string(),
+}).strict();
+
+export const DEFAULT_GAME_COPY = {
+  topLines: [
+    '有名な同人誌を妄想してみて。',
+    '{workCount}作品の中から当ててあげるわ。',
+    '私は何でもお見通しだから。',
+  ],
+  questionPreamble: 'あなたが妄想した作品は……',
+  revealPreamble: 'あなたが妄想した作品は……',
+  revealMain: 'ズバリ！コレ…でしょ！',
+  successSpeech: '正解！？やっぱりね！',
+  successTitle: '正解！？やっぱりね！',
+  recommendTitle: 'そんなあなたには…おすすめもあるわ！',
+  failListSpeech: 'うーん…ちょっとわからなかったわ。',
+  failListSubMobile: '下のリストにある？',
+  failListSubPc: 'ちなみにこの中にはある？',
+  almostSuccessSpeech: 'それか～～～！次回は当てるからね！',
+  aiGatePreamble: 'あなたが妄想した作品は……',
+  aiGateMain: 'AI生成作品ではない？',
+};
+
+/** 考え中：7種類。inGameは early/mid/late/closing で各最大5候補＋表示モード。画像は /ilust/ の固定ファイル名 */
+const InGameThinkingLevelSchema = z.object({
+  texts: z.array(z.string()).min(1).max(5),
+});
+const InGameThinkingSchema = z.object({
+  displayMode: z.enum(['random', 'sequential']),
+  early: InGameThinkingLevelSchema,
+  mid: InGameThinkingLevelSchema,
+  late: InGameThinkingLevelSchema,
+  closing: InGameThinkingLevelSchema,
+}).strict();
+
+const SingleThinkingSchema = z.object({
+  text: z.string(),
+}).strict();
+
 const ThinkingSchema = z.object({
-  /** 複数文言の表示方法: random=ランダム, sequential=順番 */
+  inGame: InGameThinkingSchema,
+  opening: SingleThinkingSchema,
+  endingCorrect: SingleThinkingSchema,
+  endingWrong: SingleThinkingSchema,
+  /** 失敗リストで作品を選んだときの考え中 */
+  failListSelect: SingleThinkingSchema.optional(),
+  /** 失敗リストで「リストにない」を送ったときの考え中 */
+  failListNotInList: SingleThinkingSchema.optional(),
+}).strict();
+
+/** 旧形式（thinking: { displayMode, early, mid, late, closing }）互換用 */
+const LegacyThinkingSchema = z.object({
   displayMode: z.enum(['random', 'sequential']),
   early: z.array(z.string()).min(1).max(5),
   mid: z.array(z.string()).min(1).max(5),
@@ -132,17 +202,75 @@ const ThinkingSchema = z.object({
   closing: z.array(z.string()).min(1).max(5),
 }).strict();
 
+export type ThinkingConfig = z.infer<typeof ThinkingSchema>;
+
+/** 旧形式を新形式に変換。既に新形式なら返す（不足している failListSelect / failListNotInList はデフォルトで補う） */
+export function migrateThinking(raw: unknown): ThinkingConfig {
+  const r = raw as Record<string, unknown> | undefined;
+  if (r && typeof r === 'object' && 'inGame' in r && r.inGame && Array.isArray((r.inGame as { early?: { texts?: unknown } })?.early?.texts)) {
+    const nr = raw as ThinkingConfig;
+    return {
+      ...nr,
+      failListSelect: nr.failListSelect ?? { text: '考え中…' },
+      failListNotInList: nr.failListNotInList ?? { text: '考え中…' },
+    };
+  }
+  const old = r as { displayMode?: string; early?: string[]; mid?: string[]; late?: string[]; closing?: string[] } | undefined;
+  const base = {
+    failListSelect: { text: '考え中…' },
+    failListNotInList: { text: '考え中…' },
+  };
+  if (!old || !Array.isArray(old.early)) {
+    return {
+      inGame: {
+        displayMode: 'sequential',
+        early: { texts: ['考え中…'] },
+        mid: { texts: ['なんとなく見えてきた…'] },
+        late: { texts: ['おっ……これは……！'] },
+        closing: { texts: ['わかったかも……！'] },
+      },
+      opening: { text: '考え中…' },
+      endingCorrect: { text: 'わかった！' },
+      endingWrong: { text: 'うーん…次は…' },
+      ...base,
+    };
+  }
+  return {
+    inGame: {
+      displayMode: (old.displayMode === 'random' ? 'random' : 'sequential') as 'random' | 'sequential',
+      early: { texts: old.early?.length ? old.early : ['考え中…'] },
+      mid: { texts: old.mid?.length ? old.mid : ['なんとなく見えてきた…'] },
+      late: { texts: old.late?.length ? old.late : ['おっ……これは……！'] },
+      closing: { texts: old.closing?.length ? old.closing : ['わかったかも……！'] },
+    },
+    opening: { text: '考え中…' },
+    endingCorrect: { text: 'わかった！' },
+    endingWrong: { text: 'うーん…次は…' },
+    ...base,
+  };
+}
+
 export const DEFAULT_THINKING = {
-  displayMode: 'sequential' as const,
-  early: ['考え中…'],
-  mid: ['なんとなく見えてきた…'],
-  late: ['おっ……これは……！'],
-  closing: ['わかったかも……！'],
+  inGame: {
+    displayMode: 'sequential' as const,
+    early: { texts: ['考え中…'] },
+    mid: { texts: ['なんとなく見えてきた…'] },
+    late: { texts: ['おっ……これは……！'] },
+    closing: { texts: ['わかったかも……！'] },
+  },
+  opening: { text: '考え中…' },
+  endingCorrect: { text: 'わかった！' },
+  endingWrong: { text: 'うーん…次は…' },
+  failListSelect: { text: '考え中…' },
+  failListNotInList: { text: '考え中…' },
 };
 
 export const MvpConfigSchema = z.object({
   version: z.literal('v1.5'),
-  thinking: ThinkingSchema.optional(),
+  /** ゲーム文言。未設定時は DEFAULT_GAME_COPY */
+  gameCopy: GameCopySchema.optional(),
+  /** 考え中7種。未設定または旧形式のときは migrateThinking で新形式に */
+  thinking: z.union([ThinkingSchema, LegacyThinkingSchema]).optional(),
   confirm: ConfirmSchema,
   algo: AlgoSchema,
   flow: FlowSchema,

@@ -74,13 +74,14 @@ export function ChangelogSection({ variant = 'pc', hideVersion = false }: Change
             fontWeight: 700,
             color: isMobile ? textColor : 'var(--color-text)',
             alignSelf: isMobile ? 'stretch' : 'flex-end',
+            lineHeight: 1.2,
           }}
         >
           {info.version}
         </div>
       )}
       {isMobile ? null : (
-        <div style={{ marginTop: 14, fontWeight: 700, marginBottom: 4, color: 'var(--color-text)', alignSelf: 'flex-end' }}>
+        <div style={{ marginTop: 4, fontWeight: 700, marginBottom: 4, color: 'var(--color-text)', alignSelf: 'flex-end', lineHeight: 1.2 }}>
           更新履歴
         </div>
       )}

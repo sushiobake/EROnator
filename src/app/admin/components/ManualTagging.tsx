@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { RANK_CHIP } from '../constants/rankColors';
 import { useAdminProgress } from '../context/AdminProgressContext';
 
-type FilterType = 'tagged' | 'has_issues' | 'pending' | 'needs_human_check' | 'untagged' | 'legacy_ai' | 'needs_review' | 'ab_test';
+type FilterType = 'tagged' | 'has_issues' | 'pending' | 'needs_human_check' | 'untagged' | 'legacy_ai' | 'needs_review' | 'ab_test' | 'priority_untagged_1' | 'priority_untagged_2';
 
 const FOLDER_LABELS: Record<FilterType, string> = {
   tagged: 'タグ済',
@@ -15,6 +15,8 @@ const FOLDER_LABELS: Record<FilterType, string> = {
   legacy_ai: '旧AIタグ',
   needs_review: '要注意⚠️',
   ab_test: 'ABテスト用',
+  priority_untagged_1: '未タグ（優先順位①）',
+  priority_untagged_2: '未タグ（優先順位②）',
 };
 
 interface WorkListItem {
@@ -377,7 +379,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
   }, [batchWorks]);
 
   const filterLabels: { value: FilterType; label: string }[] = (
-    ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const
+    ['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test', 'priority_untagged_1', 'priority_untagged_2'] as const
   ).map((value) => ({ value, label: FOLDER_LABELS[value] }));
 
   return (
@@ -437,7 +439,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
       )}
 
       {/* AIタグ付け用バッチ: チェック待ち(pending)・未タグ・旧AIタグの3タブのみ表示。タブごとにコピペボタンを出し分け */}
-      {(filter === 'pending' || filter === 'untagged' || filter === 'legacy_ai') && (
+      {(filter === 'pending' || filter === 'untagged' || filter === 'legacy_ai' || filter === 'priority_untagged_1' || filter === 'priority_untagged_2') && (
       <div style={{ marginBottom: '1rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '6px', background: '#f9f9f9' }}>
         <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', fontSize: '0.95rem' }}>AIタグ付け用バッチ</div>
         {filter === 'pending' && (
@@ -451,7 +453,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
             </p>
           </>
         )}
-        {filter === 'untagged' && (
+        {(filter === 'untagged' || filter === 'priority_untagged_1' || filter === 'priority_untagged_2') && (
           <>
             <p style={{ color: '#555', fontSize: '0.8rem', marginBottom: '0.5rem' }}>
               対象を決めたあと「AIにタグ付けさせるためのコピペ」を押すと、指示文＋作品データがクリップボードに入ります。AIに貼り付けてタグ付けを依頼してください。
@@ -526,7 +528,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
           </div>
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
-          {(filter === 'untagged' || filter === 'legacy_ai') && (
+          {(filter === 'untagged' || filter === 'legacy_ai' || filter === 'priority_untagged_1' || filter === 'priority_untagged_2') && (
             <>
               <button
                 type="button"
@@ -955,7 +957,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
           )}
         </div>
 
-        {(filter === 'untagged' || filter === 'legacy_ai') && (
+        {(filter === 'untagged' || filter === 'legacy_ai' || filter === 'priority_untagged_1' || filter === 'priority_untagged_2') && (
           <details style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}>
             <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>【反映手順】AIが返したJSONをチェック待ちに入れる（タグ付け用）</summary>
             <ol style={{ margin: '0.5rem 0 0 1.2rem', padding: 0, lineHeight: 1.6 }}>
@@ -1349,7 +1351,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                     }}
                   >
                     <option value="">移動先を選ぶ</option>
-                    {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const).map((f) => (
+                    {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test', 'priority_untagged_1', 'priority_untagged_2'] as const).map((f) => (
                       <option key={f} value={f}>{FOLDER_LABELS[f]}</option>
                     ))}
                   </select>
@@ -1370,7 +1372,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   onChange={(e) => { setFormFolder(e.target.value as FilterType); setDirty(true); }}
                   style={{ width: '100%', padding: '0.35rem', marginBottom: '0.35rem', fontSize: '0.85rem' }}
                 >
-                  {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test'] as const).map((f) => (
+                  {(['tagged', 'needs_human_check', 'has_issues', 'pending', 'untagged', 'legacy_ai', 'needs_review', 'ab_test', 'priority_untagged_1', 'priority_untagged_2'] as const).map((f) => (
                     <option key={f} value={f}>{FOLDER_LABELS[f]}</option>
                   ))}
                 </select>
@@ -1380,6 +1382,8 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                   <button type="button" onClick={() => { setFormFolder('needs_human_check'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'needs_human_check' ? '#fd7e14' : '#eee', color: formFolder === 'needs_human_check' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ 人間確認</button>
                   <button type="button" onClick={() => { setFormFolder('pending'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'pending' ? '#0070f3' : '#eee', color: formFolder === 'pending' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ チェック待ち</button>
                   <button type="button" onClick={() => { setFormFolder('ab_test'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'ab_test' ? '#9c27b0' : '#eee', color: formFolder === 'ab_test' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ ABテスト用</button>
+                  <button type="button" onClick={() => { setFormFolder('priority_untagged_1'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'priority_untagged_1' ? '#17a2b8' : '#eee', color: formFolder === 'priority_untagged_1' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ 未タグ①</button>
+                  <button type="button" onClick={() => { setFormFolder('priority_untagged_2'); setDirty(true); }} style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', cursor: 'pointer', backgroundColor: formFolder === 'priority_untagged_2' ? '#17a2b8' : '#eee', color: formFolder === 'priority_untagged_2' ? 'white' : '#333', border: 'none', borderRadius: '4px' }}>→ 未タグ②</button>
                 </div>
                 <div style={{ fontSize: '0.9rem', wordBreak: 'break-word', lineHeight: 1.4 }}>
                   {detail.title}

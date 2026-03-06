@@ -14,11 +14,13 @@ interface RestartButtonProps {
   inline?: boolean;
   /** スマホ：さらに小さく（もう一度妄想する・Xでポスト横並び用） */
   compact?: boolean;
+  /** 小さいサイズに（PCでも白板下の横並び用） */
+  small?: boolean;
 }
 
-export function RestartButton({ onRestart, label = 'もう１度妄想する', inline = false, compact = false }: RestartButtonProps) {
+export function RestartButton({ onRestart, label = 'もう１度妄想する', inline = false, compact = false, small = false }: RestartButtonProps) {
   const isMobile = useMediaQuery(768);
-  const useCompact = compact && isMobile;
+  const useCompact = (compact && isMobile) || small;
   return (
     <div style={{ marginTop: inline ? 0 : isMobile ? 20 : 32, textAlign: inline ? 'left' : 'center' }}>
       <button
@@ -31,9 +33,10 @@ export function RestartButton({ onRestart, label = 'もう１度妄想する', i
           backgroundColor: 'var(--color-primary)',
           color: 'white',
           border: 'none',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: useCompact ? 8 : 'var(--radius-sm)',
           fontWeight: 'bold',
           transition: 'background-color 0.2s',
+          ...(useCompact ? { boxSizing: 'border-box' as const, display: 'inline-flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const, height: 36, lineHeight: 1 } : {}),
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';

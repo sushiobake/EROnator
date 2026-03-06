@@ -77,8 +77,6 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
 
   return (
     <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-      <h1 style={{ fontSize: isMobile ? '1.2rem' : '1.25rem', marginBottom: isMobile ? '0.35rem' : '0.5rem' }}>うーん…ちょっとわからなかったわ。</h1>
-      <p style={{ marginBottom: isMobile ? '0.75rem' : '1rem', fontSize: isMobile ? 17 : undefined, color: 'var(--color-text-muted)' }}>ちなみにこの中にはある？</p>
       <div
         style={{ overflowX: 'auto', overflowY: 'hidden', marginBottom: 8, maxWidth: '100%' }}
       >

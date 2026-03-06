@@ -14,6 +14,8 @@ import {
   CHARACTER_HEIGHT_PX,
   CONTENT_OFFSET_LEFT_PX,
   WHITEBOARD_MAX_WIDTH_PX,
+  WHITEBOARD_NARROW_WIDTH_PX,
+  USE_NARROW_WHITEBOARD,
   WHITEBOARD_PADDING_PX,
   WHITEBOARD_BORDER_RADIUS_PX,
 } from './gameLayoutConstants';
@@ -26,6 +28,18 @@ const CHARACTER_VARIANTS: Record<string, string> = {
   embarrassing: '/ilust/inari_embarrassing.png',
   very_embarrassing: '/ilust/inari_very_embarrassing.png',
   thinking: '/ilust/inari_thinking.png',
+};
+/** 考え中9種の画像。同じファイルでも可。未配置時は thinking にフォールバック */
+export const THINKING_IMAGE_PATHS: Record<string, string> = {
+  opening: '/ilust/inari_thinking_opening.png',
+  early: '/ilust/inari_thinking_early.png',
+  mid: '/ilust/inari_thinking_mid.png',
+  late: '/ilust/inari_thinking_late.png',
+  closing: '/ilust/inari_thinking_closing.png',
+  endingCorrect: '/ilust/inari_thinking_ending_correct.png',
+  endingWrong: '/ilust/inari_thinking_ending_wrong.png',
+  failListSelect: '/ilust/inari_thinking_fail_list_select.png',
+  failListNotInList: '/ilust/inari_thinking_fail_list_not_in_list.png',
 };
 const DEFAULT_CHARACTER_URL = CHARACTER_VARIANTS.usually;
 const LOGO_URL = '/ilust/eronator_logo.jpg';
@@ -105,6 +119,10 @@ interface StageProps {
   mobileExtendWhiteboard?: boolean;
   /** スマホのみ：キャンバス下にリストを配置。③ゲーム上寄せ・下にスクロール。 */
   mobileBelowCanvas?: React.ReactNode;
+  /** PCのみ：true で白板を広い幅に（おすすめ5件表示時）。USE_NARROW_WHITEBOARD が false のときは無視され常に広い */
+  whiteboardWide?: boolean;
+  /** characterVariant='thinking' のとき、どの考え中画像を使うか。未指定なら inari_thinking.png */
+  thinkingSubType?: 'opening' | 'early' | 'mid' | 'late' | 'closing' | 'endingCorrect' | 'endingWrong';
 }
 
 function getScale(): number {
@@ -410,11 +428,12 @@ function MobileStageInner({
   );
 }
 
-function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number }) {
+function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, whiteboardWide }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number; whiteboardWide?: boolean }) {
   // 白背景はフレーム内側に収める（フレームの外に白が出ない）
   const insetTop = PC_FRAME_WIDTH;
   const insetBottom = PC_FRAME_TRAY_HEIGHT + PC_FRAME_WIDTH;
   const insetSide = PC_FRAME_WIDTH;
+  const whiteboardWidthPx = !USE_NARROW_WHITEBOARD ? WHITEBOARD_MAX_WIDTH_PX : (whiteboardWide ? WHITEBOARD_MAX_WIDTH_PX : WHITEBOARD_NARROW_WIDTH_PX);
   return (
     <>
       <div
@@ -436,13 +455,13 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }
           left: 0,
           top: 0,
           right: 0,
-          height: 120,
+          height: 100,
           zIndex: 1,
           pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingTop: 32,
+          paddingTop: 8,
         }}
       >
         <img
@@ -460,7 +479,7 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }
         style={{
           position: 'absolute',
           left: CHARACTER_LEFT_PX,
-          bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.6)) : 0,
+          bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.8)) : 0,
           width: CHARACTER_WIDTH_PX,
           height: CHARACTER_HEIGHT_PX,
           zIndex: 3,
@@ -482,7 +501,7 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }
         style={{
           position: 'absolute',
           left: CONTENT_OFFSET_LEFT_PX,
-          top: 0,
+          top: 100,
           right: 0,
           bottom: 0,
           display: 'flex',
@@ -495,7 +514,7 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }
         <div
           style={{
             width: '100%',
-            maxWidth: WHITEBOARD_MAX_WIDTH_PX,
+            maxWidth: whiteboardWidthPx,
             backgroundColor: '#faf8f5',
             borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
             padding: WHITEBOARD_PADDING_PX,
@@ -515,8 +534,11 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale }
   );
 }
 
-export function Stage({ children, characterVariant, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas }: StageProps) {
-  const characterUrl = CHARACTER_VARIANTS[characterVariant ?? 'usually'] ?? DEFAULT_CHARACTER_URL;
+export function Stage({ children, characterVariant, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas, whiteboardWide, thinkingSubType }: StageProps) {
+  const characterUrl =
+    (characterVariant === 'thinking' && thinkingSubType)
+      ? (THINKING_IMAGE_PATHS[thinkingSubType] ?? CHARACTER_VARIANTS.thinking)
+      : (CHARACTER_VARIANTS[characterVariant ?? 'usually'] ?? DEFAULT_CHARACTER_URL);
   const [scale, setScale] = useState(1);
   const [mobileScale, setMobileScale] = useState(0.5);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -719,7 +741,7 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
             height: STAGE_HEIGHT_PX,
             position: 'relative',
             zIndex: 1,
-            transform: `scale(${scale * 0.6})`,
+            transform: `scale(${scale * 0.8})`,
             transformOrigin: 'center bottom',
             flexShrink: 0,
             marginBottom: PC_CANVAS_FOOTER_GAP,
@@ -730,7 +752,7 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
           }}
         >
           <WhiteboardFrameSvg />
-          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale}>{children}</StageInner>
+          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale} whiteboardWide={whiteboardWide}>{children}</StageInner>
         </div>
       </div>
       <footer
