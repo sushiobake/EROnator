@@ -5,22 +5,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
-
-const ALLOWED_ORIGINS = (process.env.PRODUCTION_APP_URL || process.env.NEXT_PUBLIC_PRODUCTION_APP_URL || '')
-  .split(',')
-  .map((u) => u.trim().toLowerCase())
-  .filter(Boolean);
-
-function isAllowedTargetUrl(url: string): boolean {
-  if (!url) return false;
-  try {
-    const u = new URL(url);
-    const origin = `${u.protocol}//${u.host}`.toLowerCase();
-    return ALLOWED_ORIGINS.some((o) => origin === o || origin.startsWith(o));
-  } catch {
-    return false;
-  }
-}
+import { isAllowedRemoteAdminTargetUrl } from '@/server/admin/isAllowedRemoteAdminTarget';
+import {
+  appendVercelProtectionBypassQuery,
+  remoteAdminFetchHeaders,
+} from '@/server/admin/remoteAdminFetchHeaders';
 
 export async function POST(request: NextRequest) {
   if (!isAdminAllowed(request)) {
@@ -45,12 +34,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isAllowedTargetUrl(targetUrl)) {
+    if (!isAllowedRemoteAdminTargetUrl(targetUrl)) {
       return NextResponse.json(
         {
           success: false,
           error:
-            '許可されていないURLです。.env.local に PRODUCTION_APP_URL または NEXT_PUBLIC_PRODUCTION_APP_URL を設定してください。',
+            '許可されていないURLです。.env.local に ERONATOR_REMOTE_ADMIN_TRUST_VERCEL_APP=1（Vercelの *.vercel.app 一括許可・ローカル開発のみ）または PRODUCTION_APP_URL を設定してください。',
         },
         { status: 400 }
       );
@@ -66,17 +55,22 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      const res = await fetch(`${base}/api/admin/play-history/delete`, {
+      const delUrl = appendVercelProtectionBypassQuery(`${base}/api/admin/play-history/delete`);
+      const res = await fetch(delUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': token },
+        headers: {
+          ...(remoteAdminFetchHeaders(token) as Record<string, string>),
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ ids }),
       });
       if (!res.ok) {
         const text = await res.text();
-        return NextResponse.json(
-          { success: false, error: `本番削除APIエラー: ${res.status} ${text.slice(0, 200)}` },
-          { status: 502 }
-        );
+        const isHtml = /^\s*</.test(text);
+        const error = isHtml
+          ? `リモートがHTMLを返しました (HTTP ${res.status})。URLは https://ホスト名 だけにしてください。`
+          : `本番削除APIエラー: ${res.status} ${text.slice(0, 200)}`;
+        return NextResponse.json({ success: false, error }, { status: 502 });
       }
       const data = await res.json();
       return NextResponse.json(data);
@@ -89,16 +83,20 @@ export async function POST(request: NextRequest) {
     params.set('page', String(page));
     params.set('limit', String(limit));
     if (outcome) params.set('outcome', outcome);
-    const res = await fetch(`${base}/api/admin/play-history?${params.toString()}`, {
-      headers: { 'x-eronator-admin-token': token },
+    const listUrl = appendVercelProtectionBypassQuery(
+      `${base}/api/admin/play-history?${params.toString()}`
+    );
+    const res = await fetch(listUrl, {
+      headers: remoteAdminFetchHeaders(token),
     });
 
     if (!res.ok) {
       const text = await res.text();
-      return NextResponse.json(
-        { success: false, error: `本番APIエラー: ${res.status} ${text.slice(0, 200)}` },
-        { status: 502 }
-      );
+      const isHtml = /^\s*</.test(text);
+      const error = isHtml
+        ? `リモートがHTMLを返しました (HTTP ${res.status})。URLは https://ホスト名 だけにしてください。管理画面の「接続テスト」で切り分けできます。`
+        : `本番APIエラー: ${res.status} ${text.slice(0, 200)}`;
+      return NextResponse.json({ success: false, error }, { status: 502 });
     }
 
     const data = await res.json();

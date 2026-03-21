@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { MvpConfigSchema, DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
+import { isAdminProductionAccessEnabled } from '@/server/admin/isAdminAllowed';
 
 /**
  * GET: 現在の設定を取得
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   // アクセス制御: 開発環境または3重ロック
   const isDev = process.env.NODE_ENV === 'development';
   const isAdmin = isDev || (process.env.ERONATOR_ADMIN === '1' && 
-    (process.env.NODE_ENV !== 'production' || process.env.ERONATOR_ADMIN_PRODUCTION === '1') &&
+    (process.env.NODE_ENV !== 'production' || isAdminProductionAccessEnabled()) &&
     request.headers.get('x-eronator-admin-token') === process.env.ERONATOR_ADMIN_TOKEN);
   
   if (!isAdmin) {
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
   // アクセス制御: 開発環境または3重ロック
   const isDev = process.env.NODE_ENV === 'development';
   const isAdmin = isDev || (process.env.ERONATOR_ADMIN === '1' && 
-    (process.env.NODE_ENV !== 'production' || process.env.ERONATOR_ADMIN_PRODUCTION === '1') &&
+    (process.env.NODE_ENV !== 'production' || isAdminProductionAccessEnabled()) &&
     request.headers.get('x-eronator-admin-token') === process.env.ERONATOR_ADMIN_TOKEN);
   
   if (!isAdmin) {

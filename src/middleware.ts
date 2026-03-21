@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { isAdminAllowedOnVercelPreview, isAdminProductionAccessEnabled } from '@/server/admin/isAdminAllowed';
 
 /**
  * /api/admin/* への全リクエストを認証チェック
@@ -12,11 +13,15 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (isAdminAllowedOnVercelPreview(request)) {
+    return NextResponse.next();
+  }
+
   if (process.env.ERONATOR_ADMIN !== '1') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (process.env.NODE_ENV === 'production' && process.env.ERONATOR_ADMIN_PRODUCTION !== '1') {
+  if (process.env.NODE_ENV === 'production' && !isAdminProductionAccessEnabled()) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

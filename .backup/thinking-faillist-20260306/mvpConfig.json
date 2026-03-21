@@ -1,0 +1,136 @@
+{
+  "version": "v1.5",
+  "gameCopy": {
+    "topLines": [
+      "有名な同人誌を妄想してみて。",
+      "{workCount}作品の中から当ててあげるわ。",
+      "私は何でもお見通しだから。"
+    ],
+    "questionPreamble": "その同人誌は……",
+    "revealPreamble": "その同人誌は……",
+    "revealMain": "これでしょ！ちがう！？",
+    "successSpeech": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
+    "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
+    "recommendTitle": "なら…そんなあなたにおススメもある！！",
+    "failListSpeech": "うーん…ちょっとわからなかったわ。",
+    "failListSubMobile": "ちなみに、下のリストの中にある？",
+    "failListSubPc": "ちなみに、このリストの中にはある？",
+    "almostSuccessSpeech": "それか～～～！悔しい！次回は当てるから！！",
+    "aiGatePreamble": "最初に教えて！その同人誌は……",
+    "aiGateMain": "AI生成作品？それとも違う？"
+  },
+  "thinking": {
+    "inGame": {
+      "displayMode": "sequential",
+      "early": {
+        "texts": [
+          "(考え中…)",
+          "うーん…",
+          "そうなのね…なら次は…",
+          "そっかー…それなら…",
+          "なるほどね…んー…"
+        ]
+      },
+      "mid": {
+        "texts": [
+          "なんとなく見えてきたかも…",
+          "たぶんそれ、知ってそうな気がする…",
+          "ちがうかなあ…？"
+        ]
+      },
+      "late": {
+        "texts": [
+          "お？そうなんだ！？",
+          "ふむふむ…！近づいてきたかも！",
+          "なるほどね！なら…！"
+        ]
+      },
+      "closing": {
+        "texts": [
+          "もしかしたらわかったかも……！",
+          "ってことはつまり…！",
+          "んー！じゃあそれなら…"
+        ]
+      }
+    },
+    "opening": {
+      "text": "ok！ではいくわよ！"
+    },
+    "endingCorrect": {
+      "text": "え！ほんとに！？"
+    },
+    "endingWrong": {
+      "text": "ちがうかあ……"
+    }
+  },
+  "confirm": {
+    "revealThreshold": 0.7,
+    "confidenceConfirmBand": [
+      0.25,
+      0.7
+    ],
+    "qForcedIndices": [
+      10
+    ],
+    "softConfidenceMin": 0.25,
+    "hardConfidenceMin": 0.45
+  },
+  "algo": {
+    "beta": 1.2,
+    "alpha": 0,
+    "derivedConfidenceThreshold": 0.5,
+    "revealPenalty": 0.8,
+    "explorePValueMin": 0.05,
+    "explorePValueMax": 0.95,
+    "explorePValueFallbackEnabled": true,
+    "summaryQuestionStrengthScale": 1,
+    "exploreTagStrengthScale": 1,
+    "softConfirmStrengthScale": 1,
+    "useIGForExploreSelection": true,
+    "useBayesianUpdate": true,
+    "bayesianEpsilon": 0.05,
+    "bayesianEpsilonPhases": {
+      "early": 0.02,
+      "mid": 0.05,
+      "late": 0.08
+    }
+  },
+  "flow": {
+    "maxQuestions": 35,
+    "maxRevealMisses": 3,
+    "failListN": 5,
+    "effectiveConfirmThresholdFormula": "A",
+    "effectiveConfirmThresholdParams": {
+      "min": 5,
+      "max": 300,
+      "divisor": 180
+    },
+    "consecutiveNoForAtari": 5,
+    "summaryPreferRatio": 0.2,
+    "titleInitialTopN": 2,
+    "hardConfirmInjectionRatio": 0.25,
+    "specialQuestionSlotIndices": [
+      3,
+      5,
+      9,
+      16
+    ],
+    "rescueSpecialCondition": {
+      "slotIndices": [
+        20,
+        24
+      ],
+      "effectiveCandidatesMin": 25,
+      "confidenceMax": 0.35
+    }
+  },
+  "dataQuality": {
+    "minCoverageMode": "WORKS",
+    "minCoverageRatio": 0.05,
+    "minCoverageWorks": 1,
+    "maxCoverageRatio": 0.95
+  },
+  "popularity": {
+    "playBonusOnSuccess": 0
+  }
+}

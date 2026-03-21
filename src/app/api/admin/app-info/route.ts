@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { APP_VERSION } from '@/config/app';
+import { isAdminProductionAccessEnabled } from '@/server/admin/isAdminAllowed';
 
 const APP_INFO_PATH = join(process.cwd(), 'config', 'appInfo.json');
 const APP_INFO_BAK = join(process.cwd(), 'config', 'appInfo.json.bak');
@@ -25,7 +26,7 @@ function isAdmin(request: NextRequest): boolean {
   const isDev = process.env.NODE_ENV === 'development';
   return !!(isDev || (
     process.env.ERONATOR_ADMIN === '1' &&
-    (process.env.NODE_ENV !== 'production' || process.env.ERONATOR_ADMIN_PRODUCTION === '1') &&
+    (process.env.NODE_ENV !== 'production' || isAdminProductionAccessEnabled()) &&
     request.headers.get('x-eronator-admin-token') === process.env.ERONATOR_ADMIN_TOKEN
   ));
 }

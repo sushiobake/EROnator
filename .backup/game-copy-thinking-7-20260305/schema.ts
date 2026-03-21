@@ -1,0 +1,153 @@
+import { z } from 'zod';
+
+/**
+ * MVP Config Schema (v1.5)
+ * Source of truth: MVP_CONFIG_SCHEMA_v1.5.md
+ * スキーマ外キーは起動時エラー（strict mode）
+ */
+
+const ConfirmSchema = z.object({
+  revealThreshold: z.number().min(0).max(1),
+  confidenceConfirmBand: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]).refine(
+    (val) => val[0] <= val[1],
+    { message: 'confidenceConfirmBand[0] must be <= confidenceConfirmBand[1]' }
+  ),
+  qForcedIndices: z.array(z.number().int().positive()),
+  softConfidenceMin: z.number().min(0).max(1),
+  hardConfidenceMin: z.number().min(0).max(1),
+}).strict();
+
+const AlgoSchema = z.object({
+  beta: z.number().positive(),
+  alpha: z.number().min(0).max(1),
+  derivedConfidenceThreshold: z.number().min(0).max(1),
+  revealPenalty: z.number().positive().max(1),
+  /** EXPLORE_TAGでp値がこの範囲外のタグは出題しない。未設定時はフィルタなし */
+  explorePValueMin: z.number().min(0).max(1).optional(),
+  explorePValueMax: z.number().min(0).max(1).optional(),
+  /** p値が範囲内のタグが無いときHARD_CONFIRM/REVEALにフォールバックする */
+  explorePValueFallbackEnabled: z.boolean().optional(),
+  /** まとめ質問の回答強度のスケール。1.0=通常タグと同程度、0.6=控えめ。未設定時0.6 */
+  summaryQuestionStrengthScale: z.number().positive().optional(),
+  /** EXPLORE_TAG（まとめ以外）の回答強度のスケール。1.0=変更なし。未設定時1.0 */
+  exploreTagStrengthScale: z.number().positive().optional(),
+  /** SOFT_CONFIRMの回答強度のスケール。1.0=変更なし。未設定時1.0 */
+  softConfirmStrengthScale: z.number().positive().optional(),
+  /**
+   * EXPLORE_TAGの質問選択を情報利得(IG)で行う。false なら従来の p≈0.5 に近いタグを選ぶ。
+   * ロールバック時は false にすると従来挙動に戻る。未設定時は true（IGを使用）。
+   */
+  useIGForExploreSelection: z.boolean().optional(),
+  /**
+   * タグ質問・HARD_CONFIRMの重み更新をベイズ（事後確率）で行う。false なら従来の強度×beta。
+   * ロールバック時は false にすると従来挙動に戻る。未設定時は true（ベイズを使用）。
+   */
+  useBayesianUpdate: z.boolean().optional(),
+  /**
+   * ベイズ更新時の尤度の下限（確率0で殺さない）。0.02 なら尤度は [0.02, 0.98]。未設定時 0.02。
+   * bayesianEpsilonPhases が設定されている場合はフェーズ別に上書き。
+   */
+  bayesianEpsilon: z.number().min(0).max(0.5).optional(),
+  /**
+   * P4: フェーズ別イプシロン。EC（effectiveCandidates）に応じて epsilon を変える。
+   * 前半 EC>200 → early, 中盤 20<EC<=200 → mid, 後半 EC<=20 → late。
+   * 未設定時は bayesianEpsilon を全フェーズで使用。
+   */
+  bayesianEpsilonPhases: z
+    .object({
+      early: z.number().min(0).max(0.5),
+      mid: z.number().min(0).max(0.5),
+      late: z.number().min(0).max(0.5),
+    })
+    .strict()
+    .optional(),
+}).strict();
+
+const FlowSchema = z.object({
+  maxQuestions: z.number().int().positive(),
+  maxRevealMisses: z.number().int().positive(),
+  failListN: z.number().int().positive(),
+  effectiveConfirmThresholdFormula: z.enum(['A']),
+  effectiveConfirmThresholdParams: z.object({
+    min: z.number().int().positive(),
+    max: z.number().int().positive(),
+    divisor: z.number().int().positive(),
+  }).strict().refine(
+    (val) => val.max >= val.min,
+    { message: 'effectiveConfirmThresholdParams.max must be >= min' }
+  ),
+  /** 連続NOがこの数以上なら次の1問は「当たり」狙い（p高めのタグを選ぶ）。未設定時は3 */
+  consecutiveNoForAtari: z.number().int().min(1).optional(),
+  /** まとめ質問を優先して選ぶ確率。0〜1。未設定時は0（優先なし） */
+  summaryPreferRatio: z.number().min(0).max(1).optional(),
+  /**
+   * HARD_CONFIRMでタイトル頭文字・作者を選ぶとき、確度順の上位何件の作品から選ぶか。
+   * - 1: 確度1位のみ（従来どおり）。正解が1位になればその頭文字を聞ける。
+   * - 2以上: 1位〜N位から未使用の頭文字・作者を順に選ぶ。バリエーションは増えるが、
+   *   正解がtop-Nに入らないと正解の頭文字を聞けずMAX_QUESTIONSで終わるリスクあり。
+   * 推奨: 2か3で試す。未設定時は1。
+   */
+  titleInitialTopN: z.number().int().min(1).optional(),
+  /**
+   * 21問目以降、unified の前に HARD_CONFIRM（タイトル頭文字・作者・キャラ）を試す確率。0〜1。0で無効。未設定時は 0.25。
+   */
+  hardConfirmInjectionRatio: z.number().min(0).max(1).optional(),
+  /**
+   * Special Question を挿入する質問番号（1-based）。例: [3, 5, 9, 16] で Q3, Q5, Q9, Q16。
+   * 未設定時は [3, 5, 9, 16]。
+   */
+  specialQuestionSlotIndices: z.array(z.number().int().positive()).optional(),
+  /**
+   * 救済特別質問（Q20, Q24）: 絞り込めていない場合のみ TITLE_SYLLABLE_2 / AUTHOR_CHAR_TYPE を挿入。
+   * 未設定時は無効。
+   */
+  rescueSpecialCondition: z
+    .object({
+      slotIndices: z.array(z.number().int().positive()),
+      effectiveCandidatesMin: z.number().positive(),
+      confidenceMax: z.number().min(0).max(1),
+    })
+    .strict()
+    .optional(),
+}).strict();
+
+const DataQualitySchema = z.object({
+  minCoverageMode: z.enum(['RATIO', 'WORKS', 'AUTO']),
+  minCoverageRatio: z.number().min(0).max(1).nullable(),
+  minCoverageWorks: z.number().int().nonnegative().nullable(),
+  maxCoverageRatio: z.number().min(0).max(1).nullable().optional(), // 上限（全員持っているタグを除外）
+}).strict();
+
+const PopularitySchema = z.object({
+  playBonusOnSuccess: z.number().nonnegative(),
+}).strict();
+
+/** 「考え中」表示の文言・表示モード。各レベル最大5件まで。 */
+const ThinkingSchema = z.object({
+  /** 複数文言の表示方法: random=ランダム, sequential=順番 */
+  displayMode: z.enum(['random', 'sequential']),
+  early: z.array(z.string()).min(1).max(5),
+  mid: z.array(z.string()).min(1).max(5),
+  late: z.array(z.string()).min(1).max(5),
+  closing: z.array(z.string()).min(1).max(5),
+}).strict();
+
+export const DEFAULT_THINKING = {
+  displayMode: 'sequential' as const,
+  early: ['考え中…'],
+  mid: ['なんとなく見えてきた…'],
+  late: ['おっ……これは……！'],
+  closing: ['わかったかも……！'],
+};
+
+export const MvpConfigSchema = z.object({
+  version: z.literal('v1.5'),
+  thinking: ThinkingSchema.optional(),
+  confirm: ConfirmSchema,
+  algo: AlgoSchema,
+  flow: FlowSchema,
+  dataQuality: DataQualitySchema,
+  popularity: PopularitySchema,
+}).strict();
+
+export type MvpConfig = z.infer<typeof MvpConfigSchema>;

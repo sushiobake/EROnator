@@ -333,6 +333,31 @@ export default function AdminTagsPage() {
     () => (typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_PRODUCTION_APP_URL || '') : '')
   );
   const [productionHistoryToken, setProductionHistoryToken] = useState('');
+  /** プレビューデプロイ用。入力があるときは本番URLより優先。localStorage に保存してリロード後も残す */
+  const [previewHistoryUrl, setPreviewHistoryUrl] = useState('');
+  const [remotePingLoading, setRemotePingLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const p = localStorage.getItem('eronator.adminRemotePreviewUrl');
+      if (p) setPreviewHistoryUrl(p);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setPreviewHistoryUrlPersisted = (value: string) => {
+    setPreviewHistoryUrl(value);
+    if (typeof window !== 'undefined') {
+      try {
+        if (value.trim()) localStorage.setItem('eronator.adminRemotePreviewUrl', value);
+        else localStorage.removeItem('eronator.adminRemotePreviewUrl');
+      } catch {
+        /* ignore */
+      }
+    }
+  };
 
   // 初回読み込み時にlocalStorageからトークンを取得し、自動でDBを読み込む
   useEffect(() => {
@@ -1554,11 +1579,51 @@ export default function AdminTagsPage() {
     }
   };
 
+  /** リモート取得先: プレビューURLが空でなければそれ、否则本番URL */
+  const remoteDeploymentUrl = previewHistoryUrl.trim() || productionHistoryUrl.trim();
+
+  const runRemoteAdminPing = async () => {
+    const token = productionHistoryToken || adminToken;
+    if (!adminToken) {
+      alert('管理トークンを入力してください。');
+      return;
+    }
+    if (!remoteDeploymentUrl) {
+      alert('本番URLかプレビューURLを入力してください。');
+      return;
+    }
+    setRemotePingLoading(true);
+    try {
+      const r = await fetch('/api/admin/remote-admin-ping', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-eronator-admin-token': adminToken,
+        },
+        body: JSON.stringify({ targetUrl: remoteDeploymentUrl, token }),
+      });
+      const d = await r.json();
+      if (!d.success && d.error) {
+        alert(d.hint ? `${d.hint}\n\n${d.error}` : d.error);
+        return;
+      }
+      alert(
+        `${d.hint}\n\nHTTP ${d.httpStatus} / HTML？ ${d.isHtml ? 'はい' : 'いいえ'}\nVercel保護バイパス(.env.local): ${d.vercelBypassConfigured ? '設定あり' : '未設定'}\n\n${d.requestUrl}\n\n---\n${d.bodySnippet ?? ''}`
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'エラー');
+    } finally {
+      setRemotePingLoading(false);
+    }
+  };
+
   const fetchPlayHistory = async (page: number = 1) => {
     const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
     if (!token) return;
-    if (historyUseRemote && !productionHistoryUrl.trim()) {
-      alert('本番の履歴を表示するには「本番URL」を入力するか、.env.local に NEXT_PUBLIC_PRODUCTION_APP_URL を設定してください。');
+    if (historyUseRemote && !remoteDeploymentUrl) {
+      alert(
+        'リモートの履歴を表示するには「本番URL」を入力するか、プレビューだけ試す場合は「プレビューURL」に貼ってください。.env.local に NEXT_PUBLIC_PRODUCTION_APP_URL を設定しても構いません。'
+      );
       return;
     }
     setHistoryLoading(true);
@@ -1568,7 +1633,7 @@ export default function AdminTagsPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
           body: JSON.stringify({
-            targetUrl: productionHistoryUrl.trim(),
+            targetUrl: remoteDeploymentUrl,
             token: productionHistoryToken || adminToken,
             page,
             limit: historyLimit,
@@ -1614,25 +1679,59 @@ export default function AdminTagsPage() {
     }
   };
 
-  const fetchContactInquiries = async (page: number = 1) => {
-    if (!adminToken) return;
+  const fetchContactInquiries = async (page: number = 1, fromUser: boolean = false) => {
+    const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
+    if (!token) return;
+    if (historyUseRemote && !remoteDeploymentUrl) {
+      setContactItems([]);
+      setContactTotal(0);
+      if (fromUser) {
+        alert(
+          'リモートのお問い合わせを表示するには「本番URL」または「プレビューURL」を入力してください。（プレイ履歴タブの設定と共通です）'
+        );
+      }
+      return;
+    }
     setContactLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set('page', String(page));
-      params.set('limit', String(CONTACT_INQUIRY_PAGE_SIZE));
-      const response = await fetch(`/api/admin/contact-inquiries?${params.toString()}`, {
-        headers: { 'x-eronator-admin-token': adminToken },
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error || `取得に失敗しました (${response.status})`);
-      }
-      const data = await response.json();
-      if (data.success && Array.isArray(data.items)) {
-        setContactItems(data.items);
-        setContactTotal(data.total ?? 0);
-        setContactPage(page);
+      if (historyUseRemote) {
+        const response = await fetch('/api/admin/contact-inquiries-remote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+          body: JSON.stringify({
+            targetUrl: remoteDeploymentUrl,
+            token: productionHistoryToken || adminToken,
+            page,
+            limit: CONTACT_INQUIRY_PAGE_SIZE,
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error((data as { error?: string }).error || `取得に失敗しました (${response.status})`);
+        }
+        const data = await response.json();
+        if (data.success && Array.isArray(data.items)) {
+          setContactItems(data.items);
+          setContactTotal(data.total ?? 0);
+          setContactPage(page);
+        }
+      } else {
+        const params = new URLSearchParams();
+        params.set('page', String(page));
+        params.set('limit', String(CONTACT_INQUIRY_PAGE_SIZE));
+        const response = await fetch(`/api/admin/contact-inquiries?${params.toString()}`, {
+          headers: { 'x-eronator-admin-token': adminToken },
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error((data as { error?: string }).error || `取得に失敗しました (${response.status})`);
+        }
+        const data = await response.json();
+        if (data.success && Array.isArray(data.items)) {
+          setContactItems(data.items);
+          setContactTotal(data.total ?? 0);
+          setContactPage(page);
+        }
       }
     } catch (e) {
       console.error('[contact-inquiries]', e);
@@ -1646,10 +1745,15 @@ export default function AdminTagsPage() {
 
   useEffect(() => {
     if (activeTab === 'contact' && adminToken) {
-      void fetchContactInquiries(1);
+      if (historyUseRemote && !remoteDeploymentUrl) {
+        setContactItems([]);
+        setContactTotal(0);
+        return;
+      }
+      void fetchContactInquiries(1, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- タブ切替時のみ再取得
-  }, [activeTab, adminToken]);
+  }, [activeTab, adminToken, historyUseRemote, productionHistoryUrl, previewHistoryUrl]);
 
   const handleHistoryDeleteSelected = async () => {
     const ids = Array.from(historySelectedIds);
@@ -1660,8 +1764,8 @@ export default function AdminTagsPage() {
     if (!confirm(`選択した ${ids.length} 件の履歴を削除します。よろしいですか？`)) return;
     const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
     if (!token) return;
-    if (historyUseRemote && !productionHistoryUrl.trim()) {
-      alert('本番の履歴を削除するには「本番URL」を入力してください。');
+    if (historyUseRemote && !remoteDeploymentUrl) {
+      alert('リモートの履歴を削除するには「本番URL」または「プレビューURL」を入力してください。');
       return;
     }
     setHistoryDeleteLoading(true);
@@ -1672,7 +1776,7 @@ export default function AdminTagsPage() {
           headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
           body: JSON.stringify({
             action: 'delete',
-            targetUrl: productionHistoryUrl.trim(),
+            targetUrl: remoteDeploymentUrl,
             token: productionHistoryToken || adminToken,
             ids,
           }),
@@ -1705,9 +1809,9 @@ export default function AdminTagsPage() {
   useEffect(() => {
     if (activeTab !== 'history') return;
     const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
-    if (historyUseRemote && !productionHistoryUrl.trim()) return;
+    if (historyUseRemote && !remoteDeploymentUrl) return;
     if (token) fetchPlayHistory(1);
-  }, [activeTab, adminToken, historyOutcome, historyUseRemote, productionHistoryUrl]);
+  }, [activeTab, adminToken, historyOutcome, historyUseRemote, productionHistoryUrl, previewHistoryUrl]);
 
   // 詳細モーダル用: 表示時にリプレイAPIで p値・確度 を再計算
   useEffect(() => {
@@ -4518,20 +4622,84 @@ export default function AdminTagsPage() {
                 checked={historyUseRemote}
                 onChange={(e) => setHistoryUseRemote(e.target.checked)}
               />
-              <strong>本番の履歴を表示する</strong>（ローカルから本番DBの履歴を取得）
+              <strong>本番の履歴を表示する</strong>（ローカルからデプロイ先DBのプレイ履歴・お問い合わせを取得）
             </label>
             {historyUseRemote && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
                 <label>
-                  本番URL:
+                  本番URL（いつもここは本番のまま）:
                   <input
                     type="url"
                     value={productionHistoryUrl}
                     onChange={(e) => setProductionHistoryUrl(e.target.value)}
                     placeholder="https://eronator.vercel.app"
-                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 320px)' }}
+                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 360px)' }}
                   />
                 </label>
+                <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.35rem' }}>
+                  <span>プレビューURL（任意・空なら本番URLを使用）:</span>
+                  <input
+                    type="url"
+                    value={previewHistoryUrl}
+                    onChange={(e) => setPreviewHistoryUrlPersisted(e.target.value)}
+                    placeholder="https://〜〜.vercel.app（試したいデプロイを貼る。消せば本番に戻る）"
+                    style={{ padding: '0.35rem', width: 'min(100%, 420px)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPreviewHistoryUrlPersisted('')}
+                    disabled={!previewHistoryUrl.trim()}
+                    style={{
+                      padding: '0.3rem 0.6rem',
+                      fontSize: '0.8rem',
+                      cursor: previewHistoryUrl.trim() ? 'pointer' : 'not-allowed',
+                      opacity: previewHistoryUrl.trim() ? 1 : 0.5,
+                    }}
+                  >
+                    プレビューをクリア
+                  </button>
+                </label>
+                <p style={{ fontSize: '0.85rem', color: '#0f766e', margin: 0, fontWeight: 600 }}>
+                  いまの取得先:{' '}
+                  {previewHistoryUrl.trim()
+                    ? (() => {
+                        try {
+                          return `プレビュー（${new URL(previewHistoryUrl.trim()).host}）`;
+                        } catch {
+                          return 'プレビュー（URL形式を確認）';
+                        }
+                      })()
+                    : productionHistoryUrl.trim()
+                      ? (() => {
+                          try {
+                            return `本番（${new URL(productionHistoryUrl.trim()).host}）`;
+                          } catch {
+                            return '本番（URL形式を確認）';
+                          }
+                        })()
+                      : '未設定（本番URLかプレビューURLを入力）'}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => void runRemoteAdminPing()}
+                    disabled={remotePingLoading || !adminToken || !remoteDeploymentUrl}
+                    style={{
+                      padding: '0.45rem 0.9rem',
+                      fontSize: '0.9rem',
+                      backgroundColor:
+                        remotePingLoading || !adminToken || !remoteDeploymentUrl ? '#ccc' : '#2563eb',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor:
+                        remotePingLoading || !adminToken || !remoteDeploymentUrl ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {remotePingLoading ? '確認中…' : '接続テスト（お問い合わせAPI）'}
+                  </button>
+                  <span style={{ fontSize: '0.8rem', color: '#666' }}>curl 不要。結果はダイアログに出ます。</span>
+                </div>
                 <label>
                   本番用管理トークン:（未入力なら上の「管理トークン」を使用）
                   <input
@@ -4543,7 +4711,9 @@ export default function AdminTagsPage() {
                   />
                 </label>
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-                  .env.local に PRODUCTION_APP_URL を設定すると、上記URLは許可リストでチェックされます。本番環境ではこの取得は無効です。
+                  プレビューURLはブラウザの localStorage に保存されます（リロードしても残る）。Vercel
+                  プレビューを触るときは .env.local に{' '}
+                  <code>ERONATOR_REMOTE_ADMIN_TRUST_VERCEL_APP=1</code>（ローカル開発のみ）。本番サーバー上ではこの取得APIは無効です。
                 </p>
               </div>
             )}
@@ -4898,12 +5068,18 @@ export default function AdminTagsPage() {
         <section style={{ marginTop: '1rem' }}>
           <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>お問い合わせ一覧</h2>
           <p style={{ color: '#666', marginBottom: '1rem' }}>
-            公開フォームから送信された内容です。本番DBのデータを見るには本番の管理画面で開いてください。
+            公開フォーム（<code>/contact</code>）から送信された内容です。
+            <strong>プレイ履歴タブ</strong>の設定をそのまま使います。プレビューURLに何か入っていれば<strong>そちら優先</strong>、空なら本番URLのDBを見ます。
           </p>
+          {historyUseRemote && !remoteDeploymentUrl && (
+            <p style={{ color: '#b45309', marginBottom: '1rem', fontSize: '0.9rem' }}>
+              リモート取得がオンですが、本番URLもプレビューURLも空です。プレイ履歴タブでどちらかを入力するか、オフにするとローカルSQLiteのみ表示されます。
+            </p>
+          )}
           <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={() => fetchContactInquiries(contactPage)}
+              onClick={() => fetchContactInquiries(contactPage, true)}
               disabled={contactLoading || !adminToken}
               style={{
                 padding: '0.5rem 1rem',
@@ -4956,7 +5132,7 @@ export default function AdminTagsPage() {
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <button
                     type="button"
-                    onClick={() => fetchContactInquiries(contactPage - 1)}
+                    onClick={() => fetchContactInquiries(contactPage - 1, false)}
                     disabled={contactLoading || contactPage <= 1}
                     style={{
                       padding: '0.5rem 1rem',
@@ -4974,7 +5150,7 @@ export default function AdminTagsPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => fetchContactInquiries(contactPage + 1)}
+                    onClick={() => fetchContactInquiries(contactPage + 1, false)}
                     disabled={
                       contactLoading || contactPage >= Math.ceil(contactTotal / CONTACT_INQUIRY_PAGE_SIZE)
                     }
