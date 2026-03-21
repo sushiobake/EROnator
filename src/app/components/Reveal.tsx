@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { useMediaQuery } from './useMediaQuery';
 import { useClickGuard } from './useClickGuard';
+import { StreamerCensoredText } from './StreamerCensoredText';
 
 interface RevealProps {
   work: {
@@ -18,9 +19,11 @@ interface RevealProps {
     thumbnailUrl?: string | null;
   };
   onAnswer: (answer: 'YES' | 'NO') => void;
+  /** 配信者モード時はタイトルを部分的伏字 */
+  streamerMode?: boolean;
 }
 
-export function Reveal({ work, onAnswer }: RevealProps) {
+export function Reveal({ work, onAnswer, streamerMode }: RevealProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);
   const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
@@ -57,7 +60,7 @@ export function Reveal({ work, onAnswer }: RevealProps) {
         />
         <div>
           <h2 style={{ fontSize: isMobile ? 18 : 19, fontWeight: 'bold', color: 'var(--color-text)', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
-            {work.title}
+            {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
           </h2>
           <p style={{ fontSize: isMobile ? 16 : 16, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         </div>

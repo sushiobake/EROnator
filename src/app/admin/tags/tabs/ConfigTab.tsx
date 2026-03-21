@@ -6,7 +6,7 @@
 
 import { JSX, useState, type ReactNode } from 'react';
 import { RANK_BG, RANK_TEXT } from '@/app/admin/constants/rankColors';
-import { DEFAULT_THINKING, DEFAULT_GAME_COPY } from '@/server/config/schema';
+import { DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY } from '@/server/config/schema';
 
 interface ConfigTabProps {
   config: any;
@@ -180,13 +180,14 @@ export default function ConfigTab({
                 { key: 'questionPreamble', label: '質問の前段（各質問の直上に表示する1行）' },
                 { key: 'revealPreamble', label: '断定の前段（「この作品で合ってる？」画面の上の淡い文）' },
                 { key: 'revealMain', label: '断定のメイン（「この作品で合ってる？」の太い文）' },
-                { key: 'successSpeech', label: '正解時のキャラ台詞（正解画面でキャラが言う一言）' },
+                { key: 'successSpeech', label: '正解時のキャラ台詞（{questionCount}で質問数に置換）' },
                 { key: 'successTitle', label: '正解時のタイトル（正解画面の作品上の見出し）' },
                 { key: 'recommendTitle', label: 'おすすめ見出し（正解・惜しかった画面の「おすすめ5件」の上）' },
                 { key: 'failListSpeech', label: '外れ①メイン（全部外してリスト表示になったときのキャラの一言）' },
                 { key: 'failListSubMobile', label: '外れ①サブ・スマホ（リスト画面でスマホ時の2行目）' },
                 { key: 'failListSubPc', label: '外れ①サブ・PC（リスト画面でPC時の2行目）' },
-                { key: 'almostSuccessSpeech', label: '外れ②惜しかった（リストから選んだときの「それか～～～！」の一言）' },
+                { key: 'failListNotInListPrompt', label: '外れ①「リストにない」押下後（作品名入力の上の一文）' },
+                { key: 'almostSuccessSpeech', label: '外れ②惜しかった（{questionCount}で質問数に置換）' },
                 { key: 'aiGatePreamble', label: 'AIゲートの前段（最初の「AI生成？」の上の淡い文）' },
                 { key: 'aiGateMain', label: 'AIゲートのメイン（最初の「AI生成作品ではない？」）' },
               ];
@@ -290,6 +291,48 @@ export default function ConfigTab({
                     <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.2rem' }}>画像: <code>inari_thinking_fail_list_not_in_list.png</code> を ilust に入れる</div>
                     <input type="text" value={th.failListNotInList?.text ?? ''} onChange={(e) => updateConfig(['thinking'], { ...th, failListNotInList: { text: e.target.value } })} style={{ width: '100%', padding: '0.35rem', marginBottom: '0.5rem', fontSize: '0.8rem' }} />
                   </div>
+                </div>
+              );
+            })()}
+          </CollapsibleSection>
+
+          {/* 推薦の文言や表記 */}
+          <CollapsibleSection id="config-recommend" title="「推薦」の文言や表記" defaultOpen={false}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '0.5rem', fontSize: '0.8rem' }}>
+              推薦モードの質問文やボタン文言を編集できます。
+            </p>
+            {(() => {
+              const rc = config.recommendCopy ?? DEFAULT_RECOMMEND_COPY;
+              const small = { fontSize: '0.8rem' as const, marginBottom: '0.35rem' };
+              const fields: { key: keyof typeof DEFAULT_RECOMMEND_COPY; label: string }[] = [
+                { key: 'aiGatePreamble', label: 'AIゲート前段（あなたの好みは？）' },
+                { key: 'aiGateMain', label: 'AIゲートメイン（AI生成作品？それとも違う？）' },
+                { key: 'initialMain', label: '初期画面メイン（あなたの好みは？）' },
+                { key: 'initialPriorityQuestion', label: '優先度の質問（あなたが優先したいのは？順位をつけて！）' },
+                { key: 'questionFamous', label: '質問1-3（有名タグ）の文言' },
+                { key: 'questionUnknown', label: '質問4-8（無名タグ）の文言' },
+                { key: 'sortPrompt', label: '整理ページのプロンプト（今選んでいる要素を、好きな順に５つ並べて）' },
+                { key: 'thinkingText', label: '考え中（あなたにぴったりの作品を探しているわ…）' },
+                { key: 'btnNext', label: 'ボタン：次へ' },
+                { key: 'btnRetry', label: 'ボタン：やり直し' },
+                { key: 'btnOk', label: 'ボタン：これでok' },
+                { key: 'btnNotInList', label: 'ボタン：この中にはない' },
+                { key: 'btnFix', label: 'ボタン：修正する' },
+                { key: 'btnTopReset', label: 'ボタン：トップに戻る' },
+              ];
+              return (
+                <div style={{ fontSize: '0.85rem' }}>
+                  {fields.map(({ key, label }) => (
+                    <div key={key} style={small}>
+                      <strong>{label}</strong>
+                      <input
+                        type="text"
+                        value={(rc as Record<string, string>)[key] ?? ''}
+                        onChange={(e) => updateConfig(['recommendCopy'], { ...rc, [key]: e.target.value })}
+                        style={{ width: '100%', padding: '0.35rem', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  ))}
                 </div>
               );
             })()}

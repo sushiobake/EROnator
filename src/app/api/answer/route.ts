@@ -20,6 +20,7 @@ import { toWorkResponse } from '@/server/api/dto';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
 import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPayload';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
+import { SESSION_NOT_FOUND_CODE } from '@/constants/apiCodes';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
 
 export async function POST(request: NextRequest) {
@@ -42,7 +43,8 @@ export async function POST(request: NextRequest) {
       throw new ApiError(
         404,
         'セッションが見つかりませんでした。最初からやり直してください。',
-        'Session not found'
+        'Session not found',
+        SESSION_NOT_FOUND_CODE
       );
     }
 

@@ -1,6 +1,6 @@
 {
   "description": "まとめ質問。個別タグの質問は残しつつ、複数タグをORでまとめた質問を用意する。",
-  "updatedAt": "2026-03-03",
+  "updatedAt": "2026-03-06",
   "summaryQuestions": [
     {
       "id": "battle",
@@ -226,7 +226,7 @@
     {
       "id": "huku",
       "label": "服装・アクセサリー",
-      "questionText": "特徴のある服装や、アクセサリーを付けてる？",
+      "questionText": "女の子が特徴のある服装だったり、特殊なアクセサリーを付けてる？",
       "displayNames": [
         "制服",
         "セーラー服",

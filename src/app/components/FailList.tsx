@@ -10,6 +10,7 @@ import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
 import { useClickGuard } from './useClickGuard';
 import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
+import { StreamerCensoredText } from './StreamerCensoredText';
 
 interface FailListCandidateItem {
   workId: string;
@@ -19,22 +20,29 @@ interface FailListCandidateItem {
   thumbnailUrl?: string | null;
 }
 
+const DEFAULT_NOT_IN_LIST_PROMPT = 'ない？ならここに作品名書いてよ！お願いだから！';
+
 interface FailListProps {
   candidates: FailListCandidateItem[];
   onSelectWork: (workId: string) => void;
   onNotInList: (submittedTitleText: string) => void;
   onRestart?: () => void;
+  /** 「リストにない」押下後に表示する一文（コンフィグで変更可） */
+  notInListPrompt?: string;
   /** @deprecated レイアウト用。mobileBelowCanvas で FailListVerticalList を使用 */
   mobileListBelow?: boolean;
+  /** 配信者モード時はタイトルを部分的伏字 */
+  streamerMode?: boolean;
 }
 
 /** スマホ用：縦リスト（Stage mobileBelowCanvas 用） */
 interface FailListVerticalListProps {
   candidates: FailListCandidateItem[];
   onSelectWork: (workId: string) => void;
+  streamerMode?: boolean;
 }
 
-export function FailListVerticalList({ candidates, onSelectWork }: FailListVerticalListProps) {
+export function FailListVerticalList({ candidates, onSelectWork, streamerMode }: FailListVerticalListProps) {
   const interactionDisabled = useClickGuard([]);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 0.5rem' }}>
@@ -47,6 +55,7 @@ export function FailListVerticalList({ candidates, onSelectWork }: FailListVerti
             onSelectWork(work.workId);
           }}
           showFanzaLink
+          streamerMode={streamerMode}
         />
       ))}
     </div>
@@ -57,7 +66,7 @@ export function FailListVerticalList({ candidates, onSelectWork }: FailListVerti
 const CARD_MIN_WIDTH = 130;
 const CARD_GAP = 10;
 
-export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mobileListBelow: _ }: FailListProps) {
+export function FailList({ candidates, onSelectWork, onNotInList, onRestart, notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT, mobileListBelow: _, streamerMode }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
@@ -109,7 +118,7 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
                 />
               </div>
               <p style={{ fontSize: isMobile ? 14 : 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {work.title}
+                {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
               </p>
               <p style={{ fontSize: isMobile ? 13 : 11, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
             </div>
@@ -131,7 +140,7 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, mob
         </button>
       ) : (
         <div style={{ marginTop: isMobile ? '1.25rem' : '2rem', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: isMobile ? 6 : 8 }}>
-          <p style={{ marginBottom: isMobile ? '0.35rem' : '0.5rem', width: '100%', fontSize: isMobile ? 17 : undefined }}>ない？ならここに作品名書いてよ！お願いだから！</p>
+          <p style={{ marginBottom: isMobile ? '0.35rem' : '0.5rem', width: '100%', fontSize: isMobile ? 17 : undefined }}>{notInListPrompt}</p>
           <input
             type="text"
             value={submittedText}

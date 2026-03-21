@@ -9,12 +9,13 @@
     "questionPreamble": "その同人誌は……",
     "revealPreamble": "その同人誌は……",
     "revealMain": "これでしょ！ちがう！？",
-    "successSpeech": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
+    "successSpeech": "やったーー！！まあ知ってたわ！！{questionCount}問でお見通しだもの！",
     "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
     "recommendTitle": "なら…そんなあなたにおススメもある！！",
     "failListSpeech": "うーん…ちょっとわからなかったわ。",
     "failListSubMobile": "ちなみに、下のリストの中にある？",
     "failListSubPc": "ちなみに、このリストの中にはある？",
+    "failListNotInListPrompt": "ない？ならここに作品名書いてくれないかしら？",
     "almostSuccessSpeech": "それか～～～！悔しい！次回は当てるから！！",
     "aiGatePreamble": "最初に教えて！その同人誌は……",
     "aiGateMain": "AI生成作品？それとも違う？"
@@ -61,6 +62,12 @@
     },
     "endingWrong": {
       "text": "ちがうかあ……"
+    },
+    "failListSelect": {
+      "text": "考え中…"
+    },
+    "failListNotInList": {
+      "text": "考え中…"
     }
   },
   "confirm": {

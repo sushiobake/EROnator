@@ -1,5 +1,5 @@
 /**
- * 問い合わせフォームページ
+ * 問い合わせフォームページ（POST /api/contact → DB 保存、管理画面で一覧）
  */
 
 'use client';
@@ -7,16 +7,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { APP_VERSION } from '@/config/app';
+import { useToast } from '@/app/components/ToastContext';
 
 export default function ContactPage() {
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     subject: '',
     message: '',
+    website: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -28,31 +30,38 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    setSubmitStatus('idle');
 
     try {
-      // ここでAPIを呼び出す（後で実装可能）
-      // 現時点ではクライアント側でのバリデーションのみ
       if (!formData.name || !formData.email || !formData.message) {
-        setSubmitStatus('error');
-        alert('必須項目を入力してください。');
+        showToast('必須項目を入力してください。');
         setIsSubmitting(false);
         return;
       }
 
-      // 簡易的な送信処理（実際のAPI実装は後で追加可能）
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          subject: formData.subject.trim() || undefined,
+          message: formData.message.trim(),
+          website: formData.website,
+        }),
+      });
 
-      // 成功メッセージ
-      setSubmitStatus('success');
-      setFormData({ name: '', email: '', subject: '', message: '' });
-      
-      // 3秒後にステータスをリセット
-      setTimeout(() => {
-        setSubmitStatus('idle');
-      }, 3000);
-    } catch (error) {
-      setSubmitStatus('error');
-      alert('送信に失敗しました。もう一度お試しください。');
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        showToast(typeof data.error === 'string' ? data.error : '送信に失敗しました。');
+        setIsSubmitting(false);
+        return;
+      }
+
+      showToast('お問い合わせを受け付けました。ありがとうございます。', 'success');
+      setFormData({ name: '', email: '', subject: '', message: '', website: '' });
+    } catch {
+      showToast('送信に失敗しました。もう一度お試しください。');
     } finally {
       setIsSubmitting(false);
     }
@@ -66,14 +75,26 @@ export default function ContactPage() {
         </Link>
       </div>
 
-      <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold' }}>
-        お問い合わせ
-      </h1>
+      <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold' }}>お問い合わせ</h1>
       <p style={{ marginBottom: '2rem', color: 'var(--color-text-muted)' }}>
         ご質問やご意見がございましたら、以下のフォームよりお問い合わせください。
       </p>
 
       <form onSubmit={handleSubmit}>
+        {/* honeypot: 人間は空のまま */}
+        <div style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }} aria-hidden>
+          <label htmlFor="contact-website">ウェブサイト</label>
+          <input
+            type="text"
+            id="contact-website"
+            name="website"
+            tabIndex={-1}
+            autoComplete="off"
+            value={formData.website}
+            onChange={handleChange}
+          />
+        </div>
+
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="name"
@@ -175,36 +196,6 @@ export default function ContactPage() {
           />
         </div>
 
-        {submitStatus === 'success' && (
-          <div
-            style={{
-              padding: '1rem',
-              marginBottom: '1rem',
-              backgroundColor: '#d4edda',
-              color: '#155724',
-              border: '1px solid #c3e6cb',
-              borderRadius: '4px',
-            }}
-          >
-            お問い合わせを受け付けました。ありがとうございます。
-          </div>
-        )}
-
-        {submitStatus === 'error' && (
-          <div
-            style={{
-              padding: '1rem',
-              marginBottom: '1rem',
-              backgroundColor: '#f8d7da',
-              color: '#721c24',
-              border: '1px solid #f5c6cb',
-              borderRadius: '4px',
-            }}
-          >
-            送信に失敗しました。もう一度お試しください。
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={isSubmitting}
@@ -219,16 +210,6 @@ export default function ContactPage() {
             borderRadius: '6px',
             cursor: isSubmitting ? 'not-allowed' : 'pointer',
             transition: 'background-color 0.2s',
-          }}
-          onMouseEnter={(e) => {
-            if (!isSubmitting) {
-              e.currentTarget.style.backgroundColor = 'var(--color-primary-hover)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isSubmitting) {
-              e.currentTarget.style.backgroundColor = 'var(--color-primary)';
-            }
           }}
         >
           {isSubmitting ? '送信中...' : '送信'}

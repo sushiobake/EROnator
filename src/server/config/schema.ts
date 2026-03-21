@@ -139,6 +139,8 @@ const GameCopySchema = z.object({
   failListSpeech: z.string(),
   failListSubMobile: z.string(),
   failListSubPc: z.string(),
+  /** 外れ①「リストにない」押下後（作品名入力の上の一文） */
+  failListNotInListPrompt: z.string(),
   /** 外れ② ALMOST_SUCCESS（惜しかった） */
   almostSuccessSpeech: z.string(),
   /** AI_GATE（最初のゲート）前段＋メイン */
@@ -161,6 +163,7 @@ export const DEFAULT_GAME_COPY = {
   failListSpeech: 'うーん…ちょっとわからなかったわ。',
   failListSubMobile: '下のリストにある？',
   failListSubPc: 'ちなみにこの中にはある？',
+  failListNotInListPrompt: 'ない？ならここに作品名書いてよ！お願いだから！',
   almostSuccessSpeech: 'それか～～～！次回は当てるからね！',
   aiGatePreamble: 'あなたが妄想した作品は……',
   aiGateMain: 'AI生成作品ではない？',
@@ -250,6 +253,58 @@ export function migrateThinking(raw: unknown): ThinkingConfig {
   };
 }
 
+/** 推薦モードの文言（管理画面で編集可能） */
+const RecommendCopySchema = z.object({
+  /** AIゲート前段（あなたの好みは？） */
+  aiGatePreamble: z.string(),
+  /** AIゲートメイン（AI生成作品？それとも違う？） */
+  aiGateMain: z.string(),
+  /** 初期画面メイン（あなたの好みは？） */
+  initialMain: z.string(),
+  /** 有名度選択の質問（やっぱり有名作品！等の上） */
+  initialPopularityQuestion: z.string().optional(),
+  /** 優先度の質問（あなたが優先したいのは？順位をつけて！） */
+  initialPriorityQuestion: z.string(),
+  /** 有名タグ質問1-3の文言 */
+  questionFamous: z.string(),
+  /** 無名タグ質問4-6の文言 */
+  questionUnknown: z.string(),
+  /** 特に重視のプロンプト（廃止・互換用。新フローでは sortPrompt を使用） */
+  importantPrompt: z.string().optional(),
+  /** 整理ページのプロンプト（今選んでいる要素を、好きな順に５つ並べて） */
+  sortPrompt: z.string().optional(),
+  /** 考え中（あなたにぴったりの作品を探しているわ…） */
+  thinkingText: z.string(),
+  /** ボタン文言 */
+  btnNext: z.string().optional(),
+  btnRetry: z.string().optional(),
+  btnOk: z.string().optional(),
+  btnNotInList: z.string().optional(),
+  btnFix: z.string().optional(),
+  btnTopReset: z.string().optional(),
+}).strict();
+
+export type RecommendCopy = z.infer<typeof RecommendCopySchema>;
+
+export const DEFAULT_RECOMMEND_COPY: RecommendCopy = {
+  aiGatePreamble: 'あなたの好みは？',
+  aiGateMain: 'AI生成作品？それとも違う？',
+  initialMain: 'あなたの好みは？',
+  initialPopularityQuestion: 'やっぱり有名作品！　隠れた名作！　中間くらいの作品！',
+  initialPriorityQuestion: 'あなたが優先したいのは？順位をつけて！',
+  questionFamous: 'あなたが望む同人誌にはどんな特徴がある？ 3つまで選んで！ 特に重要なものがあれば1つだけチェックして！',
+  questionUnknown: 'この中に欲しい特徴はある？ 3つまで選んで！',
+  importantPrompt: '特に重視する要素はある？あれば選んで！',
+  sortPrompt: '今選んでいる要素を、好きな順に５つ並べて',
+  thinkingText: 'あなたにぴったりの作品を探しているわ…',
+  btnNext: '次へ',
+  btnRetry: 'やり直し',
+  btnOk: 'これでok',
+  btnNotInList: 'この中にはない',
+  btnFix: '修正する',
+  btnTopReset: 'トップに戻る',
+};
+
 export const DEFAULT_THINKING = {
   inGame: {
     displayMode: 'sequential' as const,
@@ -269,6 +324,8 @@ export const MvpConfigSchema = z.object({
   version: z.literal('v1.5'),
   /** ゲーム文言。未設定時は DEFAULT_GAME_COPY */
   gameCopy: GameCopySchema.optional(),
+  /** 推薦モードの文言。未設定時は DEFAULT_RECOMMEND_COPY */
+  recommendCopy: RecommendCopySchema.optional(),
   /** 考え中7種。未設定または旧形式のときは migrateThinking で新形式に */
   thinking: z.union([ThinkingSchema, LegacyThinkingSchema]).optional(),
   confirm: ConfirmSchema,

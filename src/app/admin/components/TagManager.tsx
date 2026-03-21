@@ -53,9 +53,9 @@ export default function TagManager({ adminToken }: Props) {
   // 検索
   const [searchText, setSearchText] = useState('');
   
-  // 並び替え
-  const [sortBy, setSortBy] = useState<'workCount' | 'rank' | 'displayName'>('displayName');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  // 並び替え（デフォルト: 作品数多い順）
+  const [sortBy, setSortBy] = useState<'workCount' | 'rank' | 'displayName'>('workCount');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
   // 0件タグを非表示（デフォルトON）
   const [hideZeroCount, setHideZeroCount] = useState(true);
@@ -83,7 +83,7 @@ export default function TagManager({ adminToken }: Props) {
   } | null>(null);
 
   // まとめ質問（全カテゴリの先頭に表示）
-  const [summaryQuestions, setSummaryQuestions] = useState<Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }>>([]);
+  const [summaryQuestions, setSummaryQuestions] = useState<Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean; disabled?: boolean }>>([]);
   const [editingSummaryId, setEditingSummaryId] = useState<string | null>(null);
   const [editingSummaryValue, setEditingSummaryValue] = useState('');
 
@@ -91,9 +91,6 @@ export default function TagManager({ adminToken }: Props) {
   const [vagueDisplayNames, setVagueDisplayNames] = useState<Set<string>>(new Set());
   // エロ質問タグ（7問目以降にのみ出題）
   const [eroticDisplayNames, setEroticDisplayNames] = useState<Set<string>>(new Set());
-  // まとめ質問セクションの開閉（デフォルトは閉じる）
-  const [summaryCollapsed, setSummaryCollapsed] = useState(true);
-
   // 特別質問（シリーズ・文字種・有名度・50音・50音2次・作者文字種）
   const [specialQuestions, setSpecialQuestions] = useState<{
     SERIES?: { questionText?: string };
@@ -463,6 +460,22 @@ export default function TagManager({ adminToken }: Props) {
     }
   };
 
+  // カテゴリ: 5つのうち1つだけ（ストーリー / プレイ / キャラ / その他 / 未分類）
+  const CATEGORIES = ['ストーリー', 'プレイ', 'キャラクター', 'その他', '未分類'] as const;
+  const currentCategory = (c: string | null | undefined) => (c && CATEGORIES.includes(c as typeof CATEGORIES[number]) ? c : '未分類');
+  const handleCategoryChange = async (tagKey: string, value: string) => {
+    const category = value === '未分類' ? '未分類' : (CATEGORIES.includes(value as typeof CATEGORIES[number]) ? value : '未分類');
+    try {
+      const res = await fetch('/api/admin/tags/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(adminToken ? { 'x-eronator-admin-token': adminToken } : {}) },
+        body: JSON.stringify({ tagKey, category })
+      });
+      const data = await res.json();
+      if (data.success) setTags(prev => prev.map(t => t.tagKey === tagKey ? { ...t, category } : t));
+      else alert(data.error || 'カテゴリの保存に失敗しました');
+    } catch (error) { console.error('Failed to save category:', error); }
+  };
   // ランクのソート用順序（S=最優先 → N=最後）
   const RANK_ORDER: Record<UnifiedRank, number> = { S: 0, A: 1, B: 2, C: 3, X: 4, N: 5, '': 6 };
 
@@ -477,9 +490,16 @@ export default function TagManager({ adminToken }: Props) {
           return false;
         }
         
-        // カテゴリフィルタ（表示用 displayCategory を優先）
-        const cat = (t as TagItem).displayCategory ?? t.category ?? 'その他';
-        if (categoryFilter !== 'ALL' && cat !== categoryFilter) return false;
+        // カテゴリフィルタ（5つから1つ。キャラタグは displayCategory）
+        if (categoryFilter !== 'ALL') {
+          const dispCat = (t as TagItem).displayCategory;
+          if (categoryFilter === 'キャラタグ') {
+            if (dispCat !== 'キャラタグ') return false;
+          } else {
+            const cur = currentCategory(t.category);
+            if (cur !== categoryFilter) return false;
+          }
+        }
         
         // 検索
         if (searchText && !t.displayName.toLowerCase().includes(searchText.toLowerCase())) return false;
@@ -492,43 +512,9 @@ export default function TagManager({ adminToken }: Props) {
   }, [tags, ranks, showRanks, categoryFilter, searchText, hideZeroCount]);
 
 
-  // カテゴリ一覧（categoryOrder 順、その他・キャラタグが最後）
-  const categories = useMemo(() => {
-    const catSet = new Set(tags.map(t => (t as TagItem).displayCategory ?? t.category ?? 'その他').filter(Boolean));
-    if (categoryOrder.length > 0) {
-      const ordered = categoryOrder.filter(c => catSet.has(c));
-      const rest = Array.from(catSet).filter(c => !categoryOrder.includes(c)).sort();
-      return [...ordered, ...rest];
-    }
-    return Array.from(catSet).sort();
-  }, [tags, categoryOrder]);
+  // カテゴリフィルタ用: ストーリー, プレイ, キャラ, その他, 未分類, キャラタグ（この順）
+  const categoryFilterOptions = ['ストーリー', 'プレイ', 'キャラクター', 'その他', '未分類', 'キャラタグ'] as const;
 
-  // 全カテゴリ表示用: displayCategory でグループ化（categoryOrder 順）、並び替え適用
-  const tagsByDisplayCategory = useMemo(() => {
-    const map = new Map<string, TagItem[]>();
-    for (const t of filteredTags) {
-      const cat = (t as TagItem).displayCategory ?? t.category ?? 'その他';
-      if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(t);
-    }
-    const mult = sortOrder === 'asc' ? 1 : -1;
-    for (const arr of map.values()) {
-      arr.sort((a, b) => {
-        if (sortBy === 'workCount') {
-          const diff = a.workCount - b.workCount;
-          return diff !== 0 ? mult * diff : a.displayName.localeCompare(b.displayName, 'ja');
-        }
-        if (sortBy === 'rank') {
-          const ra = RANK_ORDER[getUnifiedRank(a)];
-          const rb = RANK_ORDER[getUnifiedRank(b)];
-          const diff = ra - rb;
-          return diff !== 0 ? mult * diff : a.displayName.localeCompare(b.displayName, 'ja');
-        }
-        return mult * a.displayName.localeCompare(b.displayName, 'ja');
-      });
-    }
-    return map;
-  }, [filteredTags, sortBy, sortOrder, ranks]);
 
   // 包括・統合: 「代表の下に移動」するタグ集合と、代表→サブ一覧・代表のランク
   const { movedSet, repIncludes, repUnify, repRank } = useMemo(() => {
@@ -552,88 +538,57 @@ export default function TagManager({ adminToken }: Props) {
     return { movedSet: moved, repIncludes: inc, repUnify: uny, repRank: rankMap };
   }, [includeUnifyView]);
 
-  // テーブル行: カテゴリ見出し / まとめ質問ヘッダ（畳み） / まとめ質問 / メイン行 / サブ行
+  // テーブル行: メイン行 / サブ行のみ（カテゴリ見出し・まとめ質問は別ブロックへ移動済み）
   type TableRow =
-    | { type: 'category'; category: string }
-    | { type: 'summary-header'; count: number }
-    | { type: 'summary'; id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }
     | { type: 'main'; tag: TagItem }
     | { type: 'main-orphan'; displayName: string; rank: string }
     | { type: 'sub'; subDisplayName: string; subRank: string; subTag?: TagItem };
-  const repCategory = includeUnifyView?.representativeCategory ?? {};
   const tableRows = useMemo((): TableRow[] => {
     const rows: TableRow[] = [];
-    if (categoryFilter === 'ALL' && summaryQuestions.length > 0) {
-      if (summaryCollapsed) {
-        rows.push({ type: 'summary-header', count: summaryQuestions.length });
-      } else {
-        rows.push({ type: 'category', category: 'まとめ質問タグ' });
-        for (const q of summaryQuestions) {
-          rows.push({ type: 'summary', id: q.id, label: q.label, questionText: q.questionText, displayNames: q.displayNames, erotic: q.erotic });
-        }
+    const mainItems: Array<{ type: 'real'; tag: TagItem } | { type: 'orphan'; displayName: string; rank: string }> = [
+      ...filteredTags.filter(t => !movedSet.has(t.displayName)).map(t => ({ type: 'real' as const, tag: t })),
+      ...[...repIncludes.keys(), ...repUnify.keys()].filter(r => !tags.some(t => t.displayName === r)).map(rep => ({ type: 'orphan' as const, displayName: rep, rank: repRank.get(rep) || 'A' })),
+    ];
+    const mult = sortOrder === 'asc' ? 1 : -1;
+    mainItems.sort((a, b) => {
+      const getTag = (x: typeof mainItems[0]) => x.type === 'real' ? x.tag : null;
+      const ta = getTag(a);
+      const tb = getTag(b);
+      if (sortBy === 'workCount') {
+        const wa = ta?.workCount ?? 0;
+        const wb = tb?.workCount ?? 0;
+        const diff = wa - wb;
+        if (diff !== 0) return mult * diff;
       }
-    }
-    const addedReps = new Set<string>();
-    const allReps = new Set([...repIncludes.keys(), ...repUnify.keys()]);
-    const orphanReps = [...allReps].filter(r => !tags.some(t => t.displayName === r));
-    const orderedCats = categoryOrder.length > 0 ? categoryOrder.filter(c => tagsByDisplayCategory.has(c)) : [];
-    const restCats = Array.from(tagsByDisplayCategory.keys()).filter(c => !categoryOrder.includes(c)).sort();
-    const catsFromOrphans = [...new Set(orphanReps.map(r => repCategory[r]).filter(Boolean))];
-    const allCatsSet = new Set(categoryFilter === 'ALL' ? [...orderedCats, ...restCats, ...catsFromOrphans] : [categoryFilter]);
-    const catsOrdered = categoryOrder.length > 0
-      ? [...categoryOrder.filter(c => allCatsSet.has(c)), ...[...allCatsSet].filter(c => !categoryOrder.includes(c)).sort()]
-      : [...allCatsSet].sort();
-    for (const cat of catsOrdered) {
-      const list = tagsByDisplayCategory.get(cat) ?? [];
-      const orphanRepsInCat = orphanReps.filter(r => repCategory[r] === cat);
-      if (list.length === 0 && orphanRepsInCat.length === 0) continue;
-      if (categoryFilter === 'ALL') rows.push({ type: 'category', category: cat });
-      const mainItems: Array<{ type: 'real'; tag: TagItem } | { type: 'orphan'; displayName: string; rank: string }> = [
-        ...list.filter(t => !movedSet.has(t.displayName)).map(t => ({ type: 'real' as const, tag: t })),
-        ...orphanRepsInCat.map(rep => ({ type: 'orphan' as const, displayName: rep, rank: repRank.get(rep) || 'A' })),
-      ];
-      const mult = sortOrder === 'asc' ? 1 : -1;
-      mainItems.sort((a, b) => {
-        const getTag = (x: typeof mainItems[0]) => x.type === 'real' ? x.tag : null;
-        const ta = getTag(a);
-        const tb = getTag(b);
-        if (sortBy === 'workCount') {
-          const wa = ta?.workCount ?? 0;
-          const wb = tb?.workCount ?? 0;
-          const diff = wa - wb;
-          if (diff !== 0) return mult * diff;
+      if (sortBy === 'rank') {
+        const ra = RANK_ORDER[(ta ? getUnifiedRank(ta) : (a.type === 'orphan' ? (a.rank as UnifiedRank) : 'N')) ?? 'N'];
+        const rb = RANK_ORDER[(tb ? getUnifiedRank(tb) : (b.type === 'orphan' ? (b.rank as UnifiedRank) : 'N')) ?? 'N'];
+        const diff = ra - rb;
+        if (diff !== 0) return mult * diff;
+      }
+      const na = a.type === 'real' ? a.tag.displayName : a.displayName;
+      const nb = b.type === 'real' ? b.tag.displayName : b.displayName;
+      return mult * na.localeCompare(nb, 'ja');
+    });
+    for (const item of mainItems) {
+      if (item.type === 'real') {
+        rows.push({ type: 'main', tag: item.tag });
+        const subs = [...(repIncludes.get(item.tag.displayName) ?? []), ...(repUnify.get(item.tag.displayName) ?? [])];
+        for (const s of subs) {
+          const subTag = tags.find(t => t.displayName === s.displayName);
+          rows.push({ type: 'sub', subDisplayName: s.displayName, subRank: s.rank, subTag });
         }
-        if (sortBy === 'rank') {
-          const ra = RANK_ORDER[(ta ? getUnifiedRank(ta) : (a.type === 'orphan' ? (a.rank as UnifiedRank) : 'N')) ?? 'N'];
-          const rb = RANK_ORDER[(tb ? getUnifiedRank(tb) : (b.type === 'orphan' ? (b.rank as UnifiedRank) : 'N')) ?? 'N'];
-          const diff = ra - rb;
-          if (diff !== 0) return mult * diff;
-        }
-        const na = a.type === 'real' ? a.tag.displayName : a.displayName;
-        const nb = b.type === 'real' ? b.tag.displayName : b.displayName;
-        return mult * na.localeCompare(nb, 'ja');
-      });
-      for (const item of mainItems) {
-        if (item.type === 'real') {
-          rows.push({ type: 'main', tag: item.tag });
-          addedReps.add(item.tag.displayName);
-          const subs = [...(repIncludes.get(item.tag.displayName) ?? []), ...(repUnify.get(item.tag.displayName) ?? [])];
-          for (const s of subs) {
-            const subTag = tags.find(t => t.displayName === s.displayName);
-            rows.push({ type: 'sub', subDisplayName: s.displayName, subRank: s.rank, subTag });
-          }
-        } else {
-          rows.push({ type: 'main-orphan', displayName: item.displayName, rank: item.rank });
-          const subs = [...(repIncludes.get(item.displayName) ?? []), ...(repUnify.get(item.displayName) ?? [])];
-          for (const s of subs) {
-            const subTag = tags.find(t => t.displayName === s.displayName);
-            rows.push({ type: 'sub', subDisplayName: s.displayName, subRank: s.rank, subTag });
-          }
+      } else {
+        rows.push({ type: 'main-orphan', displayName: item.displayName, rank: item.rank });
+        const subs = [...(repIncludes.get(item.displayName) ?? []), ...(repUnify.get(item.displayName) ?? [])];
+        for (const s of subs) {
+          const subTag = tags.find(t => t.displayName === s.displayName);
+          rows.push({ type: 'sub', subDisplayName: s.displayName, subRank: s.rank, subTag });
         }
       }
     }
     return rows;
-  }, [categoryFilter, categoryOrder, tagsByDisplayCategory, movedSet, repIncludes, repUnify, repRank, repCategory, tags, summaryQuestions, summaryCollapsed, sortBy, sortOrder, ranks]);
+  }, [filteredTags, movedSet, repIncludes, repUnify, repRank, tags, sortBy, sortOrder, ranks]);
 
   // ページネーションは「行」単位（カテゴリ見出し・メイン・サブを含む）
   const paginatedTableRows = useMemo(() => {
@@ -745,6 +700,21 @@ export default function TagManager({ adminToken }: Props) {
       const data = await res.json();
       if (data.success && Array.isArray(data.summaryQuestions)) setSummaryQuestions(data.summaryQuestions);
     } catch (e) { console.error('Failed to toggle summary erotic:', e); }
+  };
+
+  // まとめ質問の使用不可トグル（質問候補に含めない）
+  const handleToggleSummaryDisabled = async (id: string) => {
+    const q = summaryQuestions.find(s => s.id === id);
+    if (q == null) return;
+    try {
+      const res = await fetch('/api/admin/summary-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+        body: JSON.stringify({ id, disabled: !q.disabled }),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.summaryQuestions)) setSummaryQuestions(data.summaryQuestions);
+    } catch (e) { console.error('Failed to toggle summary disabled:', e); }
   };
 
   // 使用不可タグのトグル
@@ -1220,6 +1190,74 @@ export default function TagManager({ adminToken }: Props) {
         </div>
       </details>
 
+      {/* まとめ質問（文言の編集のみ・詳細はまとめ質問タブで。含むタグは小さく表示） */}
+      <details style={{ marginBottom: '20px' }}>
+        <summary style={{ cursor: 'pointer', padding: '10px', backgroundColor: '#f0e6fa', borderRadius: '4px' }}>
+          🪭 まとめ質問 ({summaryQuestions.length}件)
+        </summary>
+        <div style={{ padding: '15px', backgroundColor: '#faf5ff', borderRadius: '0 0 8px 8px' }}>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>文言の編集のみ。詳細は「まとめ質問」タブで設定できます。</p>
+          {summaryQuestions.length === 0 ? (
+            <p style={{ color: '#999' }}>まとめ質問はありません</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', border: '1px solid #ddd' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#eee' }}>
+                  <th style={{ padding: '8px 10px', border: '1px solid #ddd', textAlign: 'left', width: '100px' }}>ラベル</th>
+                  <th style={{ padding: '8px 10px', border: '1px solid #ddd', textAlign: 'left' }}>質問文</th>
+                  <th style={{ padding: '8px 10px', border: '1px solid #ddd', textAlign: 'left', width: '180px' }}>含むタグ</th>
+                  <th style={{ padding: '8px 10px', border: '1px solid #ddd', textAlign: 'center', width: '72px' }}>使用不可</th>
+                  <th style={{ padding: '8px 10px', border: '1px solid #ddd', textAlign: 'center', width: '52px' }}>エロ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryQuestions.map(q => {
+                  const isEditing = editingSummaryId === q.id;
+                  return (
+                    <tr key={q.id} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '6px 10px', border: '1px solid #ddd', fontWeight: 'bold', verticalAlign: 'middle' }}>{q.label}</td>
+                      <td style={{ padding: '6px 10px', border: '1px solid #ddd', verticalAlign: 'middle' }}>
+                        {isEditing ? (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <input
+                              type="text"
+                              value={editingSummaryValue}
+                              onChange={e => setEditingSummaryValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') handleSaveSummaryQuestion(q.id, editingSummaryValue); if (e.key === 'Escape') { setEditingSummaryId(null); setEditingSummaryValue(''); } }}
+                              style={{ flex: 1, padding: '6px 8px', border: '1px solid #ccc', borderRadius: '4px' }}
+                              autoFocus
+                            />
+                            <button onClick={() => handleSaveSummaryQuestion(q.id, editingSummaryValue)} style={{ padding: '6px 12px' }}>保存</button>
+                            <button onClick={() => { setEditingSummaryId(null); setEditingSummaryValue(''); }} style={{ padding: '6px 12px' }}>キャンセル</button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => { setEditingSummaryId(q.id); setEditingSummaryValue(q.questionText); }}
+                            style={{ cursor: 'pointer', display: 'block', padding: '4px 0' }}
+                            title="クリックして編集"
+                          >
+                            {q.questionText} ✏️
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '4px 8px', border: '1px solid #ddd', verticalAlign: 'middle', fontSize: '10px', color: '#666', lineHeight: 1.3, maxWidth: '180px' }}>
+                        {q.displayNames?.length ? q.displayNames.join(', ') : '—'}
+                      </td>
+                      <td style={{ padding: '6px 10px', border: '1px solid #ddd', textAlign: 'center', verticalAlign: 'middle' }}>
+                        <input type="checkbox" checked={!!q.disabled} onChange={() => handleToggleSummaryDisabled(q.id)} title="使用不可（質問候補に含めない）" />
+                      </td>
+                      <td style={{ padding: '6px 10px', border: '1px solid #ddd', textAlign: 'center', verticalAlign: 'middle' }}>
+                        <input type="checkbox" checked={!!q.erotic} onChange={() => handleToggleSummaryErotic(q.id)} title="エロ質問（6問目以降）" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </details>
+
       {/* ランク表示フィルタ（チェックボックス） */}
       <div style={{ 
         display: 'flex', 
@@ -1265,9 +1303,9 @@ export default function TagManager({ adminToken }: Props) {
           onChange={e => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
           style={{ padding: '6px' }}
         >
-          <option value="ALL">全カテゴリ</option>
-          {categories.map(c => (
-            <option key={c} value={c}>{c}</option>
+          <option value="ALL">すべてのタグ</option>
+          {categoryFilterOptions.map(c => (
+            <option key={c} value={c}>{c === 'キャラクター' ? 'キャラ' : c}</option>
           ))}
         </select>
         
@@ -1384,7 +1422,8 @@ export default function TagManager({ adminToken }: Props) {
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '44px' }}>ランク</th>
             <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd', width: '160px' }}>タグ名</th>
             <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd' }}>質問文</th>
-            <th style={{ padding: '6px', textAlign: 'left', border: '1px solid #ddd', width: '220px', minWidth: '220px' }}>作品/カテゴリ</th>
+            <th style={{ padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', width: '72px' }}>作品</th>
+            <th style={{ padding: '4px 6px', textAlign: 'left', border: '1px solid #ddd', minWidth: '200px' }}>カテゴリ</th>
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '64px' }}>使用不可</th>
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>エロ</th>
             <th style={{ padding: '4px 6px', textAlign: 'center', border: '1px solid #ddd', width: '52px' }}>操作</th>
@@ -1392,95 +1431,27 @@ export default function TagManager({ adminToken }: Props) {
         </thead>
         <tbody>
           {paginatedTableRows.map((row, idx) => {
-            if (row.type === 'summary-header') {
-              return (
-                <tr
-                  key="summary-header"
-                  onClick={() => setSummaryCollapsed(false)}
-                  style={{
-                    backgroundColor: '#e2e8f0',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <td colSpan={8} style={{ padding: '4px 8px', border: '1px solid #ddd', fontWeight: 'bold' }}>
-                    ▶ 〇 まとめ質問タグ ({row.count}件) — クリックで展開
-                  </td>
-                </tr>
-              );
-            }
-            if (row.type === 'category') {
-              return (
-                <tr key={`cat-${row.category}`} style={{ backgroundColor: '#e2e8f0' }}>
-                  <td colSpan={8} style={{ padding: '4px 8px', border: '1px solid #ddd', fontWeight: 'bold' }}>
-                    {row.category === 'まとめ質問タグ' ? (
-                      <span onClick={() => setSummaryCollapsed(true)} style={{ cursor: 'pointer' }} title="クリックで畳む">▼ 〇 {row.category}</span>
-                    ) : (
-                      `〇 ${row.category}`
-                    )}
-                  </td>
-                </tr>
-              );
-            }
-            if (row.type === 'summary') {
-              const isEditing = editingSummaryId === row.id;
-              return (
-                <tr key={`summary-${row.id}`} style={{ backgroundColor: '#f0f4ff' }}>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center', color: '#999' }}>—</td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>{row.label}</td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
-                    {isEditing ? (
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <input
-                          type="text"
-                          value={editingSummaryValue}
-                          onChange={e => setEditingSummaryValue(e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') handleSaveSummaryQuestion(row.id, editingSummaryValue); if (e.key === 'Escape') { setEditingSummaryId(null); setEditingSummaryValue(''); } }}
-                          style={{ flex: 1, padding: '2px 4px' }}
-                          autoFocus
-                        />
-                        <button onClick={() => handleSaveSummaryQuestion(row.id, editingSummaryValue)} style={{ padding: '2px 6px', fontSize: '11px' }}>✓</button>
-                        <button onClick={() => { setEditingSummaryId(null); setEditingSummaryValue(''); }} style={{ padding: '2px 6px', fontSize: '11px' }}>✕</button>
-                      </div>
-                    ) : (
-                      <span onClick={() => { setEditingSummaryId(row.id); setEditingSummaryValue(row.questionText); }} style={{ cursor: 'pointer' }} title="クリックして編集">
-                        {row.questionText} ✏️
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '11px', color: '#666', lineHeight: 1.3 }}>{row.displayNames.join(', ')}</td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={!!row.erotic}
-                      onChange={() => handleToggleSummaryErotic(row.id)}
-                      title="まとめエロ質問（6問目以降にのみ出題）"
-                    />
-                  </td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                </tr>
-              );
-            }
             if (row.type === 'sub') {
               const subRank = (row.subRank || 'A') as UnifiedRank;
               const subTag = row.subTag;
+              const subRowStyle = { padding: '2px 4px', fontSize: '11px', lineHeight: 1.2 };
               return (
                 <tr key={`sub-${row.subDisplayName}-${idx}`} style={{ backgroundColor: (getRankBgColor(subRank) + '25') }}>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }}>
                     <RankBadge rank={subRank} />
                   </td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
-                    └ {row.subDisplayName}
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd' }}>└ {row.subDisplayName}</td>
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', color: '#666' }}>同上</td>
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'right' }}>
+                    {subTag != null ? `${subTag.workCount}件` : '—'}
                   </td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>同上</td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
-                    {subTag != null ? `${subTag.workCount}件 ${subTag.category ? `/ ${subTag.category}` : ''}` : '—'}
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', color: '#666' }}>
+                    {subTag != null && subTag.category ? subTag.category : '—'}
                   </td>
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                  <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                  <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
                 </tr>
               );
             }
@@ -1496,6 +1467,7 @@ export default function TagManager({ adminToken }: Props) {
                     </td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>{row.displayName}</td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>—</td>
+                    <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#999', textAlign: 'right' }}>—</td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#999' }}>DBに未登録</td>
                     <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                       <input type="checkbox" checked={vagueDisplayNames.has(row.displayName)} onChange={() => handleToggleVague(row.displayName)} title="使用不可（質問候補に含めない）" />
@@ -1508,20 +1480,24 @@ export default function TagManager({ adminToken }: Props) {
                   {subs.map((s, j) => {
                     const subRank = (s.rank || 'A') as UnifiedRank;
                     const subTag = tags.find(t => t.displayName === s.displayName);
+                    const subRowStyle = { padding: '2px 4px', fontSize: '11px', lineHeight: 1.2 };
                     return (
                       <tr key={`orphan-sub-${row.displayName}-${s.displayName}-${j}`} style={{ backgroundColor: (getRankBgColor(subRank) + '25') }}>
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }}>
                           <RankBadge rank={subRank} />
                         </td>
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>└ {s.displayName}</td>
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', color: '#666' }}>同上</td>
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
-                          {subTag != null ? `${subTag.workCount}件 ${subTag.category ? `/ ${subTag.category}` : ''}` : '—'}
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd' }}>└ {s.displayName}</td>
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', color: '#666' }}>同上</td>
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'right' }}>
+                          {subTag != null ? `${subTag.workCount}件` : '—'}
                         </td>
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
-                        <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', color: '#666' }}>
+                          {subTag != null && subTag.category ? subTag.category : '—'}
+                        </td>
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
+                        <td style={{ ...subRowStyle, border: '1px solid #ddd', textAlign: 'center' }} />
                       </tr>
                     );
                   })}
@@ -1532,7 +1508,7 @@ export default function TagManager({ adminToken }: Props) {
             const unifiedRank = getUnifiedRank(tag);
             const editable = isEditable(tag);
             const template = templates[tag.displayName];
-            const displayCategory = (tag as TagItem).displayCategory ?? tag.category ?? 'その他';
+            const displayCategory = (tag as TagItem).displayCategory ?? tag.category ?? '未分類';
             const questionText = template || (displayCategory === 'キャラタグ' ? getCharacterQuestion(tag.displayName) : getDefaultQuestion(tag.displayName));
             const intensity = getWorkCountIntensity(tag.workCount);
             const rowAlpha = getWorkCountRowAlphaHex(intensity);
@@ -1586,7 +1562,7 @@ export default function TagManager({ adminToken }: Props) {
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '0.6em', lineHeight: 1.2, maxWidth: '320px' }}>
                   {editingTemplate === tag.tagKey ? (
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <input type="text" value={editingTemplateValue} onChange={e => setEditingTemplateValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveTemplate(tag.tagKey, tag.displayName, editingTemplateValue); if (e.key === 'Escape') { setEditingTemplate(null); setEditingTemplateValue(''); } }} style={{ flex: 1, padding: '2px 4px' }} autoFocus />
@@ -1599,8 +1575,23 @@ export default function TagManager({ adminToken }: Props) {
                     </span>
                   )}
                 </td>
-                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px' }}>
-                  {tag.workCount}件 {tag.category && <span style={{ color: '#666' }}>/ {tag.category}</span>}
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '12px', textAlign: 'right' }}>
+                  {tag.workCount}件
+                </td>
+                <td style={{ padding: '3px 5px', border: '1px solid #ddd', fontSize: '11px' }}>
+                  <span style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 10px', alignItems: 'center' }}>
+                    {CATEGORIES.map(cat => (
+                      <label key={cat} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="radio"
+                          name={`cat-${tag.tagKey}`}
+                          checked={currentCategory(tag.category) === cat}
+                          onChange={() => handleCategoryChange(tag.tagKey, cat)}
+                        />
+                        {cat === 'キャラクター' ? 'キャラ' : cat}
+                      </label>
+                    ))}
+                  </span>
                 </td>
                 <td style={{ padding: '3px 5px', border: '1px solid #ddd', textAlign: 'center' }}>
                   <input

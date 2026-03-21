@@ -4,17 +4,28 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { TopScreen } from './components/TopScreen';
 import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
 import { Reveal } from './components/Reveal';
 import { Success, SuccessRecommendationsVertical } from './components/Success';
 import { FailList, FailListVerticalList } from './components/FailList';
-import { DebugPanel } from './components/DebugPanel';
+import { DebugPanel, type ForceNavigateScreen } from './components/DebugPanel';
 import { Stage, type CharacterVariant } from './components/Stage';
 import { useMediaQuery } from './components/useMediaQuery';
 import { RecommendMode } from './components/RecommendMode';
+import { StreamerCensoredText } from './components/StreamerCensoredText';
+import { useToast } from './components/ToastContext';
+import { SESSION_NOT_FOUND_CODE } from '@/constants/apiCodes';
+
+async function parseApiErrorJson(response: Response): Promise<{ error: string; code?: string }> {
+  const data = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+  return {
+    error: typeof data.error === 'string' ? data.error : `通信に失敗しました (${response.status})`,
+    code: typeof data.code === 'string' ? data.code : undefined,
+  };
+}
 
 type GameState =
   | 'TOP'
@@ -26,20 +37,6 @@ type GameState =
   | 'ALMOST_SUCCESS'
   | 'RECOMMEND';
 
-/** 配信者モード用: 露骨な質問テキストを抽象化 */
-function sanitizeQuestionText(text: string): string {
-  const eroticWords = [
-    'おっぱい', '巨乳', '貧乳', '爆乳', '中出し', '口内射精', 'フェラ', 'パイズリ',
-    'アナル', '潮吹き', '絶頂', 'オナニー', '手コキ', '足コキ', '母乳', 'ふたなり',
-    '触手', '調教', '緊縛', '陵辱', '痴漢', '露出', '寝取られ', '催眠',
-    'ランジェリー', '水着', 'メイド', 'ナース', 'バニー',
-  ];
-  let sanitized = text;
-  for (const word of eroticWords) {
-    sanitized = sanitized.replaceAll(word, '〇〇');
-  }
-  return sanitized;
-}
 
 /** 質問種別に応じてキャラ画像バリアントを返す。通常→question固定、エロ→embarrassing/very_embarrassingをランダム */
 function getQuestionCharacterVariant(question: { exploreTagKind?: string; kind?: string } | null): CharacterVariant {
@@ -175,13 +172,23 @@ export default function Home() {
   const [gameCopy, setGameCopy] = useState<{
     topLines?: string[]; questionPreamble?: string; revealPreamble?: string; revealMain?: string;
     successSpeech?: string; successTitle?: string; recommendTitle?: string;
-    failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string;
+    failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string; failListNotInListPrompt?: string;
     almostSuccessSpeech?: string; aiGatePreamble?: string; aiGateMain?: string;
   } | null>(null);
   const [thinkingConfig, setThinkingConfig] = useState<ThinkingConfigState | null>(null);
   const thinkingSeqIndexRef = useRef<Record<string, number>>({ early: 0, mid: 0, late: 0, closing: 0 });
   const [currentThinkingText, setCurrentThinkingText] = useState('考え中…');
   const [pendingThinkingType, setPendingThinkingType] = useState<'opening' | 'inGame' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList' | null>(null);
+  const { showToast } = useToast();
+
+  const clearStaleSessionAndReturnTop = useCallback(() => {
+    setSessionId(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('eronator_sessionId');
+    }
+    setState('TOP');
+    showToast('セッションが見つかりませんでした。トップからやり直してください。', 'info');
+  }, [showToast]);
 
   /** ローカル確認用: .env.local に NEXT_PUBLIC_MIN_THINKING_MS=2000 などで調整。未設定時は開発 1000ms・本番 200ms */
   const MIN_THINKING_MS =
@@ -359,9 +366,10 @@ export default function Home() {
       ]);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        const errorMessage = errorData.error || `HTTP ${response.status}: ${response.statusText}`;
-        throw new Error(errorMessage);
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
 
       const data = await response.json();
@@ -379,7 +387,7 @@ export default function Home() {
     } catch (error) {
       console.error('Error starting session:', error);
       const errorMessage = error instanceof Error ? error.message : 'セッション開始に失敗しました';
-      alert(`セッション開始に失敗しました: ${errorMessage}`);
+      showToast(`セッション開始に失敗しました: ${errorMessage}`);
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -412,7 +420,10 @@ export default function Home() {
       ]);
 
       if (!response.ok) {
-        throw new Error('Failed to submit answer');
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
 
       const data = await response.json();
@@ -433,7 +444,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error submitting answer:', error);
-      alert('回答の送信に失敗しました');
+      showToast('回答の送信に失敗しました');
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -457,8 +468,10 @@ export default function Home() {
       ]);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to go back');
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
 
       const data = await response.json();
@@ -477,7 +490,7 @@ export default function Home() {
       setState('QUIZ');
     } catch (error) {
       console.error('Error going back:', error);
-      alert(error instanceof Error ? error.message : '前の質問に戻れませんでした');
+      showToast(error instanceof Error ? error.message : '前の質問に戻れませんでした');
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -489,6 +502,49 @@ export default function Home() {
     setSessionId(null);
     localStorage.removeItem('eronator_sessionId');
     setState('TOP');
+  };
+
+  /** デバッグ用: 指定画面へ強制遷移（debugUIEnabled時のみ有効） */
+  const handleForceNavigate = (screen: ForceNavigateScreen) => {
+    const DUMMY_WORK: Work = {
+      workId: 'debug-dummy',
+      title: 'デバッグ用作品',
+      authorName: 'デバッグ作者',
+      productUrl: 'https://www.dmm.co.jp/',
+    };
+    const candidates = debugData?.topCandidates ?? [];
+    const toWork = (c: { workId: string; title: string; authorName: string }) => ({
+      workId: c.workId,
+      title: c.title,
+      authorName: c.authorName,
+      productUrl: `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=${c.workId}/`,
+    });
+
+    if (screen === 'RECOMMEND') {
+      setState('RECOMMEND');
+      return;
+    }
+    if (screen === 'FAIL_LIST') {
+      setFailListCandidates(candidates.length > 0 ? candidates.map(toWork) : [DUMMY_WORK]);
+      setState('FAIL_LIST');
+      return;
+    }
+    if (screen === 'SUCCESS') {
+      const work = candidates[0] ? toWork(candidates[0]) : DUMMY_WORK;
+      setSuccessWork(work);
+      setSuccessRecommendedWorks(candidates.slice(1, 6).map(c => ({ ...toWork(c), matchRate: 85 })));
+      setQuestionCount(debugData?.session?.questionCount ?? 10);
+      setState('SUCCESS');
+      return;
+    }
+    if (screen === 'ALMOST_SUCCESS') {
+      const c = candidates[1] ?? candidates[0];
+      const work = c ? toWork(c) : DUMMY_WORK;
+      setAlmostSuccessWork(work);
+      setAlmostSuccessRecommendedWorks(candidates.slice(2, 7).map(x => ({ ...toWork(x), matchRate: 80 })));
+      setQuestionCount(debugData?.session?.questionCount ?? 12);
+      setState('ALMOST_SUCCESS');
+    }
   };
 
   const handleRevealAnswer = async (answer: 'YES' | 'NO') => {
@@ -513,7 +569,10 @@ export default function Home() {
       ]);
 
       if (!response.ok) {
-        throw new Error('Failed to submit reveal answer');
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
 
       const data = await response.json();
@@ -537,7 +596,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('Error submitting reveal answer:', error);
-      alert('回答の送信に失敗しました');
+      showToast('回答の送信に失敗しました');
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -550,14 +609,17 @@ export default function Home() {
     try {
       const response = await fetch(`/api/failList?sessionId=${sessionId}`);
       if (!response.ok) {
-        throw new Error('Failed to load fail list');
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
       const data = await response.json();
       setFailListCandidates(data.candidates);
       setState('FAIL_LIST');
     } catch (error) {
       console.error('Error loading fail list:', error);
-      alert('候補リストの読み込みに失敗しました');
+      showToast('候補リストの読み込みに失敗しました');
     }
   };
 
@@ -574,14 +636,19 @@ export default function Home() {
         ),
         minDelay,
       ]);
-      if (!response.ok) throw new Error('Failed to load selected work');
+      if (!response.ok) {
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
+      }
       const data = await response.json();
       setAlmostSuccessWork(data.work);
       setAlmostSuccessRecommendedWorks(data.recommendedWorks ?? []);
       setState('ALMOST_SUCCESS');
     } catch (error) {
       console.error('Error loading selected work:', error);
-      alert('データの取得に失敗しました');
+      showToast('データの取得に失敗しました');
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -605,11 +672,14 @@ export default function Home() {
       ]);
 
       if (!response.ok) {
-        throw new Error('Failed to submit not in list');
+        const { error: errMsg, code } = await parseApiErrorJson(response);
+        if (code === SESSION_NOT_FOUND_CODE) clearStaleSessionAndReturnTop();
+        else showToast(errMsg);
+        return;
       }
     } catch (error) {
       console.error('Error submitting not in list:', error);
-      alert('送信に失敗しました');
+      showToast('送信に失敗しました');
     } finally {
       setIsThinking(false);
       setPendingThinkingType(null);
@@ -638,6 +708,7 @@ export default function Home() {
             revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
       </>
@@ -655,8 +726,8 @@ export default function Home() {
   const thinkingVariants: Record<string, CharacterVariant> = {
     early: 'thinking',
     mid: 'thinking',
-    late: 'question',
-    closing: 'question',
+    late: 'thinking',
+    closing: 'thinking',
   };
   const thinkingSpeech = (
     <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{currentThinkingText}</p>
@@ -665,6 +736,11 @@ export default function Home() {
   const gc = gameCopy;
 
   if (state === 'AI_GATE') {
+    const handleTopReset = () => {
+      setSessionId(null);
+      if (typeof window !== 'undefined') localStorage.removeItem('eronator_sessionId');
+      setState('TOP');
+    };
     return (
       <>
         {debugUIEnabled && debugEnabled && (
@@ -673,6 +749,7 @@ export default function Home() {
             revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
@@ -689,7 +766,36 @@ export default function Home() {
               )
           }
         >
-          {isThinking ? null : <AiGate onSelect={handleAiGateSelect} />}
+          <>
+            {!isThinking && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                <AiGate onSelect={handleAiGateSelect} />
+                <div style={{ marginTop: 16, width: '100%', maxWidth: 320, display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                  type="button"
+                  onClick={handleTopReset}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 12px',
+                    fontSize: 14,
+                    cursor: 'pointer',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
+                  </svg>
+                    トップに戻る
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         </Stage>
       </>
     );
@@ -704,6 +810,7 @@ export default function Home() {
             revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
@@ -719,7 +826,7 @@ export default function Home() {
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 30 : 24, height: isMobile ? 30 : 24, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 16 : 12, fontWeight: 'bold', marginRight: 10, verticalAlign: 'middle' }}>
                       {questionCount + 1}
                     </span>
-                    {streamerMode ? sanitizeQuestionText(question.displayText) : question.displayText}
+                    {streamerMode ? <StreamerCensoredText text={question.displayText} inQuestion /> : question.displayText}
                   </p>
                 </div>
               )
@@ -745,9 +852,10 @@ export default function Home() {
         {debugUIEnabled && debugEnabled && (
           <DebugPanel
             debug={debugData}
-            revealAnalysis={null}
+            revealAnalysis={revealAnalysis}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
@@ -765,7 +873,7 @@ export default function Home() {
           }
           mobileExtendWhiteboard={isMobile}
         >
-          {isThinking ? null : <Reveal work={revealWork} onAnswer={handleRevealAnswer} />}
+          {isThinking ? null : <Reveal work={revealWork} onAnswer={handleRevealAnswer} streamerMode={streamerMode} />}
         </Stage>
       </>
     );
@@ -780,17 +888,18 @@ export default function Home() {
             revealAnalysis={revealAnalysis}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
           characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-              {gc?.successSpeech ?? '正解！？やっぱりね！'}
+              {(gc?.successSpeech ?? '正解！？やっぱりね！').replace(/\{questionCount\}/g, String(questionCount ?? 0))}
             </p>
           }
           mobileBelowCanvas={isMobile && successRecommendedWorks.length > 0 ? (
-            <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} sessionId={sessionId} />
+            <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} sessionId={sessionId} streamerMode={streamerMode} />
           ) : undefined}
           whiteboardWide={true}
         >
@@ -798,11 +907,13 @@ export default function Home() {
             work={successWork}
             recommendedWorks={successRecommendedWorks}
             onRestart={handleRestart}
+            onBackToTop={() => setState('TOP')}
             mobileListBelow={isMobile}
             sessionId={sessionId}
             questionCount={questionCount}
             successTitle={gc?.successTitle ?? '正解！？やっぱりね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
+            streamerMode={streamerMode}
           />
         </Stage>
       </>
@@ -818,13 +929,14 @@ export default function Home() {
             revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
           characterVariant="usually"
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-              {gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
+              {(gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！').replace(/\{questionCount\}/g, String(questionCount ?? 0))}
             </p>
           }
           mobileBelowCanvas={isMobile && almostSuccessRecommendedWorks.length > 0 ? (
@@ -832,6 +944,7 @@ export default function Home() {
               recommendedWorks={almostSuccessRecommendedWorks}
               recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
               sessionId={sessionId}
+              streamerMode={streamerMode}
             />
           ) : undefined}
         >
@@ -839,11 +952,13 @@ export default function Home() {
             work={almostSuccessWork}
             recommendedWorks={almostSuccessRecommendedWorks}
             onRestart={handleRestart}
+            onBackToTop={() => setState('TOP')}
             successTitle={gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
             questionCount={questionCount}
             mobileListBelow={isMobile}
             sessionId={sessionId}
+            streamerMode={streamerMode}
           />
         </Stage>
       </>
@@ -859,6 +974,7 @@ export default function Home() {
             revealAnalysis={null}
             open={debugPanelOpen}
             onToggle={() => setDebugPanelOpen(v => !v)}
+            onForceNavigate={handleForceNavigate}
           />
         )}
         <Stage
@@ -880,8 +996,10 @@ export default function Home() {
             <FailListVerticalList
               candidates={failListCandidates}
               onSelectWork={handleFailListSelectWork}
+              streamerMode={streamerMode}
             />
           ) : undefined)}
+          whiteboardWide={true}
         >
           {isThinking ? null : (
           <FailList
@@ -889,7 +1007,9 @@ export default function Home() {
             onSelectWork={handleFailListSelectWork}
             onNotInList={handleFailListNotInList}
             onRestart={handleRestart}
+            notInListPrompt={gc?.failListNotInListPrompt ?? 'ない？ならここに作品名書いてよ！お願いだから！'}
             mobileListBelow={isMobile}
+            streamerMode={streamerMode}
           />
           )}
         </Stage>

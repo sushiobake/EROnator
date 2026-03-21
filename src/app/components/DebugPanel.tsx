@@ -90,14 +90,18 @@ interface RevealAnalysis {
   };
 }
 
+export type ForceNavigateScreen = 'FAIL_LIST' | 'SUCCESS' | 'ALMOST_SUCCESS' | 'RECOMMEND';
+
 interface DebugPanelProps {
   debug: DebugPayload | null;
   revealAnalysis?: RevealAnalysis | null;
   open: boolean;
   onToggle: () => void;
+  /** デバッグ用: 指定画面へ強制遷移（debugUIEnabled時のみ有効） */
+  onForceNavigate?: (screen: ForceNavigateScreen) => void;
 }
 
-export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanelProps) {
+export function DebugPanel({ debug, revealAnalysis, open, onToggle, onForceNavigate }: DebugPanelProps) {
   const isMobile = useMediaQuery(768);
   const topGapAfter = useMemo(
     () => (debug ? debug.after.top1Score - debug.after.top2Score : 0),
@@ -142,11 +146,20 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
         </div>
         {open && (
           <div style={{ padding: '12px' }}>
-            <p style={{ color: '#666', fontSize: '14px' }}>
+            <p style={{ color: '#666', fontSize: '14px', marginBottom: '10px' }}>
               デバッグデータがまだありません。
               <br />
               ゲームを開始して質問に回答すると、デバッグ情報が表示されます。
             </p>
+            {onForceNavigate && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                <span style={{ fontSize: '11px', color: '#666', width: '100%' }}>強制遷移（ダミーデータ）:</span>
+                <button type="button" onClick={() => onForceNavigate('FAIL_LIST')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6c757d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>失敗</button>
+                <button type="button" onClick={() => onForceNavigate('SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>成功</button>
+                <button type="button" onClick={() => onForceNavigate('ALMOST_SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#ffc107', color: '#000', border: 'none', borderRadius: 6, cursor: 'pointer' }}>惜しかった</button>
+                <button type="button" onClick={() => onForceNavigate('RECOMMEND')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>おすすめ</button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -190,6 +203,18 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle }: DebugPanel
 
       {open && (
         <div style={{ padding: '6px 8px', overflow: 'auto', minHeight: 0, flex: 1, fontSize: '10px' }}>
+          {/* 強制遷移ボタン */}
+          {onForceNavigate && (
+            <div style={{ marginBottom: '8px', padding: '6px 8px', backgroundColor: '#e7f3ff', borderRadius: '4px', border: '1px solid #0070f3' }}>
+              <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#333', marginBottom: '6px' }}>強制遷移</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                <button type="button" onClick={() => onForceNavigate('FAIL_LIST')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6c757d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>失敗</button>
+                <button type="button" onClick={() => onForceNavigate('SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>成功</button>
+                <button type="button" onClick={() => onForceNavigate('ALMOST_SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#ffc107', color: '#000', border: 'none', borderRadius: 6, cursor: 'pointer' }}>惜しかった</button>
+                <button type="button" onClick={() => onForceNavigate('RECOMMEND')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#0070f3', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>おすすめ</button>
+              </div>
+            </div>
+          )}
           {/* 上段まとめ: セッション＋変化＋影響タグを少行数に */}
           <div style={{ marginBottom: '6px', padding: '6px 8px', backgroundColor: '#f5f5f5', borderRadius: '4px', lineHeight: '1.35' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 12px', alignItems: 'baseline' }}>

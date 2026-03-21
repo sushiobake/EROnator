@@ -10,7 +10,7 @@ import { DEFAULT_GAME_COPY, DEFAULT_THINKING, migrateThinking } from '@/server/c
 export async function GET() {
   try {
     const config = getMvpConfig();
-    const gameCopy = config.gameCopy ?? DEFAULT_GAME_COPY;
+    const gameCopy = { ...DEFAULT_GAME_COPY, ...config.gameCopy };
     const thinking = migrateThinking(config.thinking ?? DEFAULT_THINKING);
     return NextResponse.json({ gameCopy, thinking });
   } catch (error) {

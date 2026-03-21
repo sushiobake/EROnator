@@ -10,7 +10,9 @@ import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 
 export interface UpdateRequest {
   tagKey: string;
-  questionText: string | null;
+  questionText?: string | null;
+  /** 大別カテゴリ: ストーリー | プレイ | キャラクター | 未分類 */
+  category?: string | null;
 }
 
 export interface UpdateResponse {
@@ -19,6 +21,7 @@ export interface UpdateResponse {
     tagKey: string;
     displayName: string;
     questionText: string | null;
+    category?: string | null;
   };
   error?: string;
 }
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
     await ensurePrismaConnected();
 
     const body: UpdateRequest = await request.json();
-    const { tagKey, questionText } = body;
+    const { tagKey, questionText, category } = body;
 
     if (!tagKey) {
       return NextResponse.json(
@@ -91,16 +94,23 @@ export async function POST(request: NextRequest) {
           );
         }
         
-        // 質問テンプレートを更新
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        db.prepare('UPDATE Tag SET questionText = ? WHERE tagKey = ?').run(
-          questionText || null,
-          tagKey
-        );
+        // 質問テンプレート・カテゴリを更新（送られたフィールドのみ）
+        const hasCategoryCol = tableInfo.some(col => col.name === 'category');
+        if (questionText !== undefined && hasCategoryCol && category !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          db.prepare('UPDATE Tag SET questionText = ?, category = ? WHERE tagKey = ?').run(questionText ?? null, category ?? null, tagKey);
+        } else if (category !== undefined && hasCategoryCol) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          db.prepare('UPDATE Tag SET category = ? WHERE tagKey = ?').run(category, tagKey);
+        } else if (questionText !== undefined) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+          db.prepare('UPDATE Tag SET questionText = ? WHERE tagKey = ?').run(questionText ?? null, tagKey);
+        }
         
         // 更新後のタグを取得
+        const selectCols = hasCategoryCol ? 'tagKey, displayName, questionText, category' : 'tagKey, displayName, questionText';
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-        const updatedDirectTag = db.prepare('SELECT tagKey, displayName, questionText FROM Tag WHERE tagKey = ?').get(tagKey) as {
+        const updatedDirectTag = db.prepare(`SELECT ${selectCols} FROM Tag WHERE tagKey = ?`).get(tagKey) as {
           tagKey: string;
           displayName: string;
           questionText: string | null;
@@ -135,11 +145,16 @@ export async function POST(request: NextRequest) {
         })).map(t => t.tagKey)
       : [tagKey];
 
+    const updateData: { questionText?: string | null; category?: string | null } = {};
+    if (questionText !== undefined) updateData.questionText = questionText ?? null;
+    if (category !== undefined) updateData.category = category;
+    if (Object.keys(updateData).length === 0) {
+      const updatedTag = await prisma.tag.findUnique({ where: { tagKey }, select: { tagKey: true, displayName: true, questionText: true, category: true } });
+      return NextResponse.json({ success: true, tag: updatedTag ?? { tagKey, displayName: displayName ?? '', questionText: null, category: null }, syncedCount: tagKeysInGroup.length });
+    }
     await prisma.tag.updateMany({
       where: { tagKey: { in: tagKeysInGroup } },
-      data: {
-        questionText: questionText || null,
-      },
+      data: updateData,
     });
 
     const updatedTag = await prisma.tag.findUnique({
@@ -148,12 +163,13 @@ export async function POST(request: NextRequest) {
         tagKey: true,
         displayName: true,
         questionText: true,
+        category: true,
       },
     });
 
     return NextResponse.json({
       success: true,
-      tag: updatedTag ?? { tagKey, displayName: displayName ?? '', questionText: questionText || null },
+      tag: updatedTag ?? { tagKey, displayName: displayName ?? '', questionText: questionText ?? null, category: category ?? null },
       syncedCount: tagKeysInGroup.length,
     });
   } catch (error) {

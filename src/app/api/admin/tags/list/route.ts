@@ -68,8 +68,8 @@ function getDisplayCategory(
   if (tagType === 'OFFICIAL' && displayName === 'キャラクター') return 'キャラクター';
   if (tagType === 'STRUCTURAL') return 'キャラタグ';
   if (category === 'CHARACTER' || category === 'キャラクター') return 'キャラクター';
-  const merged = categoryMerge[category ?? ''] ?? category ?? 'その他';
-  return merged || 'その他';
+  const merged = categoryMerge[category ?? ''] ?? category ?? '未分類';
+  return merged === 'その他' ? '未分類' : (merged || '未分類');
 }
 
 export async function GET(request: NextRequest) {

@@ -6,9 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // Works: 作品データ
@@ -154,5 +153,17 @@ model PlayHistory {
 
   @@index([sessionId])
   @@index([outcome])
+  @@index([createdAt])
+}
+
+// お問い合わせフォーム（管理画面で一覧表示。将来メール転送用）
+model ContactInquiry {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  createdAt DateTime @default(now())
+
   @@index([createdAt])
 }

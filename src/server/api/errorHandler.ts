@@ -13,7 +13,9 @@ export class ApiError extends Error {
   constructor(
     public statusCode: number,
     public userMessage: string,
-    public technicalMessage?: string
+    public technicalMessage?: string,
+    /** クライアントが扱い分けする場合（例: SESSION_NOT_FOUND） */
+    public code?: string
   ) {
     super(technicalMessage || userMessage);
     this.name = 'ApiError';
@@ -40,6 +42,7 @@ export function handleApiError(error: unknown): NextResponse {
     return NextResponse.json(
       {
         error: error.userMessage,
+        ...(error.code && { code: error.code }),
         ...(process.env.NODE_ENV === 'development' && error.technicalMessage && {
           technical: error.technicalMessage,
         }),

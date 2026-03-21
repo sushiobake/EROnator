@@ -6,6 +6,7 @@
 'use client';
 
 import { ExternalLink } from './ExternalLink';
+import { StreamerCensoredText } from './StreamerCensoredText';
 
 const IMG_WIDTH = 100;
 const LINK_TEXT = 'FANZAで見る';
@@ -26,6 +27,10 @@ interface MobileWorkCardHorizontalProps {
   matchRate?: number;
   /** FANZAクリック記録用 */
   sessionId?: string | null;
+  /** 2列グリッド用：画像を小さく */
+  compact?: boolean;
+  /** 配信者モード時はタイトルを部分的伏字 */
+  streamerMode?: boolean;
 }
 
 export function MobileWorkCardHorizontal({
@@ -34,7 +39,10 @@ export function MobileWorkCardHorizontal({
   showFanzaLink = true,
   matchRate,
   sessionId,
+  compact = false,
+  streamerMode,
 }: MobileWorkCardHorizontalProps) {
+  const imgW = compact ? 70 : IMG_WIDTH;
   return (
     <div
       role={onClick ? 'button' : undefined}
@@ -58,8 +66,8 @@ export function MobileWorkCardHorizontal({
     >
       <div
         style={{
-          width: IMG_WIDTH,
-          minWidth: IMG_WIDTH,
+          width: imgW,
+          minWidth: imgW,
           flexShrink: 0,
           aspectRatio: '4/3',
           borderRadius: 6,
@@ -74,12 +82,12 @@ export function MobileWorkCardHorizontal({
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {typeof matchRate === 'number' && (
-          <p style={{ fontSize: 16, color: 'var(--color-text-muted)', fontWeight: 600, margin: '0 0 2px 0' }}>
-            似てる度 <span style={{ color: '#059669', fontWeight: 700, fontSize: 20 }}>{matchRate.toFixed(1)}％</span>
+          <p style={{ fontSize: compact ? 12 : 16, color: 'var(--color-text-muted)', fontWeight: 600, margin: '0 0 2px 0' }}>
+            似てる度 <span style={{ color: '#059669', fontWeight: 700, fontSize: compact ? 14 : 20 }}>{matchRate.toFixed(1)}％</span>
           </p>
         )}
-        <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 1px 0', lineHeight: 1.3, wordBreak: 'break-word' }}>
-          {work.title}
+        <h3 style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 1px 0', lineHeight: 1.3, minHeight: 32, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, wordBreak: 'break-word' }}>
+          {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
         </h3>
         <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         {showFanzaLink && (

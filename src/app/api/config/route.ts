@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { MvpConfigSchema, DEFAULT_THINKING, DEFAULT_GAME_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
+import { MvpConfigSchema, DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
 
 /**
  * GET: 現在の設定を取得
@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     const config = {
       ...raw,
       gameCopy: raw.gameCopy ?? DEFAULT_GAME_COPY,
+      recommendCopy: raw.recommendCopy ? { ...DEFAULT_RECOMMEND_COPY, ...raw.recommendCopy } : undefined,
       thinking: migrateThinking(raw.thinking ?? DEFAULT_THINKING),
     };
     return NextResponse.json({

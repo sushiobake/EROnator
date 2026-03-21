@@ -71,11 +71,11 @@ const DEFAULT_QUESTION_PATTERN = (displayName: string) => `${displayName}が関�
 /** キャラタグ（Xタグ）用パターン */
 const CHARACTER_QUESTION_PATTERN = (displayName: string) => `${displayName}というキャラクターが登場する？`;
 
-/** まとめ質問キャッシュ（erotic=true は6問目以降のみ出題） */
-let summaryQuestionsCache: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> | null = null;
+/** まとめ質問キャッシュ（erotic=true は6問目以降のみ出題、disabled=true は候補に含めない） */
+let summaryQuestionsCache: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean; disabled?: boolean }> | null = null;
 let summaryQuestionsCacheTime = 0;
 
-function loadSummaryQuestions(): Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> {
+function loadSummaryQuestions(): Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean; disabled?: boolean }> {
   const now = Date.now();
   if (summaryQuestionsCache && now - summaryQuestionsCacheTime < CACHE_TTL) {
     return summaryQuestionsCache;
@@ -83,7 +83,7 @@ function loadSummaryQuestions(): Array<{ id: string; label: string; questionText
   try {
     const filePath = path.join(process.cwd(), 'config', 'summaryQuestions.json');
     const content = fs.readFileSync(filePath, 'utf-8');
-    const data = JSON.parse(content) as { summaryQuestions?: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> };
+    const data = JSON.parse(content) as { summaryQuestions?: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean; disabled?: boolean }> };
     summaryQuestionsCache = data.summaryQuestions ?? [];
     summaryQuestionsCacheTime = now;
     return summaryQuestionsCache;
@@ -322,7 +322,7 @@ export async function selectNextQuestion(
   // 1問目: 非エロのまとめ質問のうち、現状の作品・タグで最適なトップ3からランダムで1つ選択
   if (questionCount === 0) {
     const summaries = loadSummaryQuestions();
-    const unused = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
+    const unused = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic && !s.disabled);
     if (unused.length > 0) {
       const workIds = weights.map(w => w.workId);
       const workTagsAll = await fetchWorkTags(workIds);
@@ -1218,15 +1218,15 @@ async function selectUnifiedExploreOrSummary(
   const eroticDisplayNames = loadEroticDisplayNames();
   const summaries = loadSummaryQuestions();
 
-  // 質問番号ごとのまとめ候補
+  // 質問番号ごとのまとめ候補（disabled は除外）
   // Q2-3: 非エロまとめ / Q4-5: 全まとめ（エロ解禁） / Q6+: 全まとめ
-  let summaryCandidates: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean }> = [];
+  let summaryCandidates: Array<{ id: string; label: string; questionText: string; displayNames: string[]; erotic?: boolean; disabled?: boolean }> = [];
   if (questionIndex >= 2 && questionIndex <= 3) {
-    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id) && !s.erotic);
+    summaryCandidates = summaries.filter(s => !s.disabled && !usedSummaryIds.has(s.id) && !s.erotic);
   } else if (questionIndex >= 4 && questionIndex <= 5) {
-    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id)); // エロ解禁
+    summaryCandidates = summaries.filter(s => !s.disabled && !usedSummaryIds.has(s.id)); // エロ解禁
   } else if (questionIndex >= 6) {
-    summaryCandidates = summaries.filter(s => !usedSummaryIds.has(s.id)); // Q6+ 全まとめ
+    summaryCandidates = summaries.filter(s => !s.disabled && !usedSummaryIds.has(s.id)); // Q6+ 全まとめ
   }
 
   // まとめの displayNames → tagKeys 解決

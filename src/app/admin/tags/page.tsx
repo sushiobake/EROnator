@@ -62,7 +62,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'history' | 'changelog';
+type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'history' | 'contact' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
@@ -322,6 +322,13 @@ export default function AdminTagsPage() {
   const [historyDeleteLoading, setHistoryDeleteLoading] = useState(false);
   const [historyReplayCache, setHistoryReplayCache] = useState<Record<string, Array<{ qIndex: number; kind: string; displayText?: string; answer?: string; exploreTagKind?: string; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number; wasNoisy: boolean; missType?: 'clear' | 'weak'; revealWorkId?: string; revealWorkTitle?: string; revealResult?: 'SUCCESS' | 'MISS' }>>>({});
   const [historyReplayLoading, setHistoryReplayLoading] = useState(false);
+  const CONTACT_INQUIRY_PAGE_SIZE = 30;
+  const [contactLoading, setContactLoading] = useState(false);
+  const [contactItems, setContactItems] = useState<
+    Array<{ id: string; name: string; email: string; subject: string | null; message: string; createdAt: string }>
+  >([]);
+  const [contactTotal, setContactTotal] = useState(0);
+  const [contactPage, setContactPage] = useState(1);
   const [productionHistoryUrl, setProductionHistoryUrl] = useState(
     () => (typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_PRODUCTION_APP_URL || '') : '')
   );
@@ -1607,6 +1614,43 @@ export default function AdminTagsPage() {
     }
   };
 
+  const fetchContactInquiries = async (page: number = 1) => {
+    if (!adminToken) return;
+    setContactLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(CONTACT_INQUIRY_PAGE_SIZE));
+      const response = await fetch(`/api/admin/contact-inquiries?${params.toString()}`, {
+        headers: { 'x-eronator-admin-token': adminToken },
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || `取得に失敗しました (${response.status})`);
+      }
+      const data = await response.json();
+      if (data.success && Array.isArray(data.items)) {
+        setContactItems(data.items);
+        setContactTotal(data.total ?? 0);
+        setContactPage(page);
+      }
+    } catch (e) {
+      console.error('[contact-inquiries]', e);
+      setContactItems([]);
+      setContactTotal(0);
+      alert(e instanceof Error ? e.message : 'お問い合わせの取得に失敗しました');
+    } finally {
+      setContactLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'contact' && adminToken) {
+      void fetchContactInquiries(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- タブ切替時のみ再取得
+  }, [activeTab, adminToken]);
+
   const handleHistoryDeleteSelected = async () => {
     const ids = Array.from(historySelectedIds);
     if (ids.length === 0) {
@@ -1867,6 +1911,22 @@ export default function AdminTagsPage() {
             }}
           >
             本番プレイ履歴
+          </button>
+          <button
+            onClick={() => setActiveTab('contact')}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'contact' ? '#0d9488' : 'transparent',
+              color: activeTab === 'contact' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'contact' ? '3px solid #0d9488' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'contact' ? 'bold' : 'normal',
+            }}
+          >
+            お問い合わせ
           </button>
           <button
             onClick={() => setActiveTab('changelog')}
@@ -4830,6 +4890,112 @@ export default function AdminTagsPage() {
                 次へ
               </button>
             </div>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'contact' && (
+        <section style={{ marginTop: '1rem' }}>
+          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>お問い合わせ一覧</h2>
+          <p style={{ color: '#666', marginBottom: '1rem' }}>
+            公開フォームから送信された内容です。本番DBのデータを見るには本番の管理画面で開いてください。
+          </p>
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => fetchContactInquiries(contactPage)}
+              disabled={contactLoading || !adminToken}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: contactLoading || !adminToken ? '#ccc' : '#0d9488',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: contactLoading || !adminToken ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {contactLoading ? '読込中...' : '再読み込み'}
+            </button>
+            <span style={{ color: '#666', fontSize: '0.9rem' }}>全 {contactTotal} 件</span>
+          </div>
+          {!adminToken ? (
+            <p style={{ color: '#666' }}>管理トークンを入力してください。</p>
+          ) : contactLoading && contactItems.length === 0 ? (
+            <p>読み込み中...</p>
+          ) : contactItems.length === 0 ? (
+            <p style={{ color: '#666' }}>お問い合わせはまだありません。</p>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>日時</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>お名前</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>メール</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>件名</th>
+                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>内容</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contactItems.map((row) => (
+                      <tr key={row.id} style={{ borderBottom: '1px solid #eee', verticalAlign: 'top' }}>
+                        <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+                          {new Date(row.createdAt).toLocaleString('ja-JP')}
+                        </td>
+                        <td style={{ padding: '0.5rem' }}>{row.name}</td>
+                        <td style={{ padding: '0.5rem', wordBreak: 'break-all' }}>{row.email}</td>
+                        <td style={{ padding: '0.5rem' }}>{row.subject ?? '—'}</td>
+                        <td style={{ padding: '0.5rem', maxWidth: 360, whiteSpace: 'pre-wrap' }}>{row.message}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {contactTotal > CONTACT_INQUIRY_PAGE_SIZE && (
+                <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => fetchContactInquiries(contactPage - 1)}
+                    disabled={contactLoading || contactPage <= 1}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor: contactPage <= 1 ? '#ccc' : '#0d9488',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: contactPage <= 1 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    前へ
+                  </button>
+                  <span style={{ fontSize: '0.9rem' }}>
+                    ページ {contactPage} / {Math.ceil(contactTotal / CONTACT_INQUIRY_PAGE_SIZE) || 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => fetchContactInquiries(contactPage + 1)}
+                    disabled={
+                      contactLoading || contactPage >= Math.ceil(contactTotal / CONTACT_INQUIRY_PAGE_SIZE)
+                    }
+                    style={{
+                      padding: '0.5rem 1rem',
+                      backgroundColor:
+                        contactPage >= Math.ceil(contactTotal / CONTACT_INQUIRY_PAGE_SIZE) ? '#ccc' : '#0d9488',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor:
+                        contactPage >= Math.ceil(contactTotal / CONTACT_INQUIRY_PAGE_SIZE)
+                          ? 'not-allowed'
+                          : 'pointer',
+                    }}
+                  >
+                    次へ
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
       )}

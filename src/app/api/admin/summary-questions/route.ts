@@ -18,6 +18,8 @@ export interface SummaryQuestion {
   displayNames: string[];
   /** true のまとめは6問目以降にのみ出題 */
   erotic?: boolean;
+  /** true のまとめは質問候補に含めない（使用不可） */
+  disabled?: boolean;
 }
 
 async function loadSummary(): Promise<{ summaryQuestions: SummaryQuestion[] }> {
@@ -68,6 +70,7 @@ export async function POST(request: NextRequest) {
       questionText?: string;
       displayNames?: string[];
       erotic?: boolean;
+      disabled?: boolean;
     };
     const { summaryQuestions } = await loadSummary();
 
@@ -94,14 +97,15 @@ export async function POST(request: NextRequest) {
         questionText: questionText.trim(),
         displayNames: displayNames.filter((d): d is string => typeof d === 'string' && d.trim() !== ''),
         erotic: !!erotic,
+        disabled: !!body.disabled,
       };
       const next = [...summaryQuestions, newItem];
       await saveSummary(next);
       return NextResponse.json({ success: true, summaryQuestions: next });
     }
 
-    // update (existing behaviour + label, displayNames)
-    const { id, questionText, label, displayNames, erotic } = body;
+    // update (existing behaviour + label, displayNames, disabled)
+    const { id, questionText, label, displayNames, erotic, disabled } = body;
     if (!id) {
       return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
@@ -123,6 +127,9 @@ export async function POST(request: NextRequest) {
     }
     if (typeof erotic === 'boolean') {
       summaryQuestions[idx] = { ...summaryQuestions[idx], erotic };
+    }
+    if (typeof disabled === 'boolean') {
+      summaryQuestions[idx] = { ...summaryQuestions[idx], disabled };
     }
     await saveSummary(summaryQuestions);
     return NextResponse.json({ success: true, summaryQuestions });

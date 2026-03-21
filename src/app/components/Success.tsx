@@ -6,10 +6,17 @@
 
 'use client';
 
+import { useRef, useState } from 'react';
+import html2canvas from 'html2canvas';
 import { ExternalLink } from './ExternalLink';
 import { RestartButton } from './RestartButton';
 import { useMediaQuery } from './useMediaQuery';
 import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
+import { StreamerCensoredText } from './StreamerCensoredText';
+import { MosaicImage } from './MosaicImage';
+import { useToast } from './ToastContext';
+
+const LOGO_URL = '/ilust/inari_thinking_opening.png';
 
 interface WorkItem {
   workId: string;
@@ -29,11 +36,14 @@ interface SuccessProps {
   work: WorkItem;
   recommendedWorks?: RecommendedWorkItem[];
   onRestart?: () => void;
+  onBackToTop?: () => void;
   successTitle?: string;
   recommendTitle?: string;
   mobileListBelow?: boolean;
   sessionId?: string | null;
   questionCount?: number;
+  /** 配信者モード時はタイトルを部分的伏字 */
+  streamerMode?: boolean;
 }
 
 /** 正解作品より小さく。PC・スマホとも横スクロール */
@@ -44,18 +54,100 @@ export function Success({
   work,
   recommendedWorks = [],
   onRestart,
+  onBackToTop,
   successTitle = '正解！？やっぱりね！',
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
   mobileListBelow,
   sessionId,
   questionCount,
+  streamerMode,
 }: SuccessProps) {
   const linkText = '読んでみる';
   const isMobile = useMediaQuery(768);
   const hideRecommendations = isMobile && mobileListBelow;
+  const { showToast } = useToast();
+  const captureRef = useRef<HTMLDivElement>(null);
+  const [captureMosaic, setCaptureMosaic] = useState(false);
+  const thumbSrc = work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`;
+
+  const runCapture = (withMosaic: boolean) => {
+    const el = captureRef.current;
+    if (!el) {
+      showToast('画像の準備ができませんでした');
+      return;
+    }
+    const finish = () => {
+      html2canvas(el, { scale: 2, useCORS: true })
+        .then((canvas) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return;
+              const downloadUrl = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = downloadUrl;
+              a.download = withMosaic ? 'eronator-success-mosaic.png' : 'eronator-success.png';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(downloadUrl);
+              if (withMosaic) setCaptureMosaic(false);
+              showToast('画像を保存しました', 'success');
+            },
+            'image/png'
+          );
+        })
+        .catch((err) => {
+          console.error(err);
+          showToast('画像の保存に失敗しました');
+          if (withMosaic) setCaptureMosaic(false);
+        });
+    };
+    if (withMosaic) {
+      setCaptureMosaic(true);
+      setTimeout(finish, 1200);
+    } else {
+      finish();
+    }
+  };
 
   return (
     <>
+      <div
+        ref={captureRef}
+        style={{
+          position: 'fixed',
+          left: -9999,
+          top: 0,
+          width: 380,
+          backgroundColor: '#fff',
+          padding: 20,
+          boxSizing: 'border-box',
+          zIndex: -1,
+        }}
+        aria-hidden
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
+          <img src={LOGO_URL} alt="" style={{ height: 32, width: 'auto', maxWidth: '55%' }} />
+          <p style={{ fontSize: 13, fontWeight: 700, margin: '8px 0 0', color: '#1f2937', textAlign: 'center' }}>
+            {successTitle}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <div style={{ width: 120, flexShrink: 0, aspectRatio: '3/4', borderRadius: 8, overflow: 'hidden' }}>
+            {captureMosaic ? (
+              <MosaicImage src={thumbSrc} alt="" style={{ width: '100%', height: '100%' }} />
+            ) : (
+              <img src={thumbSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            )}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, margin: 0, color: '#1f2937', wordBreak: 'break-word' }}>
+              {streamerMode ? '（配信モードのためタイトル省略）' : work.title}
+            </p>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '6px 0 0' }}>{work.authorName}</p>
+          </div>
+        </div>
+      </div>
       <div
         style={{
           display: 'flex',
@@ -83,7 +175,7 @@ export function Success({
         />
         <div style={{ flex: isMobile ? 'none' : '1 1 180px', minWidth: 0 }}>
           <h2 style={{ fontSize: isMobile ? 18 : 18, fontWeight: 'bold', color: 'var(--color-text)', margin: '0 0 4px 0', wordBreak: 'break-word' }}>
-            {work.title}
+            {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
           </h2>
           <p style={{ fontSize: isMobile ? 15 : 14, color: 'var(--color-text-muted)', margin: '0 0 6px 0' }}>{work.authorName}</p>
           {work.reviewAverage != null && work.reviewCount != null && work.reviewCount > 0 && (
@@ -160,7 +252,7 @@ export function Success({
                     />
                   </div>
                   <p style={{ fontSize: isMobile ? 11 : 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {rec.title}
+                    {streamerMode ? <StreamerCensoredText text={rec.title} censorAll /> : rec.title}
                   </p>
                   <p style={{ fontSize: isMobile ? 10 : 11, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
                   <div style={{ fontSize: isMobile ? 11 : 14, color: 'var(--color-text-muted)' }}>
@@ -175,59 +267,116 @@ export function Success({
         </>
       )}
 
-      {onRestart && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'row',
-            justifyContent: 'flex-start',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: 12,
-            width: '100%',
-            marginTop: isMobile ? 12 : 14,
-          }}
-        >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          width: '100%',
+          marginTop: isMobile ? 12 : 14,
+        }}
+      >
+        {/* 4ボタン: 結果を保存 / モザイク付き保存 / ポストする / トップに戻る */}
+        {isMobile ? (
+          <>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => runCapture(false)}
+                style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+              >
+                結果を保存
+              </button>
+              <button
+                type="button"
+                onClick={() => runCapture(true)}
+                style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.3 }}
+              >
+                <span>結果を</span>
+                <span>「モザイク」で保存</span>
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                  const qCount = questionCount ?? 0;
+                  const isAlmostSuccess = successTitle !== '正解！？やっぱりね！';
+                  const text = isAlmostSuccess
+                    ? `【ERONATOR】${qCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`
+                    : `【ERONATOR】${qCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`;
+                  const resultParam = isAlmostSuccess ? 'fail' : 'success';
+                  const shareUrl = `${origin}?q=${qCount}&result=${resultParam}`;
+                  const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+                  window.open(intent, '_blank', 'noopener,noreferrer');
+                }}
+                style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#fff', backgroundColor: '#0f1419', border: 'none', borderRadius: 8, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ポストする
+              </a>
+              {onBackToTop && (
+                <button
+                  type="button"
+                  onClick={onBackToTop}
+                  style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+                >
+                  トップに戻る
+                </button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => runCapture(false)}
+              style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+            >
+              結果を保存
+            </button>
+            <button
+              type="button"
+              onClick={() => runCapture(true)}
+              style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+            >
+              結果を「モザイク」で保存
+            </button>
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                const origin = typeof window !== 'undefined' ? window.location.origin : '';
+                const qCount = questionCount ?? 0;
+                const isAlmostSuccess = successTitle !== '正解！？やっぱりね！';
+                const text = isAlmostSuccess
+                  ? `【ERONATOR】${qCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`
+                  : `【ERONATOR】${qCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`;
+                const resultParam = isAlmostSuccess ? 'fail' : 'success';
+                const shareUrl = `${origin}?q=${qCount}&result=${resultParam}`;
+                const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+                window.open(intent, '_blank', 'noopener,noreferrer');
+              }}
+              style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#fff', backgroundColor: '#0f1419', border: 'none', borderRadius: 8, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              ポストする
+            </a>
+            {onBackToTop && (
+              <button
+                type="button"
+                onClick={onBackToTop}
+                style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
+              >
+                トップに戻る
+              </button>
+            )}
+          </div>
+        )}
+        {onRestart && (
           <RestartButton onRestart={onRestart} inline compact={isMobile} small={!isMobile} />
-          <a
-            href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              const origin = typeof window !== 'undefined' ? window.location.origin : '';
-              const qCount = questionCount ?? 0;
-              const isAlmostSuccess = successTitle !== '正解！？やっぱりね！';
-              const text = isAlmostSuccess
-                ? `【ERONATOR】${qCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`
-                : `【ERONATOR】${qCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`;
-              const resultParam = isAlmostSuccess ? 'fail' : 'success';
-              const shareUrl = `${origin}?q=${qCount}&result=${resultParam}`;
-              const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
-              window.open(intent, '_blank', 'noopener,noreferrer');
-            }}
-            style={{
-              padding: '8px 14px',
-              height: 36,
-              boxSizing: 'border-box',
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#fff',
-              backgroundColor: '#0f1419',
-              border: 'none',
-              borderRadius: 8,
-              cursor: 'pointer',
-              textDecoration: 'none',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              lineHeight: 1,
-            }}
-          >
-            <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-            ポストする
-          </a>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 }
@@ -237,10 +386,12 @@ export function SuccessRecommendationsVertical({
   recommendedWorks,
   recommendTitle = 'そんなあなたには…おすすめもあるわ！',
   sessionId,
+  streamerMode,
 }: {
   recommendedWorks: RecommendedWorkItem[];
   recommendTitle?: string;
   sessionId?: string | null;
+  streamerMode?: boolean;
 }) {
   if (recommendedWorks.length === 0) return null;
   return (
@@ -268,6 +419,7 @@ export function SuccessRecommendationsVertical({
             showFanzaLink={true}
             matchRate={rec.matchRate}
             sessionId={sessionId}
+            streamerMode={streamerMode}
           />
         ))}
       </div>

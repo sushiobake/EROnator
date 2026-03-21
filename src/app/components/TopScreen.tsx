@@ -62,7 +62,8 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
   }, [isMobile]);
 
   const workCountText = workCount !== null ? workCount.toString() : '…';
-  const fontSize = isMobile ? 24 : 17;
+  const fontSize = isMobile ? 18 : 17;
+  const lineHeight = isMobile ? 1.08 : 1.15;
   const lines = (topLines && topLines.length > 0) ? topLines : DEFAULT_TOP_LINES;
 
   const speechContent = (
@@ -72,7 +73,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
         fontWeight: 500,
         color: 'var(--color-text)',
         fontSize,
-        lineHeight: 1.15,
+        lineHeight,
         maxWidth: isMobile ? '100%' : '24em',
       }}
     >
@@ -128,17 +129,17 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
               width: '100%',
             }}
           >
-            <button
-              type="button"
-              onClick={onPlay}
-              onMouseEnter={() => setHoveredButton('play')}
-              onMouseLeave={() => setHoveredButton(null)}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                width: '90%',
-                padding: isMobile ? '18px 20px 18px 20px' : '20px 26px 20px 28px',
+          <button
+            type="button"
+            onClick={onPlay}
+            onMouseEnter={() => setHoveredButton('play')}
+            onMouseLeave={() => setHoveredButton(null)}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              width: '90%',
+              padding: isMobile ? '18px 20px 18px 20px' : '20px 26px 20px 28px',
                 minHeight: isMobile ? 56 : 60,
                 fontSize: isMobile ? 20 : 19,
                 fontWeight: 700,
@@ -154,7 +155,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
               <span style={{ fontSize: isMobile ? 13 : 12, fontWeight: 500, color: hoveredButton === 'play' ? 'var(--color-primary)' : 'var(--color-text-muted)', marginBottom: 4 }}>
                 同人誌エロネイターを
               </span>
-              <span style={{ whiteSpace: 'nowrap', marginLeft: '1em', fontSize: '1.45em' }}>プレイする</span>
+              <span style={{ whiteSpace: 'nowrap', marginLeft: isMobile ? '0.25em' : '1em', fontSize: '1.45em' }}>プレイする</span>
             </button>
             <div
               style={{
@@ -208,7 +209,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
               }}
             >
               <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
-                ※配信（全年齢）モード
+                ※配信（伏せ字）モード
               </span>
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
                 <input
@@ -226,7 +227,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
         {isMobile && (
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
-              ※配信（全年齢）モード
+              ※配信（伏せ字）モード
             </span>
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
               <input

@@ -3,8 +3,7 @@
   "gameCopy": {
     "topLines": [
       "有名な同人誌を妄想してみて。",
-      "{workCount}作品",
-      "の中から当ててあげるわ。",
+      "{workCount}作品の中から当ててあげるわ。",
       "私は何でもお見通しだから。"
     ],
     "questionPreamble": "その同人誌は……",
@@ -55,7 +54,7 @@
       }
     },
     "opening": {
-      "text": "最初に教えて！"
+      "text": "ok！ではいくわよ！"
     },
     "endingCorrect": {
       "text": "え！ほんとに！？"

@@ -35,7 +35,10 @@ export async function GET(request: NextRequest) {
     const session = await SessionManager.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
-        { error: 'Session not found' },
+        {
+          error: 'セッションが見つかりませんでした。最初からやり直してください。',
+          code: 'SESSION_NOT_FOUND',
+        },
         { status: 404 }
       );
     }
@@ -123,7 +126,10 @@ export async function POST(request: NextRequest) {
     const session = await SessionManager.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
-        { error: 'Session not found' },
+        {
+          error: 'セッションが見つかりませんでした。最初からやり直してください。',
+          code: 'SESSION_NOT_FOUND',
+        },
         { status: 404 }
       );
     }

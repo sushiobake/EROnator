@@ -53,3 +53,14 @@ h1, h2, h3 {
   filter: blur(4px);
 }
 
+/* 配信者モード: 伏字部分のスタイル（丸ゴシック・少し小さめ） */
+.streamer-mode .streamer-censored {
+  font-family: var(--font-censored), 'Kosugi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
+  font-size: 0.9em;
+}
+
+/* 質問文内の伏字：さらに小さくして区別しやすく */
+.streamer-mode .streamer-censored-in-question {
+  font-size: 0.82em;
+}
+
