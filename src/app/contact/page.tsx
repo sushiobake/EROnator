@@ -5,8 +5,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { APP_VERSION } from '@/config/app';
+import { LegalSubPageShell } from '@/app/components/LegalSubPageShell';
 import { useToast } from '@/app/components/ToastContext';
 
 export default function ContactPage() {
@@ -32,7 +31,7 @@ export default function ContactPage() {
     setIsSubmitting(true);
 
     try {
-      if (!formData.name || !formData.email || !formData.message) {
+      if (!formData.name || !formData.message) {
         showToast('必須項目を入力してください。');
         setIsSubmitting(false);
         return;
@@ -43,7 +42,7 @@ export default function ContactPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name.trim(),
-          email: formData.email.trim(),
+          email: formData.email.trim() || undefined,
           subject: formData.subject.trim() || undefined,
           message: formData.message.trim(),
           website: formData.website,
@@ -67,20 +66,29 @@ export default function ContactPage() {
     }
   };
 
-  return (
-    <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
-      <div style={{ marginBottom: '2rem' }}>
-        <Link href="/" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
-          ← トップページに戻る
-        </Link>
-      </div>
+  const fieldBase = {
+    width: '100%' as const,
+    padding: '0.5rem',
+    fontSize: '1rem' as const,
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: '6px' as const,
+    background: 'rgba(0,0,0,0.35)',
+    color: '#f1f5f9',
+  };
 
-      <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold' }}>お問い合わせ</h1>
-      <p style={{ marginBottom: '2rem', color: 'var(--color-text-muted)' }}>
+  return (
+    <LegalSubPageShell>
+      <h1 style={{ fontSize: '1.8rem', marginBottom: '1rem', fontWeight: 'bold', color: '#f8fafc' }}>
+        お問い合わせ
+      </h1>
+      <p style={{ marginBottom: '2rem', color: 'rgba(226,232,240,0.82)', lineHeight: 1.6 }}>
         ご質問やご意見がございましたら、以下のフォームよりお問い合わせください。
       </p>
 
-      <form onSubmit={handleSubmit}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}
+      >
         {/* honeypot: 人間は空のまま */}
         <div style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }} aria-hidden>
           <label htmlFor="contact-website">ウェブサイト</label>
@@ -98,7 +106,7 @@ export default function ContactPage() {
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="name"
-            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}
+            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#f1f5f9' }}
           >
             お名前 <span style={{ color: 'red' }}>*</span>
           </label>
@@ -109,22 +117,16 @@ export default function ContactPage() {
             value={formData.name}
             onChange={handleChange}
             required
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              fontSize: '1rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-            }}
+            style={fieldBase}
           />
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="email"
-            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}
+            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#f1f5f9' }}
           >
-            メールアドレス <span style={{ color: 'red' }}>*</span>
+            メールアドレス（任意・返信が必要な場合はご入力ください）
           </label>
           <input
             type="email"
@@ -132,21 +134,15 @@ export default function ContactPage() {
             name="email"
             value={formData.email}
             onChange={handleChange}
-            required
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              fontSize: '1rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-            }}
+            autoComplete="email"
+            style={fieldBase}
           />
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="subject"
-            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}
+            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#f1f5f9' }}
           >
             件名
           </label>
@@ -155,26 +151,19 @@ export default function ContactPage() {
             name="subject"
             value={formData.subject}
             onChange={handleChange}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              fontSize: '1rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-            }}
+            style={fieldBase}
           >
             <option value="">選択してください</option>
-            <option value="bug">不具合報告</option>
-            <option value="feature">機能要望</option>
-            <option value="question">質問</option>
-            <option value="other">その他</option>
+            <option value="不具合の報告">不具合の報告</option>
+            <option value="同人誌の登録要望">同人誌の登録要望</option>
+            <option value="その他">その他</option>
           </select>
         </div>
 
         <div style={{ marginBottom: '1.5rem' }}>
           <label
             htmlFor="message"
-            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}
+            style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#f1f5f9' }}
           >
             お問い合わせ内容 <span style={{ color: 'red' }}>*</span>
           </label>
@@ -185,14 +174,7 @@ export default function ContactPage() {
             onChange={handleChange}
             required
             rows={8}
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              fontSize: '1rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              resize: 'vertical',
-            }}
+            style={{ ...fieldBase, resize: 'vertical' as const }}
           />
         </div>
 
@@ -204,7 +186,7 @@ export default function ContactPage() {
             padding: '0.75rem',
             fontSize: '1rem',
             fontWeight: 'bold',
-            backgroundColor: isSubmitting ? '#ccc' : 'var(--color-primary)',
+            backgroundColor: isSubmitting ? 'rgba(148,163,184,0.45)' : '#0d9488',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
@@ -216,9 +198,6 @@ export default function ContactPage() {
         </button>
       </form>
 
-      <p style={{ marginTop: '2rem', fontSize: '0.875rem', color: 'var(--color-text-subtle)' }}>
-        {APP_VERSION}
-      </p>
-    </div>
+    </LegalSubPageShell>
   );
 }

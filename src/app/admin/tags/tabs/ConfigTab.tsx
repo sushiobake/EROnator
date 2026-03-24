@@ -138,10 +138,9 @@ export default function ConfigTab({
             </label>
           </section>
 
-          {/* 現在の質問の流れ */}
-          <section style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '6px', backgroundColor: '#fff', fontSize: '0.9rem' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '1rem' }}>【現在の質問の流れ】</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+          {/* 現在の質問の流れ（開閉・参照用） */}
+          <CollapsibleSection id="config-question-flow" title="現在の質問の流れ" defaultOpen={false}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.9rem' }}>
               <FlowRow q="Q1-2" chips={[{ ...FLOW_COLORS.normal, label: '通常（まとめ or タグ）' }]} />
               <FlowRow q="Q3" chips={[{ ...FLOW_COLORS.special, label: '特別（シリーズ or 有名度）' }]} />
               <FlowRow q="Q4" chips={[{ ...FLOW_COLORS.normal, label: '通常' }]} />
@@ -168,7 +167,55 @@ export default function ConfigTab({
               <span style={{ background: FLOW_COLORS.reveal.bg, color: FLOW_COLORS.reveal.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>緑: REVEAL</span>
               <span style={{ background: FLOW_COLORS.rescue.bg, color: FLOW_COLORS.rescue.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>オレンジ: 救済</span>
             </div>
-          </section>
+          </CollapsibleSection>
+
+          {/* 推薦モードの計算式（表示のみ・実装は API 側定数） */}
+          <CollapsibleSection id="config-recommend-formula" title="推薦モードの計算式" defaultOpen={false}>
+            <p style={{ marginTop: 0, marginBottom: '0.75rem', fontSize: '0.85rem', color: '#666' }}>
+              以下は <code style={{ background: '#eee', padding: '0.1rem 0.35rem', borderRadius: '3px' }}>POST /api/recommend</code> の「好みマッチ度」と並び順のメモです。数値の変更はソースの定数（
+              <code style={{ background: '#eee', padding: '0.1rem 0.35rem', borderRadius: '3px' }}>RECOMMEND_PREF_BASE</code>
+              など）で行います。この画面からは編集しません。
+            </p>
+            <pre
+              style={{
+                margin: 0,
+                padding: '0.75rem 1rem',
+                background: '#f6f8fa',
+                border: '1px solid #e1e4e8',
+                borderRadius: '6px',
+                fontSize: '0.8rem',
+                lineHeight: 1.55,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: 'ui-monospace, monospace',
+              }}
+            >
+{`【好みマッチ度・並びスコア（同一式）】
+  最終点 = clamp(50, 100, 50 + tagMatchRatio×35 + popAlign×15)
+  表示は小数第1位。並び順も同じ値。
+
+【tagMatchRatio】0〜1
+  ・ランク付き／有名・無名フロー: マッチしたタグの重み合計 ÷ 選択タグの重み合計
+    （順位重み 1位=5 … 5位=1、または有名/無名の固定重み）
+  ・レガシー tagKeys のみ: 一致タグ数 ÷ 選択タグ数（タグなし時は 1）
+
+【popAlign】0〜1（初期質問「有名度」の嗜好）
+  maxPop = 今回取得した候補作品群の popularityBase の最大値（最低 1）
+  ・やっぱり有名作品 → targetPop = maxPop
+  ・隠れた名作 → targetPop = 0
+  ・中間くらい → targetPop = maxPop÷2
+  （未指定・不正値は「中間」と同じ扱い）
+  popAlign = max(0, min(1, 1 − |作品のpopularityBase − targetPop| / maxPop))
+
+【レビュー】
+  popularityBase 自体にレビュー件数帯＋reviewAverage が含まれるため、
+  ここでは reviewAverage を別枠で足さない（二重加算を避ける）。
+
+【補足】
+  popularityBase の理論上限は DB 仕様上 55。データが伸びると maxPop も上がり、
+  中間の targetPop も自動で連動する。`}
+            </pre>
+          </CollapsibleSection>
 
           {/* ゲーム文言（コンパクト） */}
           <CollapsibleSection id="config-game-copy" title="ゲーム文言（トップ・質問・断定・正解・外れ・おすすめ・AI_GATE）" defaultOpen={false}>
@@ -309,15 +356,36 @@ export default function ConfigTab({
                 { key: 'aiGateMain', label: 'AIゲートメイン（AI生成作品？それとも違う？）' },
                 { key: 'initialMain', label: '初期画面メイン（あなたの好みは？）' },
                 { key: 'initialPriorityQuestion', label: '優先度の質問（あなたが優先したいのは？順位をつけて！）' },
-                { key: 'questionFamous', label: '質問1-3（有名タグ）の文言' },
+                { key: 'questionFamousStory', label: '有名タグ質問・ストーリー系カテゴリのとき' },
+                { key: 'questionFamousPlay', label: '有名タグ質問・プレイ系カテゴリのとき' },
+                { key: 'questionFamousCharacter', label: '有名タグ質問・キャラクター系カテゴリのとき' },
+                { key: 'questionFamous', label: '有名タグ質問・共通フォールバック（上記3つが空のとき）' },
                 { key: 'questionUnknown', label: '質問4-8（無名タグ）の文言' },
-                { key: 'sortPrompt', label: '整理ページのプロンプト（今選んでいる要素を、好きな順に５つ並べて）' },
+                {
+                  key: 'famousPickMinHint',
+                  label: '有名タグ：1件も選ばずに進めないとき（例：１個くらい気になるやつ選んでよ！）',
+                },
+                { key: 'sortPromptFront', label: '整理ページ（前半・sort1）のキャラ台詞' },
+                { key: 'sortPromptBack', label: '整理ページ（後半・sort2）のキャラ台詞' },
+                { key: 'sortPrompt', label: '整理キャラ台詞・共通フォールバック（前半/後半が空のとき）' },
                 { key: 'thinkingText', label: '考え中（あなたにぴったりの作品を探しているわ…）' },
-                { key: 'btnNext', label: 'ボタン：次へ' },
+                { key: 'recommendResultsHeading', label: '推薦・結果画面の見出し（例：こんな作品なんてどう？）' },
+                { key: 'btnNext', label: 'ボタン：次へ（初期画面など）' },
+                {
+                  key: 'btnNextSortFront',
+                  label: 'ボタン：整理ページ（前半・sort1）のメイン（初期の「次へ」と別。例：後半へ進む）',
+                },
+                {
+                  key: 'btnNextSortBack',
+                  label: 'ボタン：整理ページ（後半・sort2）のメイン（例：結果を見る）',
+                },
                 { key: 'btnRetry', label: 'ボタン：やり直し' },
                 { key: 'btnOk', label: 'ボタン：これでok' },
-                { key: 'btnNotInList', label: 'ボタン：この中にはない' },
-                { key: 'btnFix', label: 'ボタン：修正する' },
+                { key: 'btnNotInList', label: 'ボタン：この中にはない（後半タグ用）' },
+                { key: 'btnFamousExpand', label: 'ボタン：選択肢を増やす（前半有名タグ）' },
+                { key: 'btnFamousCollapse', label: 'ボタン：選択肢を減らす（前半有名タグ）' },
+                { key: 'btnFixRecommend', label: 'ボタン：推薦モードの「ひとつ前に戻る」（戻る系）' },
+                { key: 'btnFix', label: 'ボタン：修正する（ゲーム本体用・推薦では未使用なら空で可）' },
                 { key: 'btnTopReset', label: 'ボタン：トップに戻る' },
               ];
               return (

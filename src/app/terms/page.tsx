@@ -1,16 +1,19 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { LegalSubPageShell } from '@/app/components/LegalSubPageShell';
 
 export const metadata: Metadata = {
   title: '利用規約 | 同人誌エロネイター',
   description: 'エロネイターの利用条件について',
 };
 
+const linkStyle = { color: '#5eead4' as const, textDecoration: 'underline' as const };
+
 export default function TermsPage() {
   return (
-    <div style={{ padding: '2rem', maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>利用規約</h1>
-      <p style={{ color: 'var(--color-text-muted)', marginBottom: '1.5rem', lineHeight: 1.7 }}>
+    <LegalSubPageShell>
+      <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#f8fafc' }}>利用規約</h1>
+      <p style={{ color: 'rgba(226,232,240,0.82)', marginBottom: '1.5rem', lineHeight: 1.7 }}>
         当サイトを利用することで、以下に同意したものとみなします。
       </p>
       <ol style={{ paddingLeft: '1.25rem', lineHeight: 1.75, marginBottom: '1.5rem' }}>
@@ -30,13 +33,13 @@ export default function TermsPage() {
           外部サイト（FANZA 等）の利用は、各サイトの規約に従ってください。
         </li>
       </ol>
-      <p style={{ fontSize: '0.85rem', color: 'var(--color-text-subtle)' }}>
+      <p style={{ fontSize: '0.85rem', color: 'rgba(148,163,184,0.95)' }}>
         ご不明点は{' '}
-        <Link href="/contact" style={{ color: 'var(--color-primary)' }}>
+        <Link href="/contact" style={linkStyle}>
           お問い合わせ
         </Link>
         ください。最終更新: 2026年3月
       </p>
-    </div>
+    </LegalSubPageShell>
   );
 }

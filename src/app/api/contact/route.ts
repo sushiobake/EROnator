@@ -8,7 +8,15 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 
 const ContactBodySchema = z.object({
   name: z.string().trim().min(1, 'お名前を入力してください').max(120),
-  email: z.string().trim().email('メールアドレスの形式が正しくありません').max(254),
+  email: z
+    .string()
+    .max(254)
+    .optional()
+    .transform((val) => (val == null || val.trim() === '' ? undefined : val.trim()))
+    .refine(
+      (val) => val === undefined || z.string().email().safeParse(val).success,
+      { message: 'メールアドレスの形式が正しくありません' }
+    ),
   subject: z.string().trim().max(80).optional(),
   message: z.string().trim().min(1, 'お問い合わせ内容を入力してください').max(8000),
   /** 空のまま。埋まっていたらボットとみなす */
@@ -56,7 +64,7 @@ export async function POST(request: NextRequest) {
     await prisma.contactInquiry.create({
       data: {
         name,
-        email,
+        email: email ?? null,
         subject: subject && subject.length > 0 ? subject : null,
         message,
       },

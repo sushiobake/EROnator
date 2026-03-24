@@ -43,3 +43,8 @@ export function getMvpConfig(): MvpConfig {
   }
   return configInstance;
 }
+
+/** mvpConfig.json 更新後に呼ぶ。次回 getMvpConfig でディスクから再読込 */
+export function invalidateMvpConfigCache(): void {
+  configInstance = null;
+}

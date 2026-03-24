@@ -1,11 +1,13 @@
 /**
  * ステージ：PCは 1200×800 を cover で表示。
- * スマホ：正方形キャンバス、左半分キャラ・右半分白板。フッターはキャンバス内。アキネイター風。
+ * スマホ：正方形キャンバス、左半分キャラ・右半分白板。フッター（法務リンク等）はキャンバス内 GameChromeFooter。ルート / では layout の SiteFooter は出さない。
  */
 
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { XLogo } from './icons/XLogo';
 import {
   STAGE_WIDTH_PX,
   STAGE_HEIGHT_PX,
@@ -119,6 +121,23 @@ interface StageProps {
   mobileExtendWhiteboard?: boolean;
   /** スマホのみ：キャンバス下にリストを配置。③ゲーム上寄せ・下にスクロール。 */
   mobileBelowCanvas?: React.ReactNode;
+  /** スマホのみ：キャラ列を出さず白板を全幅（推薦モード等）。未指定時 false */
+  mobileHideCharacter?: boolean;
+  /** スマホのみ：白板の縦スクロール。未指定時は extendWhiteboard / zoom から推論 */
+  mobileWhiteboardOverflowY?: 'auto' | 'hidden';
+  /**
+   * スマホのみ：白板内の zoom（未指定時 1.62）。推薦モード等で 1 にするとコンパクト化しスクロール不要にしやすい。
+   * mobileHideCharacter 時の未指定デフォルトは約 2.2（MobileStageInner 内）。
+   * 指定時は白板の縦スクロール推論に影響（従来どおり）。
+   */
+  mobileWhiteboardZoom?: number;
+  /** スマホのみ：白板の padding（未指定時 12px 14px） */
+  mobileWhiteboardPadding?: string;
+  /**
+   * スマホのみ：ロゴ下のステージ本体の論理高さ（px）。既定 800（MOBILE_CANVAS_PX）。
+   * 推薦モード本番で縦方向に余白を白板へ回すとき 1200（1.5倍）など。
+   */
+  mobileCanvasBodyHeightPx?: number;
   /** PCのみ：true で白板を広い幅に（おすすめ5件表示時）。USE_NARROW_WHITEBOARD が false のときは無視され常に広い */
   whiteboardWide?: boolean;
   /** characterVariant='thinking' のとき、どの考え中画像を使うか。未指定なら inari_thinking.png */
@@ -134,7 +153,7 @@ function getScale(): number {
   return Math.max(0.2, Math.min(1.5, scale));
 }
 
-const PC_FOOTER_HEIGHT = 67;
+const PC_FOOTER_HEIGHT = 84;
 /** PC版：キャンバスとフッターの隙間（px）。キャラの足はここにはみ出してフッターとくっつく（境界で接する） */
 const PC_CANVAS_FOOTER_GAP = 40;
 const PC_CANVAS_CORNER_RADIUS = 16;
@@ -144,14 +163,101 @@ const PC_FRAME_WIDTH = 10;
 const PC_FRAME_BOTTOM_WIDTH = 5;
 const PC_FRAME_TRAY_HEIGHT = 14;
 const MOBILE_CANVAS_PX = 800;
-const MOBILE_FOOTER_HEIGHT = 40;
+/** 法務2行＋主リンク行を収める（白板の bottom と一致） */
+const MOBILE_FOOTER_HEIGHT = 70;
 const MOBILE_TOP_BOARD_HEIGHT = 100;
 
-function getMobileScale(): number {
+const STAGE_FOOTER_X_URL = 'https://x.com/eronator_jp';
+
+/** ゲーム画面下部：お問い合わせ・公式X＋法務リンク・注記（キャンバス内） */
+function GameChromeFooter({ variant }: { variant: 'mobile' | 'pc' }) {
+  const mainFs = variant === 'mobile' ? 16 : 15;
+  const main: React.CSSProperties = {
+    fontSize: mainFs,
+    color: 'rgba(255,255,255,0.9)',
+    textDecoration: 'underline',
+    textUnderlineOffset: 3,
+    letterSpacing: '0.02em',
+  };
+  const xIconSize = variant === 'mobile' ? 15 : 14;
+  const small: React.CSSProperties = {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.68)',
+    textDecoration: 'underline',
+    textUnderlineOffset: 2,
+  };
+  const noteFs = 9;
+  const noteColor = 'rgba(255,255,255,0.48)';
+  const gapMain = variant === 'mobile' ? '6px 10px' : '8px 14px';
+
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: gapMain,
+          rowGap: 4,
+          width: '100%',
+        }}
+      >
+        <a href="/contact" style={main}>
+          お問い合わせ
+        </a>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12, userSelect: 'none' }}>|</span>
+        <a
+          href={STAGE_FOOTER_X_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            ...main,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            textDecoration: 'underline',
+          }}
+        >
+          <XLogo size={xIconSize} />
+          公式X
+        </a>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, userSelect: 'none' }} aria-hidden>
+          |
+        </span>
+        <Link href="/privacy" style={small} prefetch={false}>
+          プライバシーポリシー
+        </Link>
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, userSelect: 'none' }} aria-hidden>
+          |
+        </span>
+        <Link href="/terms" style={small} prefetch={false}>
+          利用規約
+        </Link>
+      </div>
+      <div
+        style={{
+          fontSize: noteFs,
+          color: noteColor,
+          textAlign: 'center',
+          lineHeight: 1.25,
+          width: '100%',
+          padding: variant === 'mobile' ? '0 4px' : '0 8px',
+        }}
+      >
+        <div>このコンテンツは18歳以上の方を対象としています</div>
+        <div>アフィリエイト広告を利用しています</div>
+      </div>
+    </>
+  );
+}
+
+function getMobileScale(canvasBodyHeightPx: number = MOBILE_CANVAS_PX): number {
   if (typeof window === 'undefined') return 0.5;
   const w = window.innerWidth;
   const h = window.innerHeight;
-  const s = Math.min(w / MOBILE_CANVAS_PX, h / MOBILE_CANVAS_PX);
+  const totalLogicalH = 72 + 2 + canvasBodyHeightPx;
+  const s = Math.min(w / MOBILE_CANVAS_PX, h / totalLogicalH);
   return Math.max(0.3, Math.min(1.2, s));
 }
 
@@ -263,13 +369,38 @@ function MobileStageInner({
   characterSpeech,
   characterUrl,
   extendWhiteboard,
+  whiteboardZoom,
+  whiteboardPadding,
+  hideCharacter,
+  whiteboardOverflowY,
 }: {
   children: React.ReactNode;
   characterSpeech?: React.ReactNode;
   characterUrl: string;
   /** 断定画面など：白板を上に伸ばしてスクロールをなくす */
   extendWhiteboard?: boolean;
+  /** 未指定時：hideCharacter なら約 2.2、それ以外 1.62 */
+  whiteboardZoom?: number;
+  whiteboardPadding?: string;
+  /** キャラ列を隠し白板を全幅 */
+  hideCharacter?: boolean;
+  /** 白板の縦スクロール（未指定時は従来ロジック） */
+  whiteboardOverflowY?: 'auto' | 'hidden';
 }) {
+  const hc = !!hideCharacter;
+  const wbZoom = whiteboardZoom ?? (hc ? 2.2 : 1.62);
+  const wbPad = whiteboardPadding ?? (hc ? '10px 12px' : '12px 14px');
+  const wbOverflowY: 'auto' | 'hidden' =
+    whiteboardOverflowY !== undefined
+      ? whiteboardOverflowY
+      : extendWhiteboard
+        ? 'hidden'
+        : whiteboardZoom !== undefined
+          ? 'hidden'
+          : 'auto';
+  const speechTop = !hc && characterSpeech ? 12 + MOBILE_TOP_BOARD_HEIGHT + 8 : 0;
+  const wbFullHeight = !!extendWhiteboard || hc;
+
   return (
     <>
       <div
@@ -281,7 +412,7 @@ function MobileStageInner({
         }}
       />
       {/* 中央上：横長の板（キャラ発言） */}
-      {characterSpeech && (
+      {characterSpeech && !hc && (
         <div
           style={{
             position: 'absolute',
@@ -310,17 +441,17 @@ function MobileStageInner({
         style={{
           position: 'absolute',
           left: 0,
-          top: characterSpeech ? 12 + MOBILE_TOP_BOARD_HEIGHT + 8 : 0,
+          top: speechTop,
           right: 0,
           bottom: MOBILE_FOOTER_HEIGHT,
           display: 'flex',
           flexDirection: 'row',
-          padding: characterSpeech ? '0 12px 0 8px' : '8px',
-          gap: 8,
+          padding: hc ? '0 12px' : '0 12px 0 8px',
+          gap: hc ? 0 : 8,
           zIndex: 1,
         }}
       >
-        {/* 左半分：キャラ（1.2倍、はみ出しOK・左寄せ）。flexShrink:0 で白板の内容量に依存せず固定（実機Safariで縮む不具合対策） */}
+        {!hc && (
         <div
           style={{
             width: '50%',
@@ -347,14 +478,14 @@ function MobileStageInner({
             }}
           />
         </div>
-        {/* 右半分：白板（正方形、下固定・キャラの右に並ぶ、1.4倍） */}
+        )}
         <div
           style={{
-            width: '50%',
+            width: hc ? '100%' : '50%',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'flex-end',
+            justifyContent: hc ? 'center' : 'flex-end',
             minWidth: 0,
             zIndex: 1,
           }}
@@ -362,67 +493,46 @@ function MobileStageInner({
           <div
             style={{
               width: '100%',
-              maxWidth: 420,
-              ...(extendWhiteboard
+              maxWidth: hc ? '100%' : 420,
+              ...(wbFullHeight
                 ? { height: '100%', minHeight: 0 }
                 : { aspectRatio: '3/4', maxHeight: '100%' }),
               backgroundColor: '#faf8f5',
               borderRadius: 10,
-              padding: '12px 14px',
+              padding: wbPad,
               boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
               boxSizing: 'border-box',
-              overflowY: extendWhiteboard ? 'hidden' : 'auto',
+              overflowY: wbOverflowY,
+              overflowX: 'hidden',
               fontSize: 14,
               lineHeight: 1.45,
-              zoom: 1.62,
+              zoom: wbZoom,
             } as React.CSSProperties}
           >
             {children}
           </div>
         </div>
       </div>
-      {/* フッター：キャンバス内。キャラの足が手前に見えるよう zIndex 1（メインが 2） */}
       <footer
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
           bottom: 0,
-          height: MOBILE_FOOTER_HEIGHT,
+          minHeight: MOBILE_FOOTER_HEIGHT,
+          boxSizing: 'border-box',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 14,
+          gap: 4,
+          padding: '5px 6px 6px',
           background: 'linear-gradient(180deg, rgba(26,26,36,0.95) 0%, rgba(15,15,20,0.98) 100%)',
           borderTop: '1px solid rgba(255,255,255,0.06)',
           zIndex: 1,
         }}
       >
-        <a
-          href="/contact"
-          style={{
-            fontSize: 14,
-            color: 'rgba(255,255,255,0.9)',
-            textDecoration: 'none',
-            letterSpacing: '0.02em',
-          }}
-        >
-          お問い合わせ
-        </a>
-        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
-        <a
-          href="https://x.com/eronator_jp"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: 14,
-            color: 'rgba(255,255,255,0.9)',
-            textDecoration: 'none',
-            letterSpacing: '0.02em',
-          }}
-        >
-          公式X
-        </a>
+        <GameChromeFooter variant="mobile" />
       </footer>
     </>
   );
@@ -534,7 +644,21 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, 
   );
 }
 
-export function Stage({ children, characterVariant, showLogo, characterSpeech, mobileExtendWhiteboard, mobileBelowCanvas, whiteboardWide, thinkingSubType }: StageProps) {
+export function Stage({
+  children,
+  characterVariant,
+  showLogo,
+  characterSpeech,
+  mobileExtendWhiteboard,
+  mobileBelowCanvas,
+  mobileHideCharacter,
+  mobileWhiteboardOverflowY,
+  mobileWhiteboardZoom,
+  mobileWhiteboardPadding,
+  mobileCanvasBodyHeightPx,
+  whiteboardWide,
+  thinkingSubType,
+}: StageProps) {
   const characterUrl =
     (characterVariant === 'thinking' && thinkingSubType)
       ? (THINKING_IMAGE_PATHS[thinkingSubType] ?? CHARACTER_VARIANTS.thinking)
@@ -558,15 +682,17 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
       window.addEventListener('resize', onResize);
       return () => window.removeEventListener('resize', onResize);
     } else {
-      setMobileScale(getMobileScale());
-      const onResize = () => setMobileScale(getMobileScale());
+      const bodyPx = mobileCanvasBodyHeightPx ?? MOBILE_CANVAS_PX;
+      setMobileScale(getMobileScale(bodyPx));
+      const onResize = () => setMobileScale(getMobileScale(mobileCanvasBodyHeightPx ?? MOBILE_CANVAS_PX));
       window.addEventListener('resize', onResize);
       return () => window.removeEventListener('resize', onResize);
     }
-  }, [isMobile]);
+  }, [isMobile, mobileCanvasBodyHeightPx]);
 
   if (isMobile) {
     const hasBelowCanvas = !!mobileBelowCanvas;
+    const mobileCanvasBodyPx = mobileCanvasBodyHeightPx ?? MOBILE_CANVAS_PX;
     const allowScroll = hasBelowCanvas || isLandscape;
     return (
       <div
@@ -623,7 +749,7 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
           <div
             style={{
               width: MOBILE_CANVAS_PX * mobileScale,
-              height: (72 + 2 + MOBILE_CANVAS_PX) * mobileScale,
+              height: (72 + 2 + mobileCanvasBodyPx) * mobileScale,
               flexShrink: 0,
               overflow: 'hidden',
               ...(hasBelowCanvas ? {} : { alignSelf: 'center' }),
@@ -635,7 +761,7 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
                 flexDirection: 'column',
                 alignItems: 'center',
                 width: MOBILE_CANVAS_PX,
-                height: 72 + 2 + MOBILE_CANVAS_PX,
+                height: 72 + 2 + mobileCanvasBodyPx,
                 transform: `scale(${mobileScale})`,
                 transformOrigin: 'top left',
               }}
@@ -654,7 +780,7 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
               <div
                 style={{
                   width: MOBILE_CANVAS_PX,
-                  height: MOBILE_CANVAS_PX,
+                  height: mobileCanvasBodyPx,
                   position: 'relative',
                   flexShrink: 0,
                   borderRadius: 14,
@@ -662,7 +788,17 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
                   boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.5), 0 0 0 2px rgba(0,0,0,0.15)',
                 }}
               >
-                <MobileStageInner characterSpeech={characterSpeech} characterUrl={characterUrl} extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}>{children}</MobileStageInner>
+                <MobileStageInner
+                  characterSpeech={characterSpeech}
+                  characterUrl={characterUrl}
+                  extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}
+                  whiteboardZoom={mobileWhiteboardZoom}
+                  whiteboardPadding={mobileWhiteboardPadding}
+                  hideCharacter={mobileHideCharacter}
+                  whiteboardOverflowY={mobileWhiteboardOverflowY}
+                >
+                  {children}
+                </MobileStageInner>
               </div>
             </div>
           </div>
@@ -758,43 +894,22 @@ export function Stage({ children, characterVariant, showLogo, characterSpeech, m
       <footer
         style={{
           width: '100%',
-          height: PC_FOOTER_HEIGHT,
+          minHeight: PC_FOOTER_HEIGHT,
+          boxSizing: 'border-box',
           flexShrink: 0,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 24,
+          gap: 5,
+          padding: '8px 12px 10px',
           background: 'linear-gradient(180deg, rgba(26,26,36,0.95) 0%, rgba(15,15,20,0.98) 100%)',
           borderTop: '1px solid rgba(255,255,255,0.06)',
           position: 'relative',
           zIndex: 1,
         }}
       >
-        <a
-          href="/contact"
-          style={{
-            fontSize: 13,
-            color: 'rgba(255,255,255,0.9)',
-            textDecoration: 'none',
-            letterSpacing: '0.02em',
-          }}
-        >
-          お問い合わせ
-        </a>
-        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>|</span>
-        <a
-          href="https://x.com/eronator_jp"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            fontSize: 13,
-            color: 'rgba(255,255,255,0.9)',
-            textDecoration: 'none',
-            letterSpacing: '0.02em',
-          }}
-        >
-          公式X
-        </a>
+        <GameChromeFooter variant="pc" />
       </footer>
     </div>
   );

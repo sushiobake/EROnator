@@ -78,8 +78,9 @@ export async function GET(request: NextRequest) {
     const workMap = new Map(works.map(w => [w.workId, w]));
     const seenAuthors = new Set<string>();
     const candidates: FailListResponse['candidates'] = [];
+    const failListN = config.flow.failListN;
     for (const p of candidateProbs) {
-      if (candidates.length >= 5) break;
+      if (candidates.length >= failListN) break;
       const work = workMap.get(p.workId);
       if (!work || seenAuthors.has(work.authorName)) continue;
       seenAuthors.add(work.authorName);

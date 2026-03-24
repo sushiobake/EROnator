@@ -150,6 +150,50 @@ export async function GET() {
 /** 新フロー: 順位に応じた重み（1位=5, 2位=4, 3位=3, 4位=2, 5位=1） */
 const RANK_WEIGHTS: Record<number, number> = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 };
 
+/** 好みマッチ度・並び: 50 + tagMatchRatio×35 + popAlign×15（レビュー平均は popularityBase に含まれるため二重加算しない） */
+const RECOMMEND_PREF_BASE = 50;
+const RECOMMEND_PREF_TAG_WEIGHT = 35;
+const RECOMMEND_PREF_POP_WEIGHT = 15;
+
+type PopularityChoice = 'famous' | 'hidden' | 'middle';
+
+function parsePopularityChoice(body: { popularityChoice?: unknown }): PopularityChoice {
+  const v = body.popularityChoice;
+  if (v === 'famous' || v === 'hidden' || v === 'middle') return v;
+  return 'middle';
+}
+
+/** 取得した候補作品群から動的にスケール（将来 max 55 までデータが伸びても追従） */
+function computeMaxPopFromWorks(works: Array<{ popularityBase: number | null | undefined }>): number {
+  let m = 0;
+  for (const w of works) m = Math.max(m, w.popularityBase ?? 0);
+  return Math.max(1, m);
+}
+
+function targetPopForChoice(choice: PopularityChoice, maxPop: number): number {
+  if (choice === 'famous') return maxPop;
+  if (choice === 'hidden') return 0;
+  return maxPop / 2;
+}
+
+/** 0〜1。作品の popularityBase がユーザーの嗜好ターゲットに近いほど高い */
+function computePopAlign(workPop: number, targetPop: number, maxPop: number): number {
+  const dist = Math.abs(workPop - targetPop);
+  return Math.max(0, Math.min(1, 1 - dist / maxPop));
+}
+
+function computePreferenceScore(tagMatchRatio: number, popAlign: number): number {
+  const raw =
+    RECOMMEND_PREF_BASE + tagMatchRatio * RECOMMEND_PREF_TAG_WEIGHT + popAlign * RECOMMEND_PREF_POP_WEIGHT;
+  return Math.min(100, Math.max(50, raw));
+}
+
+const POPULARITY_CHOICE_LABEL: Record<PopularityChoice, string> = {
+  famous: 'やっぱり有名作品',
+  hidden: '隠れた名作',
+  middle: '中間くらい',
+};
+
 export async function POST(request: NextRequest) {
   try {
     await ensurePrismaConnected();
@@ -236,35 +280,41 @@ export async function POST(request: NextRequest) {
     const useNewScoring = rankedFinal.length > 0 || selectedFamous.length > 0 || selectedUnknown.length > 0;
     const allSelectedSet = new Set(tagKeyToWeight.keys());
 
+    const popularityChoice = parsePopularityChoice(body);
+    const maxPop = computeMaxPopFromWorks(works);
+    const targetPop = targetPopForChoice(popularityChoice, maxPop);
+
+    let maxPossibleWeight = 0;
+    for (const wgt of tagKeyToWeight.values()) maxPossibleWeight += wgt;
+
     const scored = works.map(w => {
-      let score: number;
+      const workPop = Math.max(0, w.popularityBase ?? 0);
+      const popAlign = computePopAlign(workPop, targetPop, maxPop);
+
+      let tagMatchRatio: number;
       if (useNewScoring) {
-        let sum = 0;
+        let weightedMatchSum = 0;
         for (const wt of w.workTags) {
           const k = normalizeTagKey(wt.tagKey);
           const wgt = tagKeyToWeight.get(k);
-          if (wgt) sum += wgt;
+          if (wgt) weightedMatchSum += wgt;
         }
-        const popularityScore = Math.min(1, (w.popularityBase ?? 0) / 50);
-        const reviewScore = w.reviewAverage ? w.reviewAverage / 5 : 0;
-        score = sum * 0.7 + popularityScore * 0.2 + reviewScore * 0.1;
+        tagMatchRatio = maxPossibleWeight > 0 ? weightedMatchSum / maxPossibleWeight : 1;
       } else {
         const selectedSet = new Set(legacyTagKeys);
         const hasTags = selectedSet.size > 0;
         const matchedTags = w.workTags.filter(wt => selectedSet.has(wt.tagKey));
-        const matchScore = hasTags ? matchedTags.length / selectedSet.size : 1;
-        const popularityScore = Math.min(1, (w.popularityBase ?? 0) / 50);
-        const reviewScore = w.reviewAverage ? w.reviewAverage / 5 : 0;
-        score = hasTags
-          ? matchScore * 0.6 + popularityScore * 0.25 + reviewScore * 0.15
-          : popularityScore * 0.6 + reviewScore * 0.4;
+        tagMatchRatio = hasTags ? matchedTags.length / selectedSet.size : 1;
       }
+
+      const prefScore = computePreferenceScore(tagMatchRatio, popAlign);
+      const score = prefScore;
+      const matchRate = parseFloat(prefScore.toFixed(1));
 
       const matchedTagCount = useNewScoring
         ? w.workTags.filter(wt => allSelectedSet.has(normalizeTagKey(wt.tagKey))).length
         : w.workTags.filter(wt => legacyTagKeys.includes(wt.tagKey)).length;
       const totalSelected = useNewScoring ? allSelectedSet.size : legacyTagKeys.length;
-      const matchRate = totalSelected > 0 ? Math.min(100, Math.round((matchedTagCount / totalSelected) * 100)) : 100;
 
       return {
         workId: w.workId,
@@ -281,7 +331,10 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    scored.sort((a, b) => b.score - a.score);
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.workId.localeCompare(b.workId);
+    });
     const recommendedWorks = scored.slice(0, 10);
 
     const wantDebug = body.debug === true;
@@ -336,6 +389,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const tagMetaByKey = new Map<string, { weight: number; source: string }>();
+      for (const t of tagsWithWeights) tagMetaByKey.set(t.tagKey, { weight: t.weight, source: t.source });
+
       const worksDebug = recommendedWorks.map(rec => {
         const work = works.find(w => w.workId === rec.workId);
         const workTags = work?.workTags ?? [];
@@ -343,18 +399,132 @@ export async function POST(request: NextRequest) {
           tagKey: wt.tagKey,
           displayName: tagKeyToDisplayName.get(wt.tagKey) ?? wt.tagKey,
         }));
+
+        const workPop = Math.max(0, work?.popularityBase ?? 0);
+        const distToTarget = Math.abs(workPop - targetPop);
+        const popAlign = computePopAlign(workPop, targetPop, maxPop);
+
+        let tagMatchRatio: number;
+        let weightedMatchSum: number | null = null;
+        const matchedTags: Array<{ tagKey: string; displayName: string; weight: number; source: string }> = [];
+        const unmatchedSelected: Array<{ tagKey: string; displayName: string; weight: number; source: string }> = [];
+
+        if (useNewScoring) {
+          weightedMatchSum = 0;
+          const matchedKeysOneRow = new Set<string>();
+          for (const wt of workTags) {
+            const k = normalizeTagKey(wt.tagKey);
+            const wgt = tagKeyToWeight.get(k);
+            if (wgt) {
+              weightedMatchSum += wgt;
+              if (!matchedKeysOneRow.has(k)) {
+                matchedKeysOneRow.add(k);
+                const meta = tagMetaByKey.get(k);
+                matchedTags.push({
+                  tagKey: k,
+                  displayName: tagKeyToDisplayName.get(wt.tagKey) ?? tagKeyToDisplayName.get(k) ?? k,
+                  weight: wgt,
+                  source: meta?.source ?? '—',
+                });
+              }
+            }
+          }
+          tagMatchRatio = maxPossibleWeight > 0 ? weightedMatchSum / maxPossibleWeight : 1;
+          for (const selKey of tagKeyToWeight.keys()) {
+            let hit = false;
+            for (const wt of workTags) {
+              if (normalizeTagKey(wt.tagKey) === selKey) {
+                hit = true;
+                break;
+              }
+            }
+            if (!hit) {
+              const wgt = tagKeyToWeight.get(selKey) ?? 0;
+              const meta = tagMetaByKey.get(selKey);
+              unmatchedSelected.push({
+                tagKey: selKey,
+                displayName: tagKeyToDisplayName.get(selKey) ?? selKey,
+                weight: wgt,
+                source: meta?.source ?? '—',
+              });
+            }
+          }
+        } else {
+          const selectedSet = new Set(legacyTagKeys);
+          const hasTags = selectedSet.size > 0;
+          const matchedKeys = new Set<string>();
+          for (const wt of workTags) {
+            if (selectedSet.has(wt.tagKey) && !matchedKeys.has(wt.tagKey)) {
+              matchedKeys.add(wt.tagKey);
+              matchedTags.push({
+                tagKey: wt.tagKey,
+                displayName: tagKeyToDisplayName.get(wt.tagKey) ?? wt.tagKey,
+                weight: 1,
+                source: 'レガシー',
+              });
+            }
+          }
+          tagMatchRatio = hasTags ? matchedKeys.size / selectedSet.size : 1;
+          if (hasTags) {
+            for (const k of new Set(legacyTagKeys)) {
+              if (!matchedKeys.has(k)) {
+                unmatchedSelected.push({
+                  tagKey: k,
+                  displayName: tagKeyToDisplayName.get(k) ?? k,
+                  weight: 1,
+                  source: 'レガシー',
+                });
+              }
+            }
+          }
+        }
+
+        const tagPortion = tagMatchRatio * RECOMMEND_PREF_TAG_WEIGHT;
+        const popPortion = popAlign * RECOMMEND_PREF_POP_WEIGHT;
+        const sumBeforeClamp = RECOMMEND_PREF_BASE + tagPortion + popPortion;
+        const totalAfterClamp = computePreferenceScore(tagMatchRatio, popAlign);
+
         return {
           workId: rec.workId,
           title: rec.title,
           matchRate: rec.matchRate,
           score: rec.score,
           tags,
+          matchedTags,
+          unmatchedSelected,
+          formula: {
+            workPopularityBase: workPop,
+            targetPop,
+            maxPop,
+            distanceToTarget: distToTarget,
+            popAlign,
+            tagMatchRatio,
+            weightedMatchSum,
+            maxPossibleWeight: useNewScoring ? maxPossibleWeight : null,
+            matchedTagCount: rec.matchedTagCount,
+            totalSelectedTags: rec.totalSelectedTags,
+            base: RECOMMEND_PREF_BASE,
+            tagMultiplier: RECOMMEND_PREF_TAG_WEIGHT,
+            popMultiplier: RECOMMEND_PREF_POP_WEIGHT,
+            tagPortion,
+            popPortion,
+            sumBeforeClamp,
+            totalAfterClamp,
+            matchRateRounded: rec.matchRate,
+          },
         };
       });
 
       debug = {
         tagsWithWeights,
         works: worksDebug,
+        scoringContext: {
+          popularityChoice,
+          popularityChoiceLabel: POPULARITY_CHOICE_LABEL[popularityChoice],
+          useNewScoring,
+          maxPossibleWeight: useNewScoring ? maxPossibleWeight : null,
+          formulaLine: `好みマッチ度 = clamp(50, 100, ${RECOMMEND_PREF_BASE} + tagMatchRatio×${RECOMMEND_PREF_TAG_WEIGHT} + popAlign×${RECOMMEND_PREF_POP_WEIGHT})`,
+        },
       };
     }
 

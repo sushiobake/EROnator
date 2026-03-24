@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { MvpConfigSchema, DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
+import { invalidateMvpConfigCache } from '@/server/config/loader';
 import { isAdminProductionAccessEnabled } from '@/server/admin/isAdminAllowed';
 
 /**
@@ -105,10 +106,11 @@ export async function POST(request: NextRequest) {
 
     // 設定を保存
     writeFileSync(configPath, JSON.stringify(result.data, null, 2), 'utf-8');
+    invalidateMvpConfigCache();
 
     return NextResponse.json({
       success: true,
-      message: 'Config updated successfully. Please restart the development server.',
+      message: 'Config updated successfully. In-memory config cache was cleared; recommend copy is re-read from disk on each request.',
       config: result.data,
     });
   } catch (error) {

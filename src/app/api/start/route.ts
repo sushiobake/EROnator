@@ -13,7 +13,13 @@ import {
 } from '@/server/game/engine';
 import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { getMvpConfig } from '@/server/config/loader';
-import { DEFAULT_THINKING, DEFAULT_GAME_COPY, migrateThinking, type MvpConfig } from '@/server/config/schema';
+import {
+  DEFAULT_THINKING,
+  DEFAULT_GAME_COPY,
+  DEFAULT_RECOMMEND_COPY,
+  migrateThinking,
+  type MvpConfig,
+} from '@/server/config/schema';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import type { QuestionResponse, SessionStateResponse } from '@/server/api/types';
 import { isDebugAllowed } from '@/server/debug/isDebugAllowed';
@@ -205,13 +211,20 @@ export async function POST(request: NextRequest) {
       : undefined;
 
     const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+    const recommendCopy = { ...DEFAULT_RECOMMEND_COPY, ...config.recommendCopy };
+    const gameCopyOut = {
+      ...DEFAULT_GAME_COPY,
+      ...(config.gameCopy ?? {}),
+      recommendResultsHeading:
+        recommendCopy.recommendResultsHeading ?? DEFAULT_RECOMMEND_COPY.recommendResultsHeading,
+    };
     const payload = {
       sessionId,
       state: 'QUIZ',
       question: questionResponse,
       sessionState,
       effectiveCandidates,
-      gameCopy: config.gameCopy ?? DEFAULT_GAME_COPY,
+      gameCopy: gameCopyOut,
       thinking: migrateThinking(config.thinking ?? DEFAULT_THINKING),
       ...(debug ? { debug } : {}),
     };

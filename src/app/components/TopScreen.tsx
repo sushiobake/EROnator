@@ -37,7 +37,6 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
   const isMobile = useMediaQuery(768);
   const subSize = isMobile ? 15 : 13;
   const [workCount, setWorkCount] = useState<number | null>(null);
-  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [hoveredButton, setHoveredButton] = useState<HoveredButton>(null);
 
   useEffect(() => {
@@ -50,16 +49,6 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
       })
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!isMobile) return;
-    fetch('/api/app-info')
-      .then(res => res.ok ? res.json() : null)
-      .then((data: { version?: string } | null) => {
-        if (data && typeof data.version === 'string') setAppVersion(data.version);
-      })
-      .catch(() => {});
-  }, [isMobile]);
 
   const workCountText = workCount !== null ? workCount.toString() : '…';
   const fontSize = isMobile ? 18 : 17;
@@ -209,7 +198,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
               }}
             >
               <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
-                ※配信（伏せ字）モード
+                ※配信モード（β版）
               </span>
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
                 <input
@@ -227,7 +216,7 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
         {isMobile && (
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 700, textAlign: 'center' }}>
-              ※配信（伏せ字）モード
+              ※配信モード（β版）
             </span>
             <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: onToggleStreamerMode ? 'pointer' : 'default', opacity: onToggleStreamerMode ? 1 : 0.7 }}>
               <input
@@ -240,11 +229,6 @@ export function TopScreen({ topLines, onPlay, onRecommend, streamerMode, onToggl
               <span style={{ fontSize: 14, color: 'var(--color-text)', fontWeight: 500 }}>オンにする</span>
             </label>
           </div>
-        )}
-        {isMobile && appVersion && (
-          <p style={{ margin: 0, marginTop: 14, fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>
-            {appVersion}
-          </p>
         )}
         {!isMobile && (
           <div

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Noto_Sans_JP, Kosugi_Maru } from 'next/font/google';
 import { SITE_TITLE } from '@/config/app';
 import { AppProviders } from './components/AppProviders';
-import { SiteFooter } from './components/SiteFooter';
+import { ConditionalSiteFooter } from './components/ConditionalSiteFooter';
 import './globals.css';
 
 const notoSansJP = Noto_Sans_JP({
@@ -62,7 +62,7 @@ export default function RootLayout({
         />
         <AppProviders>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>{children}</div>
-          <SiteFooter />
+          <ConditionalSiteFooter />
         </AppProviders>
       </body>
     </html>

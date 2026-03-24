@@ -9,16 +9,46 @@
     "questionPreamble": "その同人誌は……",
     "revealPreamble": "その同人誌は……",
     "revealMain": "これでしょ！ちがう！？",
-    "successSpeech": "やったーー！！まあ知ってたわ！！{questionCount}問でお見通しだもの！",
+    "successSpeech": "やったーー！！{questionCount}問でわかっちゃった！！何でもお見通しだもの！！",
     "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
     "recommendTitle": "なら…そんなあなたにおススメもある！！",
     "failListSpeech": "うーん…ちょっとわからなかったわ。",
     "failListSubMobile": "ちなみに、下のリストの中にある？",
     "failListSubPc": "ちなみに、このリストの中にはある？",
     "failListNotInListPrompt": "ない？ならここに作品名書いてくれないかしら？",
-    "almostSuccessSpeech": "それか～～～！悔しい！次回は当てるから！！",
+    "almostSuccessSpeech": "それか～～～！悔しい！！次回は当てるから！！",
     "aiGatePreamble": "最初に教えて！その同人誌は……",
     "aiGateMain": "AI生成作品？それとも違う？"
+  },
+  "recommendCopy": {
+    "aiGatePreamble": "最初に教えて！",
+    "aiGateMain": "AI生成作品？それとも違う？",
+    "initialMain": "あなたの好みは？",
+    "initialPopularityQuestion": "やっぱり有名作品！　隠れた名作！　中間くらいの作品！",
+    "initialPriorityQuestion": "あなたが優先したいのは？\n順位をつけて！",
+    "questionFamous": "あなたの好みを…この中から3つまで選んで！",
+    "questionFamousStory": "\"ストーリー\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
+    "questionFamousPlay": "\"プレイ\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
+    "questionFamousCharacter": "\"キャラクター\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
+    "questionUnknown": "「有名な特徴」を元に「マニアックな特徴」を並べているわ。ここから好みを３つまで選んで！",
+    "importantPrompt": "特に重視する要素はある？あれば選んで！",
+    "sortPrompt": "ここまで選んだ「すべての特徴」を、より好きな順に５位まで決めて！",
+    "sortPromptFront": "ここまで選んだ「有名な特徴」を、５位まで決めて！",
+    "sortPromptBack": "ここまで選んだ「すべての特徴」を、より好きな順に５位まで決めて！",
+    "thinkingText": "あなたにぴったりの作品を探しているわ……",
+    "recommendResultsHeading": "結果が出たわ！こんな作品はどうかな？",
+    "btnNext": "次へ",
+    "btnNextSortFront": "後半へ",
+    "btnNextSortBack": "結果へ",
+    "btnRetry": "やり直し",
+    "btnOk": "これでok",
+    "btnNotInList": "この中にはない",
+    "btnFamousExpand": "選択肢を増やす",
+    "btnFamousCollapse": "選択肢を減らす",
+    "btnFix": "修正する",
+    "btnFixRecommend": "ひとつ前に戻る",
+    "btnTopReset": "トップに戻る",
+    "famousPickMinHint": "１つくらいは気になるやつを選んでよ！"
   },
   "thinking": {
     "inGame": {
@@ -55,7 +85,7 @@
       }
     },
     "opening": {
-      "text": "ok！ではいくわよ！"
+      "text": "ok！始めるわ！"
     },
     "endingCorrect": {
       "text": "え！ほんとに！？"
@@ -64,10 +94,10 @@
       "text": "ちがうかあ……"
     },
     "failListSelect": {
-      "text": "考え中…"
+      "text": "なるほど……？"
     },
     "failListNotInList": {
-      "text": "考え中…"
+      "text": "なるほど……？"
     }
   },
   "confirm": {

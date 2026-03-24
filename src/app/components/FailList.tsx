@@ -1,15 +1,18 @@
 /**
  * FAIL_LISTコンポーネント
- * 上位5件（既出除外・同一作者1本まで）を横一列・横スクロール。似てる度・FANZAは表示せず選ぶだけ。カードクリックで onSelectWork。
+ * 上位N件（config failListN・既出除外・同一作者1本まで）をグリッド表示。
+ * PC: 5列×行（推薦結果のPCグリッドに近い）、モバイル: 2列（推薦キャプチャの2列に近い）。
  */
 
 'use client';
 
-import { useState } from 'react';
-import { RestartButton } from './RestartButton';
+import { useEffect, useState } from 'react';
+import {
+  failFlowBackToTopButtonStyle,
+  getFailListBottomRowStyles,
+} from './ResultScreenFourButtons';
 import { useMediaQuery } from './useMediaQuery';
 import { useClickGuard } from './useClickGuard';
-import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 import { StreamerCensoredText } from './StreamerCensoredText';
 
 interface FailListCandidateItem {
@@ -22,20 +25,92 @@ interface FailListCandidateItem {
 
 const DEFAULT_NOT_IN_LIST_PROMPT = 'ない？ならここに作品名書いてよ！お願いだから！';
 
+const CARD_GAP = 10;
+
 interface FailListProps {
   candidates: FailListCandidateItem[];
   onSelectWork: (workId: string) => void;
   onNotInList: (submittedTitleText: string) => void;
-  onRestart?: () => void;
+  /** 結果画面と同様の「トップに戻る」（セッション維持でトップへ） */
+  onBackToTop: () => void;
+  /** リストにない送信後：セッションリセットしてトップへ（表示は「トップに戻る」） */
+  onBackToTopWithReset?: () => void;
+  /** true: モバイル白板を縦に伸ばす（リスト表示時）。フォーム表示中は false にする */
+  onWhiteboardVerticalFillChange?: (fill: boolean) => void;
   /** 「リストにない」押下後に表示する一文（コンフィグで変更可） */
   notInListPrompt?: string;
   /** @deprecated レイアウト用。mobileBelowCanvas で FailListVerticalList を使用 */
   mobileListBelow?: boolean;
+  /** true のとき候補グリッドを出さない（スマホでキャンバス下リストと重複させない） */
+  hideCandidateGrid?: boolean;
   /** 配信者モード時はタイトルを部分的伏字 */
   streamerMode?: boolean;
 }
 
-/** スマホ用：縦リスト（Stage mobileBelowCanvas 用） */
+function FailListWorkTile({
+  work,
+  onSelect,
+  interactionDisabled,
+  streamerMode,
+  compact,
+}: {
+  work: FailListCandidateItem;
+  onSelect: () => void;
+  interactionDisabled: boolean;
+  streamerMode?: boolean;
+  /** キャンバス下の2列用に余白を少し詰める */
+  compact?: boolean;
+}) {
+  const pad = compact ? 8 : 10;
+  const titleFs = compact ? 11 : 12;
+  const authorFs = compact ? 9 : 10;
+  return (
+    <div
+      role="button"
+      tabIndex={interactionDisabled ? -1 : 0}
+      onClick={onSelect}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
+      style={{
+        minWidth: 0,
+        padding: pad,
+        backgroundColor: '#fafafa',
+        border: '1px solid #e5e7eb',
+        borderRadius: 10,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+        opacity: interactionDisabled ? 0.7 : 1,
+      }}
+    >
+      <div style={{ width: '100%', aspectRatio: '4/3', borderRadius: 6, overflow: 'hidden', marginBottom: 6 }}>
+        <img
+          src={work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`}
+          alt={work.title}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      </div>
+      <p
+        style={{
+          fontSize: titleFs,
+          fontWeight: 600,
+          color: 'var(--color-text)',
+          margin: '0 0 2px 0',
+          lineHeight: 1.3,
+          minHeight: compact ? 29 : 31,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical' as const,
+        }}
+      >
+        {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
+      </p>
+      <p style={{ fontSize: authorFs, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
+    </div>
+  );
+}
+
+/** スマホ用：Stage mobileBelowCanvas — 2列グリッド（推薦結果の2列レイアウトに近い） */
 interface FailListVerticalListProps {
   candidates: FailListCandidateItem[];
   onSelectWork: (workId: string) => void;
@@ -45,33 +120,56 @@ interface FailListVerticalListProps {
 export function FailListVerticalList({ candidates, onSelectWork, streamerMode }: FailListVerticalListProps) {
   const interactionDisabled = useClickGuard([]);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 0.5rem' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: CARD_GAP,
+        padding: '0 0.5rem',
+        width: '100%',
+        boxSizing: 'border-box',
+      }}
+    >
       {candidates.map((work) => (
-        <MobileWorkCardHorizontal
+        <FailListWorkTile
           key={work.workId}
           work={work}
-          onClick={() => {
+          compact
+          streamerMode={streamerMode}
+          interactionDisabled={interactionDisabled}
+          onSelect={() => {
             if (interactionDisabled) return;
             onSelectWork(work.workId);
           }}
-          showFanzaLink
-          streamerMode={streamerMode}
         />
       ))}
     </div>
   );
 }
 
-/** PC・スマホとも横スクロール */
-const CARD_MIN_WIDTH = 130;
-const CARD_GAP = 10;
-
-export function FailList({ candidates, onSelectWork, onNotInList, onRestart, notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT, mobileListBelow: _, streamerMode }: FailListProps) {
+export function FailList({
+  candidates,
+  onSelectWork,
+  onNotInList,
+  onBackToTop,
+  onBackToTopWithReset,
+  onWhiteboardVerticalFillChange,
+  notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT,
+  mobileListBelow: _,
+  hideCandidateGrid = false,
+  streamerMode,
+}: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
   const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
+  const chrome = getFailListBottomRowStyles(isMobile);
+
+  useEffect(() => {
+    const formOpen = showInput && !submittedNotInList;
+    onWhiteboardVerticalFillChange?.(!formOpen);
+  }, [showInput, submittedNotInList, onWhiteboardVerticalFillChange]);
 
   const handleSelectWork = (workId: string) => {
     if (interactionDisabled) return;
@@ -84,93 +182,136 @@ export function FailList({ candidates, onSelectWork, onNotInList, onRestart, not
     setSubmittedNotInList(true);
   };
 
+  const inputStyle = {
+    flex: '1 1 120px' as const,
+    minWidth: 0,
+    width: 'auto' as const,
+    padding: isMobile ? '6px 8px' : '8px 10px',
+    fontSize: chrome.fontBody,
+    fontWeight: 500,
+    minHeight: chrome.minH,
+    boxSizing: 'border-box' as const,
+    border: '2px solid var(--color-border)',
+    borderRadius: chrome.radius,
+    background: 'var(--color-surface)',
+    color: 'var(--color-text)',
+  };
+
   return (
     <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-      <div
-        style={{ overflowX: 'auto', overflowY: 'hidden', marginBottom: 8, maxWidth: '100%' }}
-      >
-        <div style={{ display: 'flex', flexDirection: 'row', gap: CARD_GAP, flexWrap: 'nowrap', width: 'max-content' }}>
-        {candidates.map((work) => (
-          <div
-            key={work.workId}
-            role="button"
-            tabIndex={interactionDisabled ? -1 : 0}
-            onClick={() => handleSelectWork(work.workId)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSelectWork(work.workId)}
-            style={{
-              minWidth: CARD_MIN_WIDTH,
-              width: CARD_MIN_WIDTH,
-              padding: isMobile ? 8 : 10,
-              backgroundColor: '#fafafa',
-              border: '1px solid #e5e7eb',
-              borderRadius: 10,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
-              opacity: interactionDisabled ? 0.7 : 1,
-              flexShrink: 0,
-            }}
-          >
-              <div style={{ width: '100%', aspectRatio: '3/4', borderRadius: 6, overflow: 'hidden', marginBottom: 6 }}>
-                <img
-                  src={work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`}
-                  alt={work.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              </div>
-              <p style={{ fontSize: isMobile ? 14 : 12, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 2px 0', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {streamerMode ? <StreamerCensoredText text={work.title} censorAll /> : work.title}
-              </p>
-              <p style={{ fontSize: isMobile ? 13 : 11, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-      {!showInput ? (
-        <button
-          onClick={() => setShowInput(true)}
+      {!hideCandidateGrid && (
+        <div
           style={{
-            padding: isMobile ? '12px 20px' : '14px 24px',
-            minHeight: 48,
-            fontSize: isMobile ? 17 : 16,
-            marginTop: isMobile ? '0.75rem' : '1rem',
-            cursor: 'pointer',
+            display: 'grid',
+            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))',
+            gap: CARD_GAP,
+            marginBottom: 8,
+            width: '100%',
           }}
         >
-          リストにない
-        </button>
-      ) : (
-        <div style={{ marginTop: isMobile ? '1.25rem' : '2rem', display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: isMobile ? 6 : 8 }}>
-          <p style={{ marginBottom: isMobile ? '0.35rem' : '0.5rem', width: '100%', fontSize: isMobile ? 17 : undefined }}>{notInListPrompt}</p>
-          <input
-            type="text"
-            value={submittedText}
-            onChange={(e) => setSubmittedText(e.target.value)}
-            style={{
-              width: isMobile ? '100%' : 300,
-              maxWidth: '100%',
-              padding: isMobile ? 10 : 12,
-              fontSize: isMobile ? 17 : 16,
-              minHeight: 48,
-              boxSizing: 'border-box',
-            }}
-            placeholder="作品名"
-          />
-          <button
-            onClick={handleNotInList}
-            disabled={interactionDisabled}
-            style={{
-              padding: isMobile ? '10px 20px' : '12px 24px',
-              minHeight: 48,
-              fontSize: isMobile ? 17 : 16,
-              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
-              opacity: interactionDisabled ? 0.7 : 1,
-            }}
-          >
-            送信
+          {candidates.map((work) => (
+            <FailListWorkTile
+              key={work.workId}
+              work={work}
+              streamerMode={streamerMode}
+              interactionDisabled={interactionDisabled}
+              onSelect={() => handleSelectWork(work.workId)}
+            />
+          ))}
+        </div>
+      )}
+      {!submittedNotInList && !showInput && (
+        <div
+          style={{
+            ...chrome.row,
+            marginTop: isMobile ? '0.75rem' : '1rem',
+            justifyContent: 'center',
+            alignSelf: 'center',
+          }}
+        >
+          <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
+            リストにない
+          </button>
+          <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
+            トップに戻る
           </button>
         </div>
       )}
-      {onRestart && submittedNotInList && <RestartButton onRestart={onRestart} />}
+      {showInput && !submittedNotInList && (
+        <div
+          style={{
+            marginTop: isMobile ? '0.75rem' : '1rem',
+            width: '100%',
+            maxWidth: 420,
+            minWidth: 0,
+            alignSelf: 'center',
+            boxSizing: 'border-box',
+          }}
+        >
+          <p
+            style={{
+              margin: `0 0 ${chrome.gap}px 0`,
+              width: '100%',
+              fontSize: chrome.fontBody,
+              fontWeight: 600,
+              color: 'var(--color-text)',
+              lineHeight: 1.35,
+              wordBreak: 'break-word',
+            }}
+          >
+            {notInListPrompt}
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: chrome.gap,
+              width: '100%',
+              minWidth: 0,
+            }}
+          >
+            <input
+              type="text"
+              value={submittedText}
+              onChange={(e) => setSubmittedText(e.target.value)}
+              style={inputStyle}
+              placeholder="作品名"
+            />
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                flex: '1 1 140px',
+                minWidth: 0,
+                gap: chrome.gap,
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleNotInList}
+                disabled={interactionDisabled}
+                style={{
+                  ...chrome.btnPrimaryInline,
+                  opacity: interactionDisabled ? 0.7 : 1,
+                  cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+                }}
+              >
+                送信
+              </button>
+              <button type="button" onClick={onBackToTop} style={chrome.btnPrimaryInline}>
+                トップに戻る
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {submittedNotInList && onBackToTopWithReset && (
+        <button type="button" onClick={onBackToTopWithReset} style={failFlowBackToTopButtonStyle(isMobile)}>
+          トップに戻る
+        </button>
+      )}
     </div>
   );
 }

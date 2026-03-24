@@ -1,15 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type CSSProperties } from 'react';
 import html2canvas from 'html2canvas';
 import { ExternalLink } from './ExternalLink';
 import { MosaicImage } from './MosaicImage';
+import { MobileRecommendCaptureGrid } from './MobileRecommendCaptureGrid';
 import { useMediaQuery } from './useMediaQuery';
 import { Stage } from './Stage';
+import { ResultScreenFourButtons } from './ResultScreenFourButtons';
 import { MobileWorkCardHorizontal } from './MobileWorkCardHorizontal';
 import { RecommendDebugPanel, type RecommendDebugData } from './RecommendDebugPanel';
 import { AiGate } from './AiGate';
 import type { RecommendCopy } from '@/server/config/schema';
+import {
+  getSortPromptFront,
+  getSortPromptBack,
+  getBtnNextSortFront,
+  getBtnNextSortBack,
+  getFamousQuestionForCategory,
+} from '@/server/config/schema';
 
 type WorkResult = {
   workId: string;
@@ -28,6 +37,12 @@ const LINK_TEXT = '読んでみる';
 const REC_SCALE = 0.8;
 const BACKGROUND_URL = '/ilust/back.png';
 const LOGO_URL = '/ilust/inari_thinking_opening.png';
+const SHARE_CAPTURE_LOGO_URL = '/ilust/eronator_logo.jpg';
+
+/** 推薦モード本番（モバイル）：Stage 内キャンバス論理高さ 800×1.5 に対し縦 1.05 倍（1260px） */
+const MOBILE_RECOMMEND_CANVAS_BODY_PX = 1260;
+/** モバイルタグ流れ：「ひとつ前」絶対配置で本文と重ならないよう確保 */
+const MOBILE_TAG_FLOW_BACK_RESERVE_PX = 34;
 
 /** ダウンロード用の専用レイアウト（白背景） */
 const CAPTURE_WIDTH = 1200;
@@ -42,6 +57,10 @@ type FrontStep = 'f1' | 'f1_2' | 'f2' | 'f2_2' | 'f3' | 'f3_2';
 type BackStep = 's4' | 's5' | 's6' | 's7' | 's8';
 type RecommendStep = 'ai_gate' | 'initial' | FrontStep | 'sort1' | BackStep | 'sort2' | 'thinking' | 'results';
 
+/** 有名ステップで「次へ」したときの戻り先（ひとつ前に戻るで1段階ずつ戻す） */
+type FrontNavEntry = { returnTo: FrontStep; undoCount: number };
+type BackNavEntry = { returnTo: BackStep; undoCount: number };
+
 interface RecommendModeProps {
   onBack: () => void;
 }
@@ -49,6 +68,59 @@ interface RecommendModeProps {
 type FamousTagItem = { tagKey: string; displayName: string; count: number };
 type SelectedTag = { tagKey: string; displayName: string; category?: CategoryLabel };
 type RankedTag = { tagKey: string; displayName: string; category?: CategoryLabel; rank: 1 | 2 | 3 | 4 | 5 };
+
+/**
+ * いま選んでいるタグの要約（ピル型）。PCはOK行の直下。モバイルはOK行の下。整理画面では使わない。
+ */
+const PICKED_TAGS_ROW_HEIGHT = 64;
+
+function RecommendPickedTagsRow({ tags, isMobile }: { tags: SelectedTag[]; isMobile: boolean }) {
+  return (
+    <div
+      style={{
+        marginTop: 6,
+        width: '100%',
+        maxWidth: 640,
+        minHeight: PICKED_TAGS_ROW_HEIGHT,
+        maxHeight: PICKED_TAGS_ROW_HEIGHT,
+        overflowY: isMobile ? 'hidden' : 'auto',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        alignContent: 'flex-start',
+        alignItems: 'flex-start',
+        boxSizing: 'border-box',
+      }}
+    >
+      {tags.map((x) => (
+        <span
+          key={x.tagKey}
+          title={x.displayName}
+          style={{
+            display: 'inline-block',
+            fontSize: isMobile ? 9 : 11,
+            fontWeight: 500,
+            lineHeight: 1.3,
+            padding: isMobile ? '1px 5px' : '4px 10px',
+            borderRadius: 9999,
+            backgroundColor: '#dbeafe',
+            color: '#1d4ed8',
+            border: '1px solid #93c5fd',
+            maxWidth: 200,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box',
+            verticalAlign: 'middle',
+          }}
+        >
+          {x.displayName}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 
 export function RecommendMode({ onBack }: RecommendModeProps) {
   const isMobile = useMediaQuery(768);
@@ -68,6 +140,9 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
   const [rankedFinal, setRankedFinal] = useState<RankedTag[]>([]);
   const [sort1Ranks, setSort1Ranks] = useState<Map<string, 1 | 2 | 3 | 4 | 5>>(new Map());
   const [sort2Ranks, setSort2Ranks] = useState<Map<string, 1 | 2 | 3 | 4 | 5>>(new Map());
+  const [stepBeforeSort2, setStepBeforeSort2] = useState<BackStep>('s8');
+  /** sort1 に入る直前の有名ステップ（戻る・スタック欠損時） */
+  const [stepBeforeSort1, setStepBeforeSort1] = useState<FrontStep>('f1');
   const [recommendedWorks, setRecommendedWorks] = useState<WorkResult[]>([]);
   const [totalMatched, setTotalMatched] = useState(0);
   const [famousTagKeysAll, setFamousTagKeysAll] = useState<string[]>([]);
@@ -93,8 +168,15 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     btnOk: 'これでok',
     btnNotInList: 'この中にはない',
     btnFix: '修正する',
+    btnFixRecommend: 'ひとつ前に戻る',
     btnTopReset: 'トップに戻る',
+    recommendResultsHeading: 'こんな作品なんてどう？',
   };
+
+  /** 推薦フロー内の「戻る」（やり直しと区別） */
+  const rcFixBack = (rc as RecommendCopy).btnFixRecommend?.trim()
+    ? (rc as RecommendCopy).btnFixRecommend!
+    : (rc.btnFix ?? 'ひとつ前に戻る');
 
   const isDebugLocal =
     typeof window !== 'undefined' &&
@@ -198,16 +280,44 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     return 'sort1';
   };
 
+  /** 「これでok」直後の遷移先（バリデーション・ボタン無効化と共通） */
+  const getNextFrontStepAfterOk = (s: FrontStep, addedTags: SelectedTag[], skipAdding: boolean): FrontStep | 'sort1' => {
+    const addedLen = skipAdding ? 0 : addedTags.length;
+    const needExtraPage = addedLen <= 1;
+    const isSecondPage = s.endsWith('_2');
+    if (isSecondPage) return getNextFrontStep(s);
+    if (needExtraPage || skipAdding) {
+      return (s === 'f1' ? 'f1_2' : s === 'f2' ? 'f2_2' : 'f3_2') as FrontStep;
+    }
+    return getNextCategoryStep(s);
+  };
+
   const currentFamousOptions = ['f1', 'f1_2', 'f2', 'f2_2', 'f3', 'f3_2'].includes(step as string)
     ? getFamousOptionsForStep(step as FrontStep)
     : [];
   const [checkedFamous, setCheckedFamous] = useState<Set<string>>(new Set());
   const [checkedUnknown, setCheckedUnknown] = useState<Set<string>>(new Set());
   const [lastAddedFamousCount, setLastAddedFamousCount] = useState(0);
-  const [lastAddedUnknownCount, setLastAddedUnknownCount] = useState(0);
+  const [frontNavStack, setFrontNavStack] = useState<FrontNavEntry[]>([]);
+  const [backNavStack, setBackNavStack] = useState<BackNavEntry[]>([]);
+  /** カテゴリ内で1件も選べていないときの警告（これでok 抑止） */
+  const [famousPickWarning, setFamousPickWarning] = useState<string | null>(null);
+
+  const selectedFamousRef = useRef<SelectedTag[]>([]);
+  const frontNavStackRef = useRef<FrontNavEntry[]>([]);
+  const selectedUnknownRef = useRef<SelectedTag[]>([]);
+  const backNavStackRef = useRef<BackNavEntry[]>([]);
+  const unknownTagsForBackRef = useRef<Array<{ tagKey: string; displayName: string; count?: number; isFamous?: boolean }>>([]);
+
+  selectedFamousRef.current = selectedFamous;
+  frontNavStackRef.current = frontNavStack;
+  selectedUnknownRef.current = selectedUnknown;
+  backNavStackRef.current = backNavStack;
+  unknownTagsForBackRef.current = unknownTags;
 
   const MAX_SELECT = 3;
   const toggleFamous = (tagKey: string, displayName: string, category: CategoryLabel) => {
+    setFamousPickWarning(null);
     setCheckedFamous(prev => {
       const next = new Set(prev);
       if (next.has(tagKey)) next.delete(tagKey);
@@ -225,6 +335,9 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     });
   };
 
+  const countCategoryAfterAdd = (targetCat: CategoryLabel, added: SelectedTag[]) =>
+    selectedFamous.filter(t => t.category === targetCat).length + added.filter(t => t.category === targetCat).length;
+
   const goNextFromFamous = (skipAdding?: boolean) => {
     const s = step as FrontStep;
     const cat = s.startsWith('f1') ? priorityOrder[0]! : s.startsWith('f2') ? priorityOrder[1]! : priorityOrder[2]!;
@@ -236,9 +349,29 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       }
       return a;
     })();
+
+    const nextStep = getNextFrontStepAfterOk(s, added, Boolean(skipAdding));
+
+    const hint = (rc as RecommendCopy).famousPickMinHint ?? '１個くらい気になるやつ選んでよ！';
+    const isSecondFamousPage = s.endsWith('_2');
+    /** 1ページ目: 「この中にはない」は予備(_2)へ進める。_2ページ目: カテゴリ合計0のまま「この中にはない」は不可 */
+    if (isSecondFamousPage && skipAdding && countCategoryAfterAdd(cat, []) < 1) {
+      setFamousPickWarning(hint);
+      return;
+    }
+    /** このカテゴリ（1+1-2 合算）で1件も無いときは「これでok」不可 */
+    if (!skipAdding && countCategoryAfterAdd(cat, added) < 1) {
+      setFamousPickWarning(hint);
+      return;
+    }
+    setFamousPickWarning(null);
+
     setLastAddedFamousCount(added.length);
-    const nextFamous = [...selectedFamous, ...added];
-    setSelectedFamous(nextFamous);
+    setSelectedFamous(prev => {
+      const keys = new Set(prev.map(x => x.tagKey));
+      const toAdd = added.filter(x => !keys.has(x.tagKey));
+      return [...prev, ...toAdd];
+    });
     setDisplayedFamousKeys(prev => {
       const next = new Set(prev);
       for (const opt of currentFamousOptions) next.add(opt.tagKey);
@@ -246,21 +379,10 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     });
     setCheckedFamous(new Set());
 
-    const needExtraPage = added.length <= 1;
-    const isSecondPage = s.endsWith('_2');
-    let nextStep: FrontStep | 'sort1';
-    if (isSecondPage) {
-      nextStep = getNextFrontStep(s);
-    } else if (needExtraPage || skipAdding) {
-      setDisplayedFamousKeys(prev => {
-        const next = new Set(prev);
-        for (const opt of currentFamousOptions) next.add(opt.tagKey);
-        return next;
-      });
-      nextStep = (s === 'f1' ? 'f1_2' : s === 'f2' ? 'f2_2' : 'f3_2') as FrontStep;
-    } else {
-      nextStep = getNextCategoryStep(s);
+    if (nextStep === 'sort1') {
+      setStepBeforeSort1(s);
     }
+    setFrontNavStack(prev => [...prev, { returnTo: s, undoCount: added.length }]);
     setStep(nextStep);
   };
 
@@ -279,6 +401,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       const data = await res.json();
       if (data.success && Array.isArray(data.tags) && data.tags.length > 0) {
         setUnknownTags(data.tags);
+        setBackNavStack([]);
         setStep('s4');
         if (isDebugLocal) {
           setDebugData({
@@ -313,6 +436,25 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     return idx >= 0 ? idx * 20 : 0;
   };
 
+  const buildCheckedUnknownKeys = (
+    target: BackStep,
+    sel: SelectedTag[],
+    tags: Array<{ tagKey: string; displayName: string; count?: number; isFamous?: boolean }>,
+  ) => {
+    const start = getBackBatchStart(target);
+    const batchKeys = new Set(tags.slice(start, start + 20).map(x => x.tagKey));
+    const next = new Set<string>();
+    for (const x of sel) {
+      if (batchKeys.has(x.tagKey)) next.add(x.tagKey);
+    }
+    return next;
+  };
+
+  /** 後半の質問画面へ戻したとき、確定済みタグを現在バッチのチェックに反映（sort2 からの復帰用） */
+  const syncCheckedUnknownForBackStep = (target: BackStep, sel: SelectedTag[]) => {
+    setCheckedUnknown(buildCheckedUnknownKeys(target, sel, unknownTags));
+  };
+
   const goNextFromUnknown = (skipAdding?: boolean) => {
     const s = step as BackStep;
     const start = getBackBatchStart(s);
@@ -325,24 +467,32 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       }
       return a;
     })();
-    setLastAddedUnknownCount(added.length);
-    const nextUnknown = [...selectedUnknown, ...added];
-    setSelectedUnknown(nextUnknown);
+    const keysExisting = new Set(selectedUnknown.map(x => x.tagKey));
+    const dedupAdded = added.filter(x => !keysExisting.has(x.tagKey));
+    const mergedUnknown = [...selectedUnknown, ...dedupAdded];
+    setSelectedUnknown(mergedUnknown);
     setCheckedUnknown(new Set());
+    setBackNavStack(prev => [...prev, { returnTo: s, undoCount: added.length }]);
 
     const idx = BACK_STEPS.indexOf(s);
+    const goSort2 = () => {
+      setStepBeforeSort2(s);
+      setStep('sort2');
+    };
     if (skipAdding) {
       if (idx < 4) setStep(BACK_STEPS[idx + 1]!);
-      else setStep('sort2');
+      else goSort2();
     } else {
       if (idx < 2) {
         setStep(BACK_STEPS[idx + 1]!);
       } else if (idx === 2) {
-        setStep(nextUnknown.length > 0 ? 'sort2' : 's7');
+        if (mergedUnknown.length > 0) goSort2();
+        else setStep('s7');
       } else if (idx === 3) {
-        setStep(nextUnknown.length > 0 ? 'sort2' : 's8');
+        if (mergedUnknown.length > 0) goSort2();
+        else setStep('s8');
       } else {
-        setStep('sort2');
+        goSort2();
       }
     }
   };
@@ -385,20 +535,83 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     ? unknownTags.slice(getBackBatchStart(step as BackStep), getBackBatchStart(step as BackStep) + 20)
     : [];
 
+  /** 早期 return より前（hooks 順序） */
+  const isFamousStep = ['f1', 'f1_2', 'f2', 'f2_2', 'f3', 'f3_2'].includes(step as string);
+  const isBackStep = ['s4', 's5', 's6', 's7', 's8'].includes(step as string);
+  const famousCatForPicked =
+    isFamousStep && priorityOrder.length >= 3
+      ? (step as string).startsWith('f1')
+        ? priorityOrder[0]!
+        : (step as string).startsWith('f2')
+          ? priorityOrder[1]!
+          : priorityOrder[2]!
+      : null;
+
+  const frontPickedTagsDisplay = useMemo(() => {
+    const seen = new Set<string>();
+    const out: SelectedTag[] = [];
+    for (const x of selectedFamous) {
+      if (!seen.has(x.tagKey)) {
+        seen.add(x.tagKey);
+        out.push(x);
+      }
+    }
+    if (famousCatForPicked) {
+      for (const key of checkedFamous) {
+        if (seen.has(key)) continue;
+        const opt = currentFamousOptions.find(o => o.tagKey === key);
+        if (opt) {
+          seen.add(key);
+          out.push({ tagKey: key, displayName: opt.displayName, category: famousCatForPicked });
+        }
+      }
+    }
+    return out;
+  }, [selectedFamous, checkedFamous, currentFamousOptions, famousCatForPicked]);
+
+  const backPickedTagsDisplay = useMemo(() => {
+    const seen = new Set<string>();
+    const out: SelectedTag[] = [];
+    for (const x of selectedUnknown) {
+      if (!seen.has(x.tagKey)) {
+        seen.add(x.tagKey);
+        out.push(x);
+      }
+    }
+    for (const key of checkedUnknown) {
+      if (seen.has(key)) continue;
+      const row = currentUnknownBatch.find(y => y.tagKey === key) ?? unknownTags.find(y => y.tagKey === key);
+      if (row) {
+        seen.add(key);
+        out.push({ tagKey: key, displayName: row.displayName });
+      }
+    }
+    return out;
+  }, [selectedUnknown, checkedUnknown, currentUnknownBatch, unknownTags]);
+
   if (step === 'ai_gate') {
     return (
       <>
       <Stage
         characterVariant="usually"
-        characterSpeech={
-          <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-            <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 22 : 15 }}>{rc.aiGatePreamble}</p>
-            <p style={{ margin: '6px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{rc.aiGateMain}</p>
-          </div>
-        }
+        mobileExtendWhiteboard={isMobile}
       >
         <>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              width: '100%',
+              ...(isMobile
+                ? { minHeight: '100%', justifyContent: 'center', boxSizing: 'border-box', padding: '12px 0 20px' }
+                : {}),
+            }}
+          >
+            <div style={{ marginBottom: 12, textAlign: 'center' }}>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: isMobile ? 14 : 15 }}>{rc.aiGatePreamble}</p>
+              <p style={{ margin: '4px 0 0 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 16 : 17 }}>{rc.aiGateMain}</p>
+            </div>
             <AiGate onSelect={choice => { setAiGateChoice(choice); setStep('initial'); }} />
             <div style={{ marginTop: 16, width: '100%', maxWidth: 320, display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -440,12 +653,35 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           characterVariant="thinking"
           thinkingSubType="opening"
           characterSpeech={
-            <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: isMobile ? 26 : 20 }}>
-              {rc.thinkingText}
-            </p>
+            isMobile ? undefined : (
+              <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: 20 }}>
+                {rc.thinkingText}
+              </p>
+            )
           }
+          mobileHideCharacter={isMobile}
+          mobileExtendWhiteboard={isMobile}
+          whiteboardWide={true}
+          mobileCanvasBodyHeightPx={isMobile ? MOBILE_RECOMMEND_CANVAS_BODY_PX : undefined}
         >
-          {null}
+          {isMobile ? (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100%',
+                textAlign: 'center',
+                padding: '12px 8px',
+                boxSizing: 'border-box',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: 16, lineHeight: 1.45 }}>
+                {rc.thinkingText}
+              </p>
+            </div>
+          ) : null}
         </Stage>
         {isDebugLocal && (
           <RecommendDebugPanel debug={debugData} open={debugPanelOpen} onToggle={() => setDebugPanelOpen(v => !v)} onForceNavigateToResults={handleForceNavigateToResults} />
@@ -547,31 +783,23 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           }}
           aria-hidden
         >
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
-            <img src={LOGO_URL} alt="ERONATOR" style={{ height: 36, width: 'auto', maxWidth: '50%', marginBottom: 4 }} />
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#1f2937', margin: 0 }}>こんな作品なんてどう？</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 8 }}>
+            <img src={SHARE_CAPTURE_LOGO_URL} alt="ERONATOR" style={{ height: 32, width: 'auto', maxWidth: '48%', marginBottom: 4 }} />
+            <p
+              style={{
+                margin: 0,
+                padding: '0 6px',
+                fontSize: 11,
+                fontWeight: 700,
+                color: '#1f2937',
+                lineHeight: 1.35,
+                textAlign: 'center',
+              }}
+            >
+              {rc.recommendResultsHeading ?? 'こんな作品なんてどう？'}
+            </p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: CAPTURE_CARD_GAP }}>
-            {recommendedWorks.slice(0, 10).map(rec => (
-              <div key={rec.workId} style={{ padding: 8, backgroundColor: '#fafafa', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-                {typeof rec.matchRate === 'number' && (
-                  <div style={{ marginBottom: 4 }}>
-                    <p style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, margin: '0 0 1px 0', lineHeight: 1.2 }}>似てる度</p>
-                    <p style={{ fontSize: 12, color: '#059669', fontWeight: 700, margin: 0, lineHeight: 1.2 }}>{Number(rec.matchRate).toFixed(1)}％</p>
-                  </div>
-                )}
-                <div style={{ width: '100%', aspectRatio: '4/3', borderRadius: 6, overflow: 'hidden', marginBottom: 4 }}>
-                  {captureMosaic ? (
-                    <MosaicImage src={`/api/thumbnail?workId=${encodeURIComponent(rec.workId)}`} alt={rec.title} style={{ width: '100%', height: '100%' }} />
-                  ) : (
-                    <img src={`/api/thumbnail?workId=${encodeURIComponent(rec.workId)}`} alt={rec.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  )}
-                </div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: '#1f2937', margin: '0 0 2px 0', lineHeight: 1.3, minHeight: 29, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{rec.title}</p>
-                <p style={{ fontSize: 9, color: '#6b7280', margin: 0 }}>{rec.authorName}</p>
-              </div>
-            ))}
-          </div>
+          <MobileRecommendCaptureGrid works={recommendedWorks} captureMosaic={captureMosaic} maxItems={10} />
         </div>
         <div
           style={{
@@ -591,47 +819,21 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           <div style={{ position: 'fixed', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.7) 100%)', zIndex: -1, pointerEvents: 'none' }} />
           <div style={{ width: '100%', maxWidth: 600, padding: '12px 14px 32px', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 10 }}>
             <div style={{ fontSize: 14, color: 'var(--color-text)', margin: '0 0 10px 0', fontWeight: 500, padding: '8px 12px', backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-              こんな作品なんてどう？
+              {rc.recommendResultsHeading ?? 'こんな作品なんてどう？'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
               {recommendedWorks.slice(0, 10).map(rec => (
-                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} />
+                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} matchRateLabel="好みマッチ度" />
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => handleShareMobile(false)}
-                  style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-                >
-                  結果を保存
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleShareMobile(true)}
-                  style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', lineHeight: 1.3 }}
-                >
-                  <span>結果を</span>
-                  <span>「モザイク」で保存</span>
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <a
-                  href="#"
-                  onClick={e => { e.preventDefault(); window.open(tweetIntent, '_blank', 'noopener,noreferrer'); }}
-                  style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#fff', backgroundColor: '#0f1419', border: 'none', borderRadius: 8, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  ポストする
-                </a>
-                <button
-                  type="button"
-                  onClick={onBack}
-                  style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-                >
-                  トップに戻る
-                </button>
-              </div>
+              <ResultScreenFourButtons
+                onSavePlain={() => handleShareMobile(false)}
+                onSaveMosaic={() => handleShareMobile(true)}
+                onPost={() => window.open(tweetIntent, '_blank', 'noopener,noreferrer')}
+                onBackToTop={onBack}
+                isMobile
+              />
             </div>
           </div>
         </div>
@@ -659,15 +861,25 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
         }}
         aria-hidden
       >
-        {/* 上段：タイトル画像・文言（コンパクト） */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 16 }}>
+        {/* 上段：ロゴ＋結果見出し（保存画像用） */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
           <img
-            src={LOGO_URL}
+            src={SHARE_CAPTURE_LOGO_URL}
             alt="ERONATOR"
-            style={{ height: 44, width: 'auto', maxWidth: '45%', marginBottom: 6 }}
+            style={{ height: 38, width: 'auto', maxWidth: '42%', marginBottom: 4 }}
           />
-          <p style={{ fontSize: 15, fontWeight: 700, color: '#1f2937', margin: 0 }}>
-            こんな作品なんてどう？
+          <p
+            style={{
+              margin: 0,
+              padding: '0 12px',
+              fontSize: 13,
+              fontWeight: 700,
+              color: '#1f2937',
+              lineHeight: 1.35,
+              textAlign: 'center',
+            }}
+          >
+            {rc.recommendResultsHeading ?? 'こんな作品なんてどう？'}
           </p>
         </div>
         {/* 作品カード：5列グリッド、余白ギリギリまで拡大 */}
@@ -691,7 +903,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             >
               {typeof rec.matchRate === 'number' && (
                 <div style={{ marginBottom: 6 }}>
-                  <p style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>似てる度</p>
+                  <p style={{ fontSize: 10, color: '#6b7280', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>好みマッチ度</p>
                   <p style={{ fontSize: 16, color: '#059669', fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: '0.02em' }}>{Number(rec.matchRate).toFixed(1)}％</p>
                 </div>
               )}
@@ -721,7 +933,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       <Stage
         characterVariant="usually"
         characterSpeech={
-          <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: 20 }}>こんな作品なんてどう？</p>
+          <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: 20 }}>{rc.recommendResultsHeading ?? 'こんな作品なんてどう？'}</p>
         }
         whiteboardWide={true}
       >
@@ -762,14 +974,17 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       <>
       <Stage
         characterVariant="usually"
-        characterSpeech={null}
+        mobileExtendWhiteboard={isMobile}
+        mobileWhiteboardZoom={isMobile ? 1.3 : undefined}
+        mobileWhiteboardPadding={isMobile ? '8px 10px' : undefined}
         whiteboardWide={true}
       >
-        <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-          <p style={{ margin: '0 0 16px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+        <div style={{ padding: isMobile ? '0.25rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
+          {isMobile && <div style={{ height: 28 }} />}
+          <p style={{ margin: isMobile ? '0 0 6px 0' : '0 0 16px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 16 : 17, lineHeight: 1.3 }}>
             {rc.initialMain}
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 32 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: isMobile ? 4 : 8, marginBottom: isMobile ? 8 : 32, ...(isMobile ? { width: '80%', maxWidth: '100%', marginLeft: 'auto', boxSizing: 'border-box' as const } : {}) }}>
             {[
               { value: 'famous' as const, label: 'やっぱり有名作品！' },
               { value: 'hidden' as const, label: '隠れた名作！' },
@@ -779,7 +994,9 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                 key={value}
                 onClick={() => setPopularityChoice(value)}
                 style={{
-                  ...initBtnBase,
+                  ...(isMobile
+                    ? { ...initBtnBase, padding: '11px 16px', fontSize: 18, minHeight: 50, borderRadius: 10, fontWeight: 500 }
+                    : initBtnBase),
                   backgroundColor: popularityChoice === value ? '#dbeafe' : '#faf8f5',
                   color: popularityChoice === value ? '#1d4ed8' : 'var(--color-text)',
                   border: popularityChoice === value ? `2px solid ${INITIAL_BTN_BASE}` : '2px solid #e5e7eb',
@@ -789,10 +1006,10 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
               </button>
             ))}
           </div>
-          <p style={{ margin: '0 0 16px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
+          <p style={{ margin: isMobile ? '4px 0 4px 0' : '0 0 16px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 16 : 17, lineHeight: 1.3 }}>
             {rc.initialPriorityQuestion}
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: isMobile ? 4 : 8, marginBottom: isMobile ? 6 : 20, ...(isMobile ? { width: '80%', maxWidth: '100%', marginLeft: 'auto', boxSizing: 'border-box' as const } : {}) }}>
             {CATEGORIES.map((cat) => {
               const idx = priorityOrder.indexOf(cat);
               const selected = idx >= 0;
@@ -802,7 +1019,9 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                   key={cat}
                   onClick={() => addToPriority(cat)}
                   style={{
-                    ...initBtnBase,
+                    ...(isMobile
+                      ? { ...initBtnBase, padding: '11px 16px', fontSize: 18, minHeight: 50, borderRadius: 10, fontWeight: 500 }
+                      : initBtnBase),
                     backgroundColor: selected ? `${shade}22` : '#faf8f5',
                     color: selected ? '#1d4ed8' : 'var(--color-text)',
                     border: selected ? `2px solid ${shade}` : '2px solid #e5e7eb',
@@ -810,24 +1029,32 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                   }}
                 >
                   {cat}
-                  {selected && <span style={{ fontSize: 13, fontWeight: 'bold' }}>{['①', '②', '③'][idx]}</span>}
+                  {selected && <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 'bold' }}>{['①', '②', '③'][idx]}</span>}
                 </button>
               );
             })}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'nowrap', gap: isMobile ? 8 : 12, alignItems: 'stretch', ...(isMobile ? { width: '80%', maxWidth: '100%', marginLeft: 'auto', boxSizing: 'border-box' as const } : {}) }}>
             <button
-              onClick={() => canProceedFromInitial && setStep('f1')}
+              onClick={() => {
+              if (!canProceedFromInitial) return;
+              setFrontNavStack([]);
+              setStep('f1');
+            }}
               disabled={!canProceedFromInitial}
               style={{
-                padding: isMobile ? '14px 24px' : '16px 32px',
-                fontSize: isMobile ? 16 : 17,
+                flex: isMobile ? '1.22 1 0' : undefined,
+                minWidth: 0,
+                padding: isMobile ? '12px 14px' : '16px 32px',
+                fontSize: isMobile ? 17 : 17,
+                minHeight: isMobile ? 48 : undefined,
                 fontWeight: 600,
                 backgroundColor: canProceedFromInitial ? INITIAL_BTN_BASE : '#e5e7eb',
                 color: canProceedFromInitial ? '#fff' : '#9ca3af',
                 border: 'none',
-                borderRadius: 12,
+                borderRadius: isMobile ? 10 : 12,
                 cursor: canProceedFromInitial ? 'pointer' : 'not-allowed',
+                boxSizing: 'border-box',
               }}
             >
               {rc.btnNext}
@@ -835,40 +1062,44 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             <button
               onClick={resetInitial}
               style={{
-                padding: isMobile ? '8px 16px' : '10px 20px',
-                fontSize: isMobile ? 13 : 14,
+                flex: isMobile ? '1 1 0' : undefined,
+                minWidth: 0,
+                padding: isMobile ? '12px 14px' : '10px 20px',
+                fontSize: isMobile ? 17 : 14,
+                minHeight: isMobile ? 48 : undefined,
                 fontWeight: 600,
                 backgroundColor: 'transparent',
                 color: 'var(--color-text-muted)',
                 border: '1px solid #d1d5db',
-                borderRadius: 8,
+                borderRadius: isMobile ? 10 : 8,
                 cursor: 'pointer',
+                boxSizing: 'border-box',
               }}
             >
               {rc.btnRetry}
             </button>
           </div>
-          <div style={{ marginTop: 16, width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: isMobile ? 12 : 16, width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
             <button
               type="button"
               onClick={() => setStep('ai_gate')}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                fontSize: 14,
+                gap: isMobile ? 6 : 5,
+                padding: isMobile ? '6px 10px' : '5px 8px',
+                fontSize: isMobile ? 12 : 10,
                 cursor: 'pointer',
                 backgroundColor: 'transparent',
                 border: 'none',
-                borderRadius: 6,
+                borderRadius: isMobile ? 6 : 5,
                 color: 'var(--color-text-muted)',
               }}
             >
-              <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
+              <svg style={{ width: isMobile ? 14 : 16, height: isMobile ? 14 : 16 }} viewBox="0 0 24 24" fill="currentColor">
                 <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
               </svg>
-              {rc.btnFix}
+              {rcFixBack}
             </button>
           </div>
         </div>
@@ -880,19 +1111,180 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     );
   }
 
-  const isFamousStep = ['f1', 'f1_2', 'f2', 'f2_2', 'f3', 'f3_2'].includes(step as string);
-  const isBackStep = ['s4', 's5', 's6', 's7', 's8'].includes(step as string);
+  const buildCheckedFamousKeys = (target: FrontStep, sel: SelectedTag[]) => {
+    const opts = getFamousOptionsForStep(target);
+    const optKeys = new Set(opts.map(o => o.tagKey));
+    return new Set(sel.filter(x => optKeys.has(x.tagKey)).map(x => x.tagKey));
+  };
+
+  const handleBackFromSort1 = () => {
+    setSort1Ranks(new Map());
+    const prevStack = frontNavStackRef.current;
+    const sel = selectedFamousRef.current;
+    if (prevStack.length === 0) {
+      const target = stepBeforeSort1;
+      setCheckedFamous(buildCheckedFamousKeys(target, sel));
+      setStep(target);
+      return;
+    }
+    const ent = prevStack[prevStack.length - 1]!;
+    const nextStack = prevStack.slice(0, -1);
+    if (ent.undoCount <= 0) {
+      setSelectedFamous(sel);
+      setCheckedFamous(buildCheckedFamousKeys(ent.returnTo, sel));
+    } else {
+      const popped = sel.slice(-ent.undoCount);
+      setSelectedFamous(sel.slice(0, -ent.undoCount));
+      setCheckedFamous(new Set(popped.map(x => x.tagKey)));
+    }
+    setFrontNavStack(nextStack);
+    setStep(ent.returnTo);
+  };
+
+  const handleTagFlowBackOne = () => {
+    const s = step as FrontStep | BackStep;
+    setFamousPickWarning(null);
+    if (s === 'f1') {
+      setFrontNavStack([]);
+      setCheckedFamous(new Set());
+      setStep('initial');
+    } else if (isFamousStep) {
+      const prevStack = frontNavStackRef.current;
+      if (prevStack.length === 0) return;
+      const ent = prevStack[prevStack.length - 1]!;
+      const nextStack = prevStack.slice(0, -1);
+      const sel = selectedFamousRef.current;
+      if (ent.undoCount <= 0) {
+        setSelectedFamous(sel);
+        setCheckedFamous(buildCheckedFamousKeys(ent.returnTo, sel));
+      } else {
+        const popped = sel.slice(-ent.undoCount);
+        setSelectedFamous(sel.slice(0, -ent.undoCount));
+        setCheckedFamous(new Set(popped.map(x => x.tagKey)));
+      }
+      setFrontNavStack(nextStack);
+      setStep(ent.returnTo);
+    } else if (s === 's4') {
+      setBackNavStack([]);
+      setStep('sort1');
+    } else if (isBackStep) {
+      const prevStack = backNavStackRef.current;
+      const sel = selectedUnknownRef.current;
+      const tags = unknownTagsForBackRef.current;
+      if (prevStack.length > 0) {
+        const ent = prevStack[prevStack.length - 1]!;
+        const nextStack = prevStack.slice(0, -1);
+        if (ent.undoCount <= 0) {
+          setSelectedUnknown(sel);
+          setCheckedUnknown(buildCheckedUnknownKeys(ent.returnTo, sel, tags));
+        } else {
+          const popped = sel.slice(-ent.undoCount);
+          setSelectedUnknown(sel.slice(0, -ent.undoCount));
+          setCheckedUnknown(new Set(popped.map(x => x.tagKey)));
+        }
+        setBackNavStack(nextStack);
+        setStep(ent.returnTo);
+      } else {
+        const prevMap: Record<string, BackStep> = { s5: 's4', s6: 's5', s7: 's6', s8: 's7' };
+        const prevStep = prevMap[s];
+        if (prevStep) {
+          setCheckedUnknown(buildCheckedUnknownKeys(prevStep, sel, tags));
+          setStep(prevStep);
+        }
+      }
+    }
+  };
+
+  const handleBackFromSort2 = () => {
+    setSort2Ranks(new Map());
+    const target = stepBeforeSort2 ?? 's8';
+    const sel = selectedUnknownRef.current;
+    const tags = unknownTagsForBackRef.current;
+    setStep(target);
+    setCheckedUnknown(buildCheckedUnknownKeys(target, sel, tags));
+  };
+
   const questionNumDisplay = isFamousStep
     ? (step === 'f1' ? '1' : step === 'f1_2' ? '1-2' : step === 'f2' ? '2' : step === 'f2_2' ? '2-2' : step === 'f3' ? '3' : '3-2')
     : isBackStep
       ? String(BACK_STEPS.indexOf(step as BackStep) + 4)
       : '1';
-  const instruction = isFamousStep ? rc.questionFamous : rc.questionUnknown;
+  const instruction =
+    famousCatForPicked != null ? getFamousQuestionForCategory(rc as RecommendCopy, famousCatForPicked) : rc.questionUnknown;
 
-  const sortPrompt = (rc as { sortPrompt?: string }).sortPrompt ?? '今選んでいる要素を、好きな順に５つ並べて';
+  const previewAddedForFamousOk = (): SelectedTag[] => {
+    if (!isFamousStep) return [];
+    const s = step as FrontStep;
+    const cat = s.startsWith('f1') ? priorityOrder[0]! : s.startsWith('f2') ? priorityOrder[1]! : priorityOrder[2]!;
+    const a: SelectedTag[] = [];
+    for (const key of checkedFamous) {
+      const opt = currentFamousOptions.find(o => o.tagKey === key);
+      if (opt) a.push({ tagKey: key, displayName: opt.displayName, category: cat });
+    }
+    return a;
+  };
+
+  /** 質問1 / 1-2 など、同一カテゴリ内でまだ1件も無いときは「これでok」不可（「この中にはない」は別ボタン） */
+  const famousPrimaryDisabled =
+    isFamousStep &&
+    (() => {
+      const s = step as FrontStep;
+      const cat = s.startsWith('f1') ? priorityOrder[0]! : s.startsWith('f2') ? priorityOrder[1]! : priorityOrder[2]!;
+      return countCategoryAfterAdd(cat, previewAddedForFamousOk()) < 1;
+    })();
+
+  /** 何か選択中は「この中にはない」と併用できない */
+  const notInListDisabled =
+    (isFamousStep && checkedFamous.size > 0) || (isBackStep && checkedUnknown.size > 0);
+
+  const sortFixBtnStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: isMobile ? '6px 12px' : '5px 8px',
+    fontSize: isMobile ? 14 : 10,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 6,
+    color: 'var(--color-text-muted)',
+  };
+
+  /** PC・整理画面下段の「ひとつ前」（コンパクト） */
+  const recommendBackOneStepStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 3,
+    padding: isMobile ? '2px 5px' : '4px 8px',
+    fontSize: isMobile ? 10 : 10,
+    lineHeight: 1.2,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 4,
+    color: 'var(--color-text-muted)',
+  };
+
+  /** モバイル：フッター直上・右下固定の「ひとつ前」（コンパクト） */
+  const recommendMobileQuizBackStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 3,
+    padding: '2px 6px',
+    fontSize: 10,
+    lineHeight: 1.2,
+    cursor: 'pointer',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 4,
+    color: 'var(--color-text-muted)',
+  };
+
+  const rcTyped = rc as RecommendCopy;
 
   if (step === 'sort1') {
     const items = selectedFamous;
+    const sort1Max = items.length === 0 ? 0 : Math.min(5, items.length);
     const toggleRank = (tagKey: string) => {
       setSort1Ranks(prev => {
         const current = prev.get(tagKey);
@@ -902,18 +1294,19 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           next.delete(tagKey);
           return next;
         }
-        if (used.size >= 5) return prev;
-        const nextRank = [1, 2, 3, 4, 5].find(r => !used.has(r as 1 | 2 | 3 | 4 | 5)) as 1 | 2 | 3 | 4 | 5;
+        if (used.size >= sort1Max) return prev;
+        const nextRank = ([1, 2, 3, 4, 5] as const).find(r => r <= sort1Max && !used.has(r));
+        if (nextRank === undefined) return prev;
         return new Map(prev).set(tagKey, nextRank);
       });
     };
     const resetSort1 = () => setSort1Ranks(new Map());
     const ranked = Array.from(sort1Ranks.entries())
-      .filter(([, r]) => r >= 1 && r <= 5)
+      .filter(([, r]) => r >= 1 && r <= sort1Max)
       .sort((a, b) => a[1] - b[1])
       .map(([tagKey]) => items.find(i => i.tagKey === tagKey))
       .filter(Boolean) as SelectedTag[];
-    const canProceedSort1 = ranked.length === 5;
+    const canProceedSort1 = sort1Max > 0 && ranked.length === sort1Max;
     const proceedFromSort1 = () => {
       const r: RankedTag[] = ranked.map((t, i) => ({ ...t, rank: (i + 1) as 1 | 2 | 3 | 4 | 5 }));
       setRankedFamous(r);
@@ -923,7 +1316,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     const col2 = items.slice(5, 10);
     const col3 = items.slice(10, 15);
     const renderCol = (col: SelectedTag[], idx: number) => (
-      <div key={`sort1-col-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div key={`sort1-col-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 3 : 6 }}>
         {col.map(t => {
           const r = sort1Ranks.get(t.tagKey);
           return (
@@ -932,10 +1325,11 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
               type="button"
               onClick={() => toggleRank(t.tagKey)}
               style={{
-                padding: '10px 14px',
-                fontSize: isMobile ? 15 : 14,
+                padding: isMobile ? '5px 7px' : '10px 12px',
+                fontSize: isMobile ? 11 : 16.5,
                 fontWeight: 500,
                 textAlign: 'left',
+                minHeight: isMobile ? 23 : 36,
                 backgroundColor: r ? '#dbeafe' : '#faf8f5',
                 color: r ? '#1d4ed8' : 'var(--color-text)',
                 border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
@@ -949,34 +1343,233 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
         })}
       </div>
     );
-    const sortBtnStyle = { padding: isMobile ? '8px 16px' : '10px 20px', fontSize: isMobile ? 13 : 14, fontWeight: 600, borderRadius: 8, cursor: 'pointer' as const };
+    const sortBtnStyle = {
+      padding: isMobile ? '6px 10px' : '8px 16px',
+      fontSize: isMobile ? 13 : 13,
+      fontWeight: 600,
+      borderRadius: 6,
+      cursor: 'pointer' as const,
+      boxSizing: 'border-box' as const,
+      ...(isMobile ? { minHeight: 30 } : {}),
+    };
     return (
       <>
-        <Stage characterVariant="usually" characterSpeech={<p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{sortPrompt}</p>} whiteboardWide={true}>
-          <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20, maxWidth: 600 }}>
-              {col1.length > 0 && renderCol(col1, 0)}
-              {col2.length > 0 && renderCol(col2, 1)}
-              {col3.length > 0 && renderCol(col3, 2)}
-            </div>
-            <div style={{ marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 8, flexDirection: 'row' }}>
-              {([1, 2, 3, 4, 5] as const).map(r => {
-                const t = ranked.find((_, i) => i + 1 === r);
-                return (
-                  <span key={r} style={{ padding: '6px 12px', minWidth: 80, fontSize: isMobile ? 14 : 13, backgroundColor: t ? '#dbeafe' : 'transparent', color: t ? '#1d4ed8' : 'var(--color-text-muted)', borderRadius: 8, border: `2px solid ${t ? '#3b82f6' : '#e5e7eb'}` }}>
-                    {r}位{t ? `: ${t.displayName}` : ''}
-                  </span>
-                );
-              })}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <button onClick={proceedFromSort1} disabled={!canProceedSort1} style={{ padding: isMobile ? '14px 24px' : '16px 32px', fontSize: isMobile ? 16 : 17, fontWeight: 600, backgroundColor: canProceedSort1 ? '#3b82f6' : '#e5e7eb', color: canProceedSort1 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 12, cursor: canProceedSort1 ? 'pointer' : 'not-allowed' }}>
-                {rc.btnNext}
-              </button>
-              <button onClick={resetSort1} style={{ ...sortBtnStyle, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
-                {rc.btnRetry}
-              </button>
-            </div>
+        <Stage
+          characterVariant="usually"
+          characterSpeech={isMobile ? undefined : <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>{getSortPromptFront(rcTyped)}</p>}
+          mobileHideCharacter={isMobile}
+          mobileExtendWhiteboard={isMobile}
+          mobileWhiteboardOverflowY={isMobile ? 'hidden' : undefined}
+          whiteboardWide={true}
+          mobileCanvasBodyHeightPx={isMobile ? MOBILE_RECOMMEND_CANVAS_BODY_PX : undefined}
+        >
+          <div
+            style={{
+              padding: isMobile ? '0.15rem 0' : '1rem 0',
+              maxWidth: '100%',
+              minWidth: 0,
+              ...(isMobile
+                ? {
+                    height: '100%',
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    boxSizing: 'border-box',
+                  }
+                : {}),
+            }}
+          >
+            {!isMobile ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 16, maxWidth: 600 }}>
+                  {col1.length > 0 && renderCol(col1, 0)}
+                  {col2.length > 0 && renderCol(col2, 1)}
+                  {col3.length > 0 && renderCol(col3, 2)}
+                </div>
+                <div style={{ margin: '0 0 16px 0', display: 'flex', flexWrap: 'wrap', gap: 6, flexDirection: 'row' }}>
+                  {([1, 2, 3, 4, 5] as const).map(r => {
+                    const tt = ranked.find((_, i) => i + 1 === r);
+                    return (
+                      <span key={r} style={{ padding: '5px 10px', minWidth: 64, fontSize: 12, backgroundColor: tt ? '#dbeafe' : 'transparent', color: tt ? '#1d4ed8' : 'var(--color-text-muted)', borderRadius: 6, border: `2px solid ${tt ? '#3b82f6' : '#e5e7eb'}` }}>
+                        {r}位{tt ? `: ${tt.displayName}` : ''}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', width: '100%' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={proceedFromSort1}
+                      disabled={!canProceedSort1}
+                      style={{
+                        padding: '13px 26px',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        backgroundColor: canProceedSort1 ? '#3b82f6' : '#e5e7eb',
+                        color: canProceedSort1 ? '#fff' : '#9ca3af',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: canProceedSort1 ? 'pointer' : 'not-allowed',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {getBtnNextSortFront(rcTyped)}
+                    </button>
+                    <button type="button" onClick={resetSort1} style={{ ...sortBtnStyle, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
+                      {rc.btnRetry}
+                    </button>
+                  </div>
+                  <button type="button" onClick={handleBackFromSort1} style={recommendBackOneStepStyle}>
+                    <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                    </svg>
+                    {rcFixBack}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 320,
+                  margin: '0 auto',
+                  boxSizing: 'border-box',
+                  position: 'relative',
+                  flex: 1,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    paddingBottom: MOBILE_TAG_FLOW_BACK_RESERVE_PX,
+                  }}
+                >
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: 14, lineHeight: 1.3, flexShrink: 0 }}>
+                    {getSortPromptFront(rcTyped)}
+                  </p>
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', width: '100%' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, marginBottom: 6, maxWidth: 600 }}>
+                      {items.map(t => {
+                        const r = sort1Ranks.get(t.tagKey);
+                        return (
+                          <button
+                            key={t.tagKey}
+                            type="button"
+                            onClick={() => toggleRank(t.tagKey)}
+                            style={{
+                              padding: '5px 7px',
+                              fontSize: 11,
+                              fontWeight: 500,
+                              textAlign: 'left',
+                              minHeight: 23,
+                              backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                              color: r ? '#1d4ed8' : 'var(--color-text)',
+                              border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {t.displayName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      margin: '6px 0 0 0',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 6,
+                      rowGap: 6,
+                      width: '100%',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {([1, 2, 3, 4, 5] as const).map(r => {
+                      const tt = ranked.find((_, i) => i + 1 === r);
+                      return (
+                        <span
+                          key={r}
+                          style={{
+                            padding: '2px 6px',
+                            minWidth: 0,
+                            fontSize: 9,
+                            backgroundColor: tt ? '#dbeafe' : 'transparent',
+                            color: tt ? '#1d4ed8' : 'var(--color-text-muted)',
+                            borderRadius: 6,
+                            border: `2px solid ${tt ? '#3b82f6' : '#e5e7eb'}`,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {r}位{tt ? `: ${tt.displayName}` : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', width: '100%', marginTop: 14, marginBottom: 0, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={proceedFromSort1}
+                      disabled={!canProceedSort1}
+                      style={{
+                        padding: '8px 11px',
+                        fontSize: 13,
+                        minHeight: 30,
+                        fontWeight: 600,
+                        backgroundColor: canProceedSort1 ? '#3b82f6' : '#e5e7eb',
+                        color: canProceedSort1 ? '#fff' : '#9ca3af',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: canProceedSort1 ? 'pointer' : 'not-allowed',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {getBtnNextSortFront(rcTyped)}
+                    </button>
+                    <button type="button" onClick={resetSort1} style={{ ...sortBtnStyle, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
+                      {rc.btnRetry}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 2,
+                    right: 0,
+                    left: 0,
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    paddingRight: 2,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleBackFromSort1}
+                    style={{ ...recommendMobileQuizBackStyle, pointerEvents: 'auto' }}
+                  >
+                    <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                    </svg>
+                    {rcFixBack}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </Stage>
         {isDebugLocal && <RecommendDebugPanel debug={debugData} open={debugPanelOpen} onToggle={() => setDebugPanelOpen(v => !v)} onForceNavigateToResults={handleForceNavigateToResults} />}
@@ -986,6 +1579,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
 
   if (step === 'sort2') {
     const combined = [...rankedFamous, ...selectedUnknown.slice(0, 9)];
+    const sort2Max = combined.length === 0 ? 0 : Math.min(5, combined.length);
     const toggleRank = (tagKey: string) => {
       setSort2Ranks(prev => {
         const current = prev.get(tagKey);
@@ -995,18 +1589,19 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           next.delete(tagKey);
           return next;
         }
-        if (used.size >= 5) return prev;
-        const nextRank = [1, 2, 3, 4, 5].find(r => !used.has(r as 1 | 2 | 3 | 4 | 5)) as 1 | 2 | 3 | 4 | 5;
+        if (used.size >= sort2Max) return prev;
+        const nextRank = ([1, 2, 3, 4, 5] as const).find(r => r <= sort2Max && !used.has(r));
+        if (nextRank === undefined) return prev;
         return new Map(prev).set(tagKey, nextRank);
       });
     };
     const resetSort2 = () => setSort2Ranks(new Map());
     const ranked = Array.from(sort2Ranks.entries())
-      .filter(([, r]) => r >= 1 && r <= 5)
+      .filter(([, r]) => r >= 1 && r <= sort2Max)
       .sort((a, b) => a[1] - b[1])
       .map(([tagKey]) => combined.find(i => i.tagKey === tagKey))
       .filter(Boolean) as (SelectedTag & { category?: CategoryLabel })[];
-    const canProceedSort2 = ranked.length === 5;
+    const canProceedSort2 = sort2Max > 0 && ranked.length === sort2Max;
     const proceedFromSort2 = () => {
       const r: RankedTag[] = ranked.map((t, i) => ({ ...t, rank: (i + 1) as 1 | 2 | 3 | 4 | 5 }));
       setRankedFinal(r);
@@ -1018,7 +1613,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     const col2 = backTags.slice(5, 10);
     const col3 = backTags.slice(10, 15);
     const renderCol = (col: typeof backTags, idx: number) => (
-      <div key={`sort2-col-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div key={`sort2-col-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {col.map(t => {
           const r = sort2Ranks.get(t.tagKey);
           return (
@@ -1027,10 +1622,15 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
               type="button"
               onClick={() => toggleRank(t.tagKey)}
               style={{
-                padding: '10px 14px',
-                fontSize: isMobile ? 15 : 14,
+                display: 'flex',
+                alignItems: 'center',
+                padding: isMobile ? '5px 7px' : '10px 12px',
+                fontSize: isMobile ? 11 : 16.5,
+                minHeight: isMobile ? 23 : 36,
                 fontWeight: 500,
                 textAlign: 'left',
+                width: '100%',
+                boxSizing: 'border-box',
                 backgroundColor: r ? '#dbeafe' : '#faf8f5',
                 color: r ? '#1d4ed8' : 'var(--color-text)',
                 border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
@@ -1038,70 +1638,292 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                 cursor: 'pointer',
               }}
             >
-              {t.displayName}
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.displayName}</span>
             </button>
           );
         })}
       </div>
     );
-    const sortBtnStyle = { padding: isMobile ? '8px 16px' : '10px 20px', fontSize: isMobile ? 13 : 14, fontWeight: 600, borderRadius: 8, cursor: 'pointer' as const };
+    const sortBtnStyle2 = {
+      padding: isMobile ? '6px 10px' : '8px 16px',
+      fontSize: isMobile ? 13 : 13,
+      fontWeight: 600,
+      borderRadius: 6,
+      cursor: 'pointer' as const,
+      boxSizing: 'border-box' as const,
+      ...(isMobile ? { minHeight: 30 } : {}),
+    };
     return (
       <>
-        <Stage characterVariant="usually" characterSpeech={<p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{sortPrompt}</p>} whiteboardWide={true}>
-          <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-            <p style={{ fontSize: isMobile ? 11 : 10, color: 'var(--color-text-muted)', margin: '0 0 10px 0', fontWeight: 500 }}>前半の１位～５位</p>
-            <div style={{ display: 'flex', gap: 16, marginBottom: 20, alignItems: 'stretch' }}>
-              <div style={{ flexShrink: 0 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 140 }}>
-                  {rankedFamous.map((t, i) => {
-                    const r = sort2Ranks.get(t.tagKey);
+        <Stage
+          characterVariant="usually"
+          characterSpeech={isMobile ? undefined : <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>{getSortPromptBack(rcTyped)}</p>}
+          mobileHideCharacter={isMobile}
+          mobileExtendWhiteboard={isMobile}
+          mobileWhiteboardOverflowY={isMobile ? 'hidden' : undefined}
+          whiteboardWide={true}
+          mobileCanvasBodyHeightPx={isMobile ? MOBILE_RECOMMEND_CANVAS_BODY_PX : undefined}
+        >
+          <div
+            style={{
+              padding: isMobile ? '0.15rem 0' : '1rem 0',
+              maxWidth: '100%',
+              minWidth: 0,
+              ...(isMobile
+                ? {
+                    height: '100%',
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    boxSizing: 'border-box',
+                  }
+                : {}),
+            }}
+          >
+            {isMobile ? (
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 320,
+                  margin: '0 auto',
+                  boxSizing: 'border-box',
+                  position: 'relative',
+                  flex: 1,
+                  minHeight: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden',
+                    paddingBottom: MOBILE_TAG_FLOW_BACK_RESERVE_PX,
+                  }}
+                >
+                  <p style={{ margin: '0 0 8px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: 14, lineHeight: 1.3, flexShrink: 0 }}>{getSortPromptBack(rcTyped)}</p>
+                  <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', width: '100%' }}>
+                    <p style={{ fontSize: 8, color: 'var(--color-text-muted)', margin: '0 0 4px 0', fontWeight: 500 }}>前半の１位～５位</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 6, paddingBottom: 6, borderBottom: '3px solid #6b7280' }}>
+                      {rankedFamous.map((t) => {
+                        const rr = sort2Ranks.get(t.tagKey);
+                        return (
+                          <button
+                            key={t.tagKey}
+                            type="button"
+                            onClick={() => toggleRank(t.tagKey)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '5px 7px',
+                              fontSize: 11,
+                              minHeight: 23,
+                              fontWeight: 500,
+                              textAlign: 'left',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              backgroundColor: rr ? '#dbeafe' : '#faf8f5',
+                              color: rr ? '#1d4ed8' : 'var(--color-text)',
+                              border: `2px solid ${rr ? '#3b82f6' : '#e5e7eb'}`,
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.displayName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginTop: 6, marginBottom: 6 }}>
+                      {backTags.map(t => {
+                        const r = sort2Ranks.get(t.tagKey);
+                        return (
+                          <button
+                            key={t.tagKey}
+                            type="button"
+                            onClick={() => toggleRank(t.tagKey)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '5px 7px',
+                              fontSize: 11,
+                              minHeight: 23,
+                              fontWeight: 500,
+                              textAlign: 'left',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                              color: r ? '#1d4ed8' : 'var(--color-text)',
+                              border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.displayName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      margin: '6px 0 0 0',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: 6,
+                      rowGap: 6,
+                      width: '100%',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {Array.from({ length: sort2Max }, (_, i) => (i + 1) as 1 | 2 | 3 | 4 | 5).map(r => {
+                      const tt = ranked.find((_, j) => j + 1 === r);
+                      return (
+                        <span
+                          key={r}
+                          style={{
+                            padding: '2px 6px',
+                            minWidth: 0,
+                            fontSize: 9,
+                            backgroundColor: tt ? '#dbeafe' : 'transparent',
+                            color: tt ? '#1d4ed8' : 'var(--color-text-muted)',
+                            borderRadius: 6,
+                            border: `2px solid ${tt ? '#3b82f6' : '#e5e7eb'}`,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          {r}位{tt ? `: ${tt.displayName}` : ''}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', width: '100%', marginTop: 14, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={proceedFromSort2}
+                      disabled={!canProceedSort2}
+                      style={{
+                        padding: '8px 11px',
+                        fontSize: 13,
+                        minHeight: 30,
+                        fontWeight: 600,
+                        backgroundColor: canProceedSort2 ? '#3b82f6' : '#e5e7eb',
+                        color: canProceedSort2 ? '#fff' : '#9ca3af',
+                        border: 'none',
+                        borderRadius: 10,
+                        cursor: canProceedSort2 ? 'pointer' : 'not-allowed',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      {getBtnNextSortBack(rcTyped)}
+                    </button>
+                    <button type="button" onClick={resetSort2} style={{ ...sortBtnStyle2, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
+                      {rc.btnRetry}
+                    </button>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 2,
+                    right: 0,
+                    left: 0,
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    paddingRight: 2,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleBackFromSort2}
+                    style={{ ...recommendMobileQuizBackStyle, pointerEvents: 'auto' }}
+                  >
+                    <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                    </svg>
+                    {rcFixBack}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: 8, color: 'var(--color-text-muted)', margin: '0 0 8px 0', fontWeight: 500 }}>前半の１位～５位</p>
+                <div style={{ display: 'flex', gap: 13, marginBottom: 16, alignItems: 'stretch' }}>
+                  <div style={{ flexShrink: 0 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 112 }}>
+                      {rankedFamous.map((t) => {
+                        const r = sort2Ranks.get(t.tagKey);
+                        return (
+                          <button
+                            key={t.tagKey}
+                            type="button"
+                            onClick={() => toggleRank(t.tagKey)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '10px 12px',
+                              fontSize: 16.5,
+                              minHeight: 36,
+                              fontWeight: 500,
+                              textAlign: 'left',
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                              color: r ? '#1d4ed8' : 'var(--color-text)',
+                              border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                              borderRadius: 8,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.displayName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, borderLeft: '3px solid #6b7280', paddingLeft: 13 }}>
+                    {col1.length > 0 && renderCol(col1, 0)}
+                    {col2.length > 0 && renderCol(col2, 1)}
+                    {col3.length > 0 && renderCol(col3, 2)}
+                  </div>
+                </div>
+                <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 6, flexDirection: 'row' }}>
+                  {Array.from({ length: sort2Max }, (_, i) => (i + 1) as 1 | 2 | 3 | 4 | 5).map(r => {
+                    const tt = ranked.find((_, j) => j + 1 === r);
                     return (
-                      <button
-                        key={t.tagKey}
-                        type="button"
-                        onClick={() => toggleRank(t.tagKey)}
-                        style={{
-                          padding: '10px 14px',
-                          fontSize: isMobile ? 15 : 14,
-                          fontWeight: 500,
-                          textAlign: 'left',
-                          backgroundColor: r ? '#dbeafe' : '#faf8f5',
-                          color: r ? '#1d4ed8' : 'var(--color-text)',
-                          border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
-                          borderRadius: 8,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {t.displayName}
-                      </button>
+                      <span key={r} style={{ padding: '5px 10px', minWidth: 64, fontSize: 12, backgroundColor: tt ? '#dbeafe' : 'transparent', color: tt ? '#1d4ed8' : 'var(--color-text-muted)', borderRadius: 6, border: `2px solid ${tt ? '#3b82f6' : '#e5e7eb'}` }}>
+                        {r}位{tt ? `: ${tt.displayName}` : ''}
+                      </span>
                     );
                   })}
                 </div>
-              </div>
-              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, borderLeft: '3px solid #6b7280', paddingLeft: 16 }}>
-                {col1.length > 0 && renderCol(col1, 0)}
-                {col2.length > 0 && renderCol(col2, 1)}
-                {col3.length > 0 && renderCol(col3, 2)}
-              </div>
-            </div>
-            <div style={{ marginBottom: 20, display: 'flex', flexWrap: 'wrap', gap: 8, flexDirection: 'row' }}>
-              {([1, 2, 3, 4, 5] as const).map(r => {
-                const t = ranked.find((_, i) => i + 1 === r);
-                return (
-                  <span key={r} style={{ padding: '6px 12px', minWidth: 80, fontSize: isMobile ? 14 : 13, backgroundColor: t ? '#dbeafe' : 'transparent', color: t ? '#1d4ed8' : 'var(--color-text-muted)', borderRadius: 8, border: `2px solid ${t ? '#3b82f6' : '#e5e7eb'}` }}>
-                    {r}位{t ? `: ${t.displayName}` : ''}
-                  </span>
-                );
-              })}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-              <button onClick={proceedFromSort2} disabled={!canProceedSort2} style={{ padding: isMobile ? '14px 24px' : '16px 32px', fontSize: isMobile ? 16 : 17, fontWeight: 600, backgroundColor: canProceedSort2 ? '#3b82f6' : '#e5e7eb', color: canProceedSort2 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 12, cursor: canProceedSort2 ? 'pointer' : 'not-allowed' }}>
-                {rc.btnNext}
-              </button>
-              <button onClick={resetSort2} style={{ ...sortBtnStyle, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
-                {rc.btnRetry}
-              </button>
-            </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', width: '100%' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                    <button type="button" onClick={proceedFromSort2} disabled={!canProceedSort2} style={{ padding: '13px 26px', fontSize: 14, fontWeight: 600, backgroundColor: canProceedSort2 ? '#3b82f6' : '#e5e7eb', color: canProceedSort2 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 10, cursor: canProceedSort2 ? 'pointer' : 'not-allowed' }}>
+                      {getBtnNextSortBack(rcTyped)}
+                    </button>
+                    <button type="button" onClick={resetSort2} style={{ ...sortBtnStyle2, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
+                      {rc.btnRetry}
+                    </button>
+                  </div>
+                  <button type="button" onClick={handleBackFromSort2} style={recommendBackOneStepStyle}>
+                    <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                    </svg>
+                    {rcFixBack}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </Stage>
         {isDebugLocal && <RecommendDebugPanel debug={debugData} open={debugPanelOpen} onToggle={() => setDebugPanelOpen(v => !v)} onForceNavigateToResults={handleForceNavigateToResults} />}
@@ -1126,10 +1948,15 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
         type="button"
         onClick={onToggle}
         style={{
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
-          padding: '10px 12px',
-          fontSize: isMobile ? 15 : 14,
+          padding: isMobile ? '5px 6px' : '8px 10px',
+          fontSize: isMobile ? 10 : 14,
+          minHeight: isMobile ? 22 : 34,
           fontWeight: 500,
           textAlign: 'left',
           backgroundColor: checked ? '#dbeafe' : '#faf8f5',
@@ -1139,15 +1966,15 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           cursor: 'pointer',
         }}
       >
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
       </button>
     );
 
     const gridStyle: React.CSSProperties = {
       display: 'grid',
-      gridTemplateColumns: 'repeat(4, 1fr)',
-      gap: 8,
-      marginBottom: 20,
+      gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+      gap: isMobile ? 5 : 6,
+      marginBottom: isMobile ? 8 : 16,
     };
 
     if (isFamousStep) {
@@ -1192,122 +2019,274 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
     <Stage
       characterVariant="usually"
       characterSpeech={
-        <div style={isMobile ? { fontSize: 24, lineHeight: 1.3, textAlign: 'center' } : {}}>
-          <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: isMobile ? 28 : 22, height: isMobile ? 28 : 22, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: isMobile ? 14 : 12, fontWeight: 'bold', marginRight: 8, verticalAlign: 'middle' }}>
-              {questionNumDisplay}
-            </span>
-            {instruction}
-          </p>
-        </div>
+        isMobile ? undefined : (
+          <div>
+            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: 12, fontWeight: 'bold', marginRight: 8, verticalAlign: 'middle' }}>
+                {questionNumDisplay}
+              </span>
+              {instruction}
+            </p>
+          </div>
+        )
       }
+      mobileHideCharacter={isMobile}
+      mobileExtendWhiteboard={isMobile}
+      mobileWhiteboardOverflowY={isMobile ? 'hidden' : undefined}
       whiteboardWide={true}
+      mobileCanvasBodyHeightPx={isMobile ? MOBILE_RECOMMEND_CANVAS_BODY_PX : undefined}
     >
-      <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-        {renderTagGrid()}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <button
-            onClick={() => (isFamousStep ? goNextFromFamous() : goNextFromUnknown())}
-            style={{
-              padding: isMobile ? '14px 24px' : '16px 32px',
-              fontSize: isMobile ? 16 : 17,
-              fontWeight: 600,
-              backgroundColor: '#3b82f6',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 12,
-              cursor: 'pointer',
-            }}
-          >
-            {rc.btnOk}
-          </button>
-          <button
-            onClick={() => {
-              if (isFamousStep) setCheckedFamous(new Set());
-              else setCheckedUnknown(new Set());
-            }}
-            style={{
-              padding: isMobile ? '8px 16px' : '10px 20px',
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: 600,
-              backgroundColor: '#faf8f5',
-              color: 'var(--color-text)',
-              border: '2px solid #e5e7eb',
-              borderRadius: 8,
-              cursor: 'pointer',
-            }}
-          >
-            {rc.btnRetry}
-          </button>
-          <button
-            onClick={() => (isFamousStep ? goNextFromFamous(true) : goNextFromUnknown(true))}
-            style={{
-              padding: isMobile ? '8px 16px' : '10px 20px',
-              fontSize: isMobile ? 13 : 14,
-              fontWeight: 600,
-              backgroundColor: '#faf8f5',
-              color: 'var(--color-text)',
-              border: '2px solid #e5e7eb',
-              borderRadius: 8,
-              cursor: 'pointer',
-            }}
-          >
-            {rc.btnNotInList}
-          </button>
-        </div>
-        {(isFamousStep || isBackStep) && (
-          <div style={{ marginTop: 16, width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              onClick={() => {
-                const s = step as FrontStep | BackStep;
-                if (s === 'f1') {
-                  setCheckedFamous(new Set());
-                  setStep('initial');
-                } else if (isFamousStep) {
-                  const prevMap: Record<string, FrontStep> = { f1_2: 'f1', f2: 'f1_2', f2_2: 'f2', f3: 'f2_2', f3_2: 'f3' };
-                  const prev = prevMap[s];
-                  if (prev) {
-                    const toRestore = selectedFamous.slice(-lastAddedFamousCount);
-                    setSelectedFamous(prev => prev.slice(0, -lastAddedFamousCount));
-                    setCheckedFamous(new Set(toRestore.map(x => x.tagKey)));
-                    setStep(prev);
-                  }
-                } else if (s === 's4') {
-                  setStep('sort1');
-                } else if (isBackStep) {
-                  const prevMap: Record<string, BackStep> = { s5: 's4', s6: 's5', s7: 's6', s8: 's7' };
-                  const prev = prevMap[s];
-                  if (prev) {
-                    const toRestore = selectedUnknown.slice(-lastAddedUnknownCount);
-                    setSelectedUnknown(prev => prev.slice(0, -lastAddedUnknownCount));
-                    setCheckedUnknown(new Set(toRestore.map(x => x.tagKey)));
-                    setStep(prev);
-                  }
-                }
-              }}
-              style={{
+      <div
+        style={{
+          padding: isMobile ? '0.25rem 0' : '1rem 0',
+          maxWidth: '100%',
+          minWidth: 0,
+          ...(isMobile
+            ? {
+                height: '100%',
+                minHeight: 0,
                 display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '6px 12px',
-                fontSize: 14,
-                cursor: 'pointer',
-                backgroundColor: 'transparent',
-                border: 'none',
-                borderRadius: 6,
-                color: 'var(--color-text-muted)',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                boxSizing: 'border-box',
+              }
+            : {}),
+        }}
+      >
+        {isMobile ? (
+          <div
+            style={{
+              width: '100%',
+              maxWidth: 320,
+              margin: '0 auto',
+              boxSizing: 'border-box',
+              position: 'relative',
+              flex: 1,
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+                paddingBottom: MOBILE_TAG_FLOW_BACK_RESERVE_PX,
               }}
             >
-              <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
-              </svg>
-              {rc.btnFix}
-            </button>
+              <p style={{ margin: '0 0 8px 0', fontWeight: 600, color: 'var(--color-text)', fontSize: 13, lineHeight: 1.35, flexShrink: 0 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, backgroundColor: '#334155', color: '#fff', borderRadius: 6, fontSize: 9, fontWeight: 'bold', marginRight: 6, verticalAlign: 'middle' }}>
+                  {questionNumDisplay}
+                </span>
+                {instruction}
+              </p>
+              <div style={{ width: '100%', overflow: 'hidden', flexShrink: 0 }}>{renderTagGrid()}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', width: '100%', marginBottom: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  aria-disabled={famousPrimaryDisabled && isFamousStep}
+                  onClick={() => (isFamousStep ? goNextFromFamous() : goNextFromUnknown())}
+                  style={{
+                    flex: '1 1 30%',
+                    minWidth: 0,
+                    padding: '6px 10px',
+                    fontSize: 14,
+                    minHeight: 34,
+                    fontWeight: 600,
+                    backgroundColor: isFamousStep && famousPrimaryDisabled ? '#e5e7eb' : '#3b82f6',
+                    color: isFamousStep && famousPrimaryDisabled ? '#9ca3af' : '#fff',
+                    border: 'none',
+                    borderRadius: 8,
+                    cursor: isFamousStep && famousPrimaryDisabled ? 'not-allowed' : 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {rc.btnOk}
+                </button>
+                <button
+                  type="button"
+                  disabled={notInListDisabled}
+                  onClick={() => (isFamousStep ? goNextFromFamous(true) : goNextFromUnknown(true))}
+                  style={{
+                    flex: '1 1 40%',
+                    minWidth: 0,
+                    padding: '6px 10px',
+                    fontSize: 14,
+                    minHeight: 34,
+                    fontWeight: 600,
+                    backgroundColor: notInListDisabled ? '#f3f4f6' : '#faf8f5',
+                    color: notInListDisabled ? '#9ca3af' : 'var(--color-text)',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: 8,
+                    cursor: notInListDisabled ? 'not-allowed' : 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {rc.btnNotInList}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isFamousStep) {
+                      setFamousPickWarning(null);
+                      setCheckedFamous(new Set());
+                    } else {
+                      setCheckedUnknown(new Set());
+                    }
+                  }}
+                  style={{
+                    flex: '1 1 25%',
+                    minWidth: 0,
+                    padding: '6px 10px',
+                    fontSize: 14,
+                    minHeight: 34,
+                    fontWeight: 600,
+                    backgroundColor: '#fff',
+                    color: 'var(--color-text-muted)',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {rc.btnRetry}
+                </button>
+              </div>
+              {isFamousStep && <RecommendPickedTagsRow tags={frontPickedTagsDisplay} isMobile={isMobile} />}
+              {isBackStep && <RecommendPickedTagsRow tags={backPickedTagsDisplay} isMobile={isMobile} />}
+              {isFamousStep && famousPickWarning && (
+                <p style={{ margin: '8px 0 0 0', fontSize: 13, color: '#dc2626', fontWeight: 600, flexShrink: 0 }}>{famousPickWarning}</p>
+              )}
+              <div style={{ flex: 1, minHeight: 0, pointerEvents: 'none' }} aria-hidden />
+            </div>
+            {(isFamousStep || isBackStep) && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 2,
+                  right: 0,
+                  left: 0,
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  paddingRight: 2,
+                  pointerEvents: 'none',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={handleTagFlowBackOne}
+                  style={{ ...recommendMobileQuizBackStyle, pointerEvents: 'auto' }}
+                >
+                  <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                  </svg>
+                  {rcFixBack}
+                </button>
+              </div>
+            )}
           </div>
+        ) : (
+          <>
+            <div style={{ width: '100%', maxWidth: 640, marginBottom: 16 }}>
+              {renderTagGrid()}
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: 12,
+                alignItems: 'center',
+                marginTop: 0,
+                width: '100%',
+                maxWidth: 640,
+              }}
+            >
+              <button
+                type="button"
+                aria-disabled={famousPrimaryDisabled}
+                onClick={() => (isFamousStep ? goNextFromFamous() : goNextFromUnknown())}
+                style={{
+                  padding: '16px 32px',
+                  fontSize: 17,
+                  fontWeight: 600,
+                  backgroundColor: famousPrimaryDisabled ? '#e5e7eb' : '#3b82f6',
+                  color: famousPrimaryDisabled ? '#9ca3af' : '#fff',
+                  border: 'none',
+                  borderRadius: 12,
+                  cursor: famousPrimaryDisabled ? 'not-allowed' : 'pointer',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {rc.btnOk}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isFamousStep) {
+                    setFamousPickWarning(null);
+                    setCheckedFamous(new Set());
+                  } else {
+                    setCheckedUnknown(new Set());
+                  }
+                }}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  backgroundColor: '#faf8f5',
+                  color: 'var(--color-text)',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {rc.btnRetry}
+              </button>
+              <button
+                type="button"
+                disabled={notInListDisabled}
+                onClick={() => (isFamousStep ? goNextFromFamous(true) : goNextFromUnknown(true))}
+                style={{
+                  padding: '10px 20px',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  backgroundColor: notInListDisabled ? '#f3f4f6' : '#faf8f5',
+                  color: notInListDisabled ? '#9ca3af' : 'var(--color-text)',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: 8,
+                  cursor: notInListDisabled ? 'not-allowed' : 'pointer',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {rc.btnNotInList}
+              </button>
+            </div>
+            {isFamousStep && <RecommendPickedTagsRow tags={frontPickedTagsDisplay} isMobile={isMobile} />}
+            {isBackStep && <RecommendPickedTagsRow tags={backPickedTagsDisplay} isMobile={isMobile} />}
+            {isFamousStep && famousPickWarning && (
+              <p style={{ margin: '8px 0 0 0', fontSize: 14, color: '#dc2626', fontWeight: 600 }}>{famousPickWarning}</p>
+            )}
+            {(isFamousStep || isBackStep) && (
+              <div style={{ marginTop: 8, width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={handleTagFlowBackOne} style={recommendBackOneStepStyle}>
+                  <svg style={{ width: 12, height: 12, flexShrink: 0 }} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                  </svg>
+                  {rcFixBack}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </Stage>
+
     {isDebugLocal && (
       <RecommendDebugPanel debug={debugData} open={debugPanelOpen} onToggle={() => setDebugPanelOpen(v => !v)} onForceNavigateToResults={handleForceNavigateToResults} />
     )}
@@ -1370,7 +2349,7 @@ function RecommendResultsGrid({
         >
           {typeof rec.matchRate === 'number' && (
             <div style={{ marginBottom: isMobile ? Math.round(4 * s) : Math.round(6 * s) }}>
-              <p style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>似てる度</p>
+              <p style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)', fontWeight: 600, margin: '0 0 2px 0', lineHeight: 1.2 }}>好みマッチ度</p>
               <p style={{ fontSize: isMobile ? 14 : 16, color: '#059669', fontWeight: 700, margin: 0, lineHeight: 1.2, letterSpacing: '0.02em' }}>
                 {Number(rec.matchRate).toFixed(1)}％
               </p>
@@ -1429,59 +2408,17 @@ function RecommendResultsGrid({
       )}
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: 8,
           marginTop: isMobile ? Math.round(12 * s) : Math.round(14 * s),
+          width: '100%',
         }}
       >
-        {onSharePC && (
-          <>
-            <button
-              type="button"
-              onClick={() => onSharePC(false)}
-              style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-            >
-              結果を保存
-            </button>
-            <button
-              type="button"
-              onClick={() => onSharePC(true)}
-              style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, backgroundColor: '#0f1419', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}
-            >
-              結果を「モザイク」で保存
-            </button>
-          </>
-        )}
-        <a
-          href="#"
-          onClick={e => {
-            e.preventDefault();
-            window.open(tweetIntent, '_blank', 'noopener,noreferrer');
-          }}
-          style={{ flex: 1, minWidth: 0, padding: '10px 16px', fontSize: 13, fontWeight: 600, color: '#fff', backgroundColor: '#0f1419', border: 'none', borderRadius: 8, cursor: 'pointer', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          ポストする
-        </a>
-        <button
-          type="button"
-          onClick={onBack}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            padding: '10px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            backgroundColor: 'var(--color-primary)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-          }}
-        >
-          トップに戻る
-        </button>
+        <ResultScreenFourButtons
+          onSavePlain={onSharePC ? () => onSharePC(false) : undefined}
+          onSaveMosaic={onSharePC ? () => onSharePC(true) : undefined}
+          onPost={() => window.open(tweetIntent, '_blank', 'noopener,noreferrer')}
+          onBackToTop={onBack}
+          isMobile={isMobile}
+        />
       </div>
     </div>
   );

@@ -5120,7 +5120,7 @@ export default function AdminTagsPage() {
                           {new Date(row.createdAt).toLocaleString('ja-JP')}
                         </td>
                         <td style={{ padding: '0.5rem' }}>{row.name}</td>
-                        <td style={{ padding: '0.5rem', wordBreak: 'break-all' }}>{row.email}</td>
+                        <td style={{ padding: '0.5rem', wordBreak: 'break-all' }}>{row.email ?? '—'}</td>
                         <td style={{ padding: '0.5rem' }}>{row.subject ?? '—'}</td>
                         <td style={{ padding: '0.5rem', maxWidth: 360, whiteSpace: 'pre-wrap' }}>{row.message}</td>
                       </tr>

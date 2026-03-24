@@ -253,6 +253,10 @@ export function migrateThinking(raw: unknown): ThinkingConfig {
   };
 }
 
+/** 推薦・有名タグ質問のカテゴリ（優先度順と一致） */
+export const RECOMMEND_FAMOUS_CATEGORY_KEYS = ['ストーリー', 'プレイ', 'キャラクター'] as const;
+export type RecommendFamousCategoryKey = (typeof RECOMMEND_FAMOUS_CATEGORY_KEYS)[number];
+
 /** 推薦モードの文言（管理画面で編集可能） */
 const RecommendCopySchema = z.object({
   /** AIゲート前段（あなたの好みは？） */
@@ -265,26 +269,69 @@ const RecommendCopySchema = z.object({
   initialPopularityQuestion: z.string().optional(),
   /** 優先度の質問（あなたが優先したいのは？順位をつけて！） */
   initialPriorityQuestion: z.string(),
-  /** 有名タグ質問1-3の文言 */
-  questionFamous: z.string(),
+  /**
+   * 有名タグ質問の共通フォールバック（カテゴリ別が未設定のとき）
+   * 後方互換のため残す
+   */
+  questionFamous: z.string().optional(),
+  /** 今の質問が「ストーリー」カテゴリのタグを聞いているときの文言（優先順位に関係なく） */
+  questionFamousStory: z.string().optional(),
+  /** 今の質問が「プレイ」カテゴリのタグを聞いているときの文言 */
+  questionFamousPlay: z.string().optional(),
+  /** 今の質問が「キャラクター」カテゴリのタグを聞いているときの文言 */
+  questionFamousCharacter: z.string().optional(),
   /** 無名タグ質問4-6の文言 */
   questionUnknown: z.string(),
   /** 特に重視のプロンプト（廃止・互換用。新フローでは sortPrompt を使用） */
   importantPrompt: z.string().optional(),
-  /** 整理ページのプロンプト（今選んでいる要素を、好きな順に５つ並べて） */
+  /** 整理プロンプトの共通フォールバック（前半・後半が空のとき） */
   sortPrompt: z.string().optional(),
+  /** 整理ページ（前半・sort1）のキャラ台詞 */
+  sortPromptFront: z.string().optional(),
+  /** 整理ページ（後半・sort2）のキャラ台詞 */
+  sortPromptBack: z.string().optional(),
   /** 考え中（あなたにぴったりの作品を探しているわ…） */
   thinkingText: z.string(),
-  /** ボタン文言 */
+  /** 推薦結果画面の見出し（例：こんな作品なんてどう？） */
+  recommendResultsHeading: z.string().optional(),
+  /** ボタン文言（初期画面の「次へ」等・整理ボタンのフォールバック） */
   btnNext: z.string().optional(),
+  /** 整理ページ（前半・sort1）のメインボタン */
+  btnNextSortFront: z.string().optional(),
+  /** 整理ページ（後半・sort2）のメインボタン（例：結果を示す） */
+  btnNextSortBack: z.string().optional(),
   btnRetry: z.string().optional(),
   btnOk: z.string().optional(),
   btnNotInList: z.string().optional(),
+  /** 前半有名タグ：20→40 件に広げる */
+  btnFamousExpand: z.string().optional(),
+  /** 前半有名タグ：40→20 件に戻す */
+  btnFamousCollapse: z.string().optional(),
   btnFix: z.string().optional(),
+  /** 推薦モードのみ「ひとつ前に戻る」等（通常の btnFix と差し替え） */
+  btnFixRecommend: z.string().optional(),
   btnTopReset: z.string().optional(),
+  /** 有名タグ：カテゴリ内で0件のまま進もうとしたとき */
+  famousPickMinHint: z.string().optional(),
 }).strict();
 
 export type RecommendCopy = z.infer<typeof RecommendCopySchema>;
+
+const DEFAULT_QUESTION_FAMOUS =
+  'あなたが望む同人誌にはどんな特徴がある？ 3つまで選んで！ 特に重要なものがあれば1つだけチェックして！';
+
+/** 現在の有名タグ質問カテゴリに応じた文言（カテゴリ別 → questionFamous → デフォルト） */
+export function getFamousQuestionForCategory(rc: RecommendCopy, cat: RecommendFamousCategoryKey): string {
+  const specific =
+    cat === 'ストーリー'
+      ? rc.questionFamousStory
+      : cat === 'プレイ'
+        ? rc.questionFamousPlay
+        : rc.questionFamousCharacter;
+  if (specific != null && specific.trim() !== '') return specific;
+  if (rc.questionFamous != null && rc.questionFamous.trim() !== '') return rc.questionFamous;
+  return DEFAULT_QUESTION_FAMOUS;
+}
 
 export const DEFAULT_RECOMMEND_COPY: RecommendCopy = {
   aiGatePreamble: 'あなたの好みは？',
@@ -292,18 +339,65 @@ export const DEFAULT_RECOMMEND_COPY: RecommendCopy = {
   initialMain: 'あなたの好みは？',
   initialPopularityQuestion: 'やっぱり有名作品！　隠れた名作！　中間くらいの作品！',
   initialPriorityQuestion: 'あなたが優先したいのは？順位をつけて！',
-  questionFamous: 'あなたが望む同人誌にはどんな特徴がある？ 3つまで選んで！ 特に重要なものがあれば1つだけチェックして！',
+  questionFamous: DEFAULT_QUESTION_FAMOUS,
+  questionFamousStory: DEFAULT_QUESTION_FAMOUS,
+  questionFamousPlay: DEFAULT_QUESTION_FAMOUS,
+  questionFamousCharacter: DEFAULT_QUESTION_FAMOUS,
   questionUnknown: 'この中に欲しい特徴はある？ 3つまで選んで！',
   importantPrompt: '特に重視する要素はある？あれば選んで！',
   sortPrompt: '今選んでいる要素を、好きな順に５つ並べて',
+  sortPromptFront: '今選んでいる要素を、好きな順に５つ並べて',
+  sortPromptBack: '今選んでいる要素を、好きな順に５つ並べて',
   thinkingText: 'あなたにぴったりの作品を探しているわ…',
+  recommendResultsHeading: 'こんな作品なんてどう？',
   btnNext: '次へ',
+  btnNextSortFront: '次へ',
+  btnNextSortBack: '次へ',
   btnRetry: 'やり直し',
   btnOk: 'これでok',
   btnNotInList: 'この中にはない',
+  btnFamousExpand: '選択肢を増やす',
+  btnFamousCollapse: '選択肢を減らす',
   btnFix: '修正する',
+  btnFixRecommend: 'ひとつ前に戻る',
   btnTopReset: 'トップに戻る',
+  famousPickMinHint: '１個くらい気になるやつ選んでよ！',
 };
+
+const DEFAULT_SORT_PROMPT_LINE =
+  DEFAULT_RECOMMEND_COPY.sortPrompt ?? '今選んでいる要素を、好きな順に５つ並べて';
+
+/** 整理（前半 sort1）：sortPromptFront → sortPrompt → デフォルト */
+export function getSortPromptFront(rc: RecommendCopy): string {
+  const a = rc.sortPromptFront?.trim();
+  if (a) return a;
+  const b = rc.sortPrompt?.trim();
+  if (b) return b;
+  return DEFAULT_SORT_PROMPT_LINE;
+}
+
+/** 整理（後半 sort2）：sortPromptBack → sortPrompt → デフォルト */
+export function getSortPromptBack(rc: RecommendCopy): string {
+  const a = rc.sortPromptBack?.trim();
+  if (a) return a;
+  const b = rc.sortPrompt?.trim();
+  if (b) return b;
+  return DEFAULT_SORT_PROMPT_LINE;
+}
+
+/** 整理（前半）のメインボタン：btnNextSortFront → btnNext → 次へ */
+export function getBtnNextSortFront(rc: RecommendCopy): string {
+  const a = rc.btnNextSortFront?.trim();
+  if (a) return a;
+  return rc.btnNext?.trim() || '次へ';
+}
+
+/** 整理（後半）のメインボタン：btnNextSortBack → btnNext → 次へ */
+export function getBtnNextSortBack(rc: RecommendCopy): string {
+  const a = rc.btnNextSortBack?.trim();
+  if (a) return a;
+  return rc.btnNext?.trim() || '次へ';
+}
 
 export const DEFAULT_THINKING = {
   inGame: {

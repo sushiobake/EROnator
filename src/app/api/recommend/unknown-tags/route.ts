@@ -1,10 +1,12 @@
 /**
  * POST /api/recommend/unknown-tags
- * 前半で未表示の有名タグ ＋ 無名タグを返す。最大100件（5バッチ×20）。
+ * 後半（質問4以降）のタグ候補。最大100件（画面は20件×5）。
  *
- * 新フロー: rankedFamous + displayedFamousKeys を受け取り、
- * - 前半で表示されなかった有名タグ（famousTagKeys - displayedFamousKeys）を先頭に
- * - 無名タグ（tagCategories に含まれない）を続けて返す。
+ * rankedFamous を1つ以上持つ登録作品を母集団とし、その作品に付いたタグを集計。
+ * 候補は次のいずれかで、関連度（母集団内の出現作品数）降順でソートする。
+ * - 前半グリッド未表示の有名タグ（famousTagKeys にあり displayedFamousKeys にない）
+ * - 無名タグ（tagCategories 側の「有名」定義に含まれない tagKey）
+ * 前半整理で既に順位付けしたタグ（rankedFamous）は除外。
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,48 +14,7 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import fs from 'fs';
 import path from 'path';
 
-const BATCH_SIZE = 20;
 const TOTAL_TAGS = 100;
-
-type CategoryLabel = 'ストーリー' | 'プレイ' | 'キャラクター';
-
-/** Tag.category（細かい）→ 推薦カテゴリ */
-const FINE_TO_RECOMMEND: Record<string, CategoryLabel> = {
-  'シチュエーション/系統': 'ストーリー',
-  シチュエーション: 'ストーリー',
-  関係性: 'ストーリー',
-  'プレイ・行為': 'プレイ',
-  場所: 'プレイ',
-  'キャラ・職業': 'キャラクター',
-  属性: 'キャラクター',
-  キャラクター: 'キャラクター',
-};
-
-/** tagCategories の displayName → 推薦カテゴリ（Tag.category が null のときのフォールバック） */
-const CATEGORY_MAP: Record<string, string[]> = {
-  ストーリー: ['シチュエーション/系統', '関係性'],
-  プレイ: ['プレイ・行為', '場所'],
-  キャラクター: ['キャラ・職業', '属性', 'キャラクター'],
-};
-
-function loadDisplayNameToRecommendCategory(): Map<string, CategoryLabel> {
-  const map = new Map<string, CategoryLabel>();
-  try {
-    const p = path.join(process.cwd(), 'config', 'tagCategories.json');
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-    const tagsByCategory = data.tagsByCategory ?? {};
-    for (const [recCat, sourceKeys] of Object.entries(CATEGORY_MAP)) {
-      for (const sk of sourceKeys) {
-        for (const dn of tagsByCategory[sk] ?? []) {
-          map.set(dn, recCat as CategoryLabel);
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-  return map;
-}
 
 /** 有名タグの displayName（tagCategories の全タグ + include の代表）。これらを除外。 */
 function loadFamousDisplayNames(): Set<string> {
@@ -112,11 +73,6 @@ export async function POST(request: NextRequest) {
       Array.isArray(body.displayedFamousKeys) ? body.displayedFamousKeys.map((k: string) => String(k)) : []
     );
     const famousTagKeys: string[] = Array.isArray(body.famousTagKeys) ? body.famousTagKeys.map((k: string) => String(k)) : [];
-    const priorityOrder: CategoryLabel[] = Array.isArray(body.priorityOrder)
-      ? body.priorityOrder
-          .slice(0, 3)
-          .filter((c: string) => ['ストーリー', 'プレイ', 'キャラクター'].includes(c)) as CategoryLabel[]
-      : [];
 
     const famousDisplayNames = loadFamousDisplayNames();
     const excludedDisplayNames = loadExcludedDisplayNames();
@@ -128,23 +84,9 @@ export async function POST(request: NextRequest) {
     const tagDisplayMap = new Map<string, string>();
     for (const t of allTagsForDisplay) tagDisplayMap.set(t.tagKey, t.displayName);
 
-    const result: Array<{ tagKey: string; displayName: string; count?: number; isFamous?: boolean }> = [];
-    const used = new Set<string>();
-
-    const unshownFamousKeys = famousTagKeys.filter(k => !displayedFamousKeys.has(k));
-    for (const tagKey of unshownFamousKeys) {
-      if (used.has(tagKey)) continue;
-      used.add(tagKey);
-      result.push({
-        tagKey,
-        displayName: tagDisplayMap.get(tagKey) ?? tagKey,
-        count: 0,
-        isFamous: true,
-      });
-      if (result.length >= TOTAL_TAGS) {
-        return NextResponse.json({ success: true, tags: result });
-      }
-    }
+    const rankedKeysSet = new Set(rankedFamous.map(t => t.tagKey).filter(Boolean));
+    const tagKeysRanked = rankedFamous.map(t => t.tagKey).filter(Boolean);
+    const famousKeysSet = new Set(famousTagKeys);
 
     const excludeTagKeys = new Set<string>();
     for (const k of famousTagKeys) excludeTagKeys.add(k);
@@ -156,99 +98,66 @@ export async function POST(request: NextRequest) {
       for (const r of rows) excludeTagKeys.add(r.tagKey);
     }
 
-    const displayNameToRecCat = loadDisplayNameToRecommendCategory();
-    const tagKeys = rankedFamous.map(t => t.tagKey).filter(Boolean);
-    const tagRows = await prisma.tag.findMany({
-      where: { tagKey: { in: tagKeys } },
-      select: { tagKey: true, displayName: true, category: true },
-    });
-    const recommendCategoryByKey = new Map<string, CategoryLabel | null>();
-    for (const r of tagRows) {
-      let recCat: CategoryLabel | null = r.category ? (FINE_TO_RECOMMEND[r.category] ?? null) : null;
-      if (!recCat && r.displayName) recCat = displayNameToRecCat.get(r.displayName) ?? null;
-      recommendCategoryByKey.set(r.tagKey, recCat);
-    }
-
     const gameWorksWhere = { gameRegistered: true, needsReview: false };
 
-    async function aggregateUnknownFromWorks(
-      workIds: string[],
-      exclude: Set<string>
-    ): Promise<Array<{ tagKey: string; displayName: string; count: number }>> {
-      if (workIds.length === 0) return [];
-      const workTags = await prisma.workTag.groupBy({
-        by: ['tagKey'],
-        _count: { tagKey: true },
-        where: {
-          workId: { in: workIds },
-          tagKey: { notIn: Array.from(exclude) },
-        },
-      });
-      return workTags
-        .map(row => ({
-          tagKey: row.tagKey,
-          displayName: tagDisplayMap.get(row.tagKey) ?? row.tagKey,
-          count: row._count.tagKey,
-        }))
-        .sort((a, b) => b.count - a.count);
-    }
+    type Row = { tagKey: string; displayName: string; count: number; isFamous: boolean };
+    const rows: Row[] = [];
 
-    function addBatch(
-      candidates: Array<{ tagKey: string; displayName: string; count: number }>,
-      maxTotal: number
-    ) {
-      for (const c of candidates) {
-        if (used.has(c.tagKey)) continue;
-        used.add(c.tagKey);
-        result.push({ tagKey: c.tagKey, displayName: c.displayName, count: c.count, isFamous: false });
-        if (result.length >= maxTotal) return;
-      }
-    }
-
-    const excludeCur = new Set(excludeTagKeys);
-    for (const r of result) excludeCur.add(r.tagKey);
-
-    const priority1 = priorityOrder[0] ?? null;
-    const priority2 = priorityOrder[1] ?? null;
-
-    if (tagKeys.length > 0) {
-      const w = await prisma.work.findMany({
-        where: { ...gameWorksWhere, workTags: { some: { tagKey: { in: tagKeys } } } },
+    if (tagKeysRanked.length > 0) {
+      const works = await prisma.work.findMany({
+        where: { ...gameWorksWhere, workTags: { some: { tagKey: { in: tagKeysRanked } } } },
         select: { workId: true },
       });
-      const batch1 = await aggregateUnknownFromWorks(w.map(x => x.workId), excludeCur);
-      addBatch(batch1, TOTAL_TAGS);
-    }
-    for (const r of result) excludeCur.add(r.tagKey);
+      const workIds = works.map(w => w.workId);
 
-    if (result.length < TOTAL_TAGS && priority1) {
-      const p1Keys = tagKeys.filter(k => recommendCategoryByKey.get(k) === priority1);
-      if (p1Keys.length > 0) {
-        const w = await prisma.work.findMany({
-          where: { ...gameWorksWhere, workTags: { some: { tagKey: { in: p1Keys } } } },
-          select: { workId: true },
+      if (workIds.length > 0) {
+        const grouped = await prisma.workTag.groupBy({
+          by: ['tagKey'],
+          _count: { tagKey: true },
+          where: { workId: { in: workIds } },
         });
-        const batch2 = await aggregateUnknownFromWorks(w.map(x => x.workId), excludeCur);
-        addBatch(batch2, TOTAL_TAGS);
+
+        for (const g of grouped) {
+          const k = g.tagKey;
+          if (rankedKeysSet.has(k)) continue;
+
+          const isUnshownFamous = famousKeysSet.has(k) && !displayedFamousKeys.has(k);
+          const isUnknown = !excludeTagKeys.has(k);
+          if (!isUnshownFamous && !isUnknown) continue;
+
+          rows.push({
+            tagKey: k,
+            displayName: tagDisplayMap.get(k) ?? k,
+            count: g._count.tagKey,
+            isFamous: isUnshownFamous,
+          });
+        }
+        rows.sort((a, b) => b.count - a.count);
       }
     }
-    for (const r of result) excludeCur.add(r.tagKey);
 
-    if (result.length < TOTAL_TAGS && priority2) {
-      const p2Keys = tagKeys.filter(k => recommendCategoryByKey.get(k) === priority2);
-      if (p2Keys.length > 0) {
-        const w = await prisma.work.findMany({
-          where: { ...gameWorksWhere, workTags: { some: { tagKey: { in: p2Keys } } } },
-          select: { workId: true },
+    if (rows.length === 0 && famousTagKeys.length > 0) {
+      for (const tagKey of famousTagKeys) {
+        if (displayedFamousKeys.has(tagKey) || rankedKeysSet.has(tagKey)) continue;
+        rows.push({
+          tagKey,
+          displayName: tagDisplayMap.get(tagKey) ?? tagKey,
+          count: 0,
+          isFamous: true,
         });
-        const batch3 = await aggregateUnknownFromWorks(w.map(x => x.workId), excludeCur);
-        addBatch(batch3, TOTAL_TAGS);
       }
     }
+
+    const tags = rows.slice(0, TOTAL_TAGS).map(({ tagKey, displayName, count, isFamous }) => ({
+      tagKey,
+      displayName,
+      count,
+      isFamous,
+    }));
 
     return NextResponse.json({
       success: true,
-      tags: result.slice(0, TOTAL_TAGS),
+      tags,
     });
   } catch (error) {
     console.error('Error in /api/recommend/unknown-tags POST:', error);

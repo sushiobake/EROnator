@@ -150,6 +150,8 @@ export default function Home() {
   const [successWork, setSuccessWork] = useState<Work | null>(null);
   const [successRecommendedWorks, setSuccessRecommendedWorks] = useState<Work[]>([]);
   const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
+  /** FAIL_LIST で「リストにない」フォーム表示中はモバイル白板の縦伸びを止める */
+  const [failListWhiteboardFill, setFailListWhiteboardFill] = useState(true);
   const [almostSuccessWork, setAlmostSuccessWork] = useState<Work | null>(null);
   const [almostSuccessRecommendedWorks, setAlmostSuccessRecommendedWorks] = useState<(Work & { matchRate?: number })[]>([]);
   const [debugData, setDebugData] = useState<DebugPayload | null>(null);
@@ -174,6 +176,8 @@ export default function Home() {
     successSpeech?: string; successTitle?: string; recommendTitle?: string;
     failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string; failListNotInListPrompt?: string;
     almostSuccessSpeech?: string; aiGatePreamble?: string; aiGateMain?: string;
+    /** 推薦結果見出しと同じ。保存画像に埋め込む（/api/config/game-ui・/api/start で付与） */
+    recommendResultsHeading?: string;
   } | null>(null);
   const [thinkingConfig, setThinkingConfig] = useState<ThinkingConfigState | null>(null);
   const thinkingSeqIndexRef = useRef<Record<string, number>>({ early: 0, mid: 0, late: 0, closing: 0 });
@@ -252,6 +256,14 @@ export default function Home() {
       clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    if (state !== 'FAIL_LIST') setFailListWhiteboardFill(true);
+  }, [state]);
+
+  useEffect(() => {
+    if (isThinking) setFailListWhiteboardFill(true);
+  }, [isThinking]);
 
   useEffect(() => {
     if (!isClient) return;
@@ -497,8 +509,8 @@ export default function Home() {
     }
   };
 
-  const handleRestart = () => {
-    // セッションIDをクリアしてトップに戻る
+  /** セッションをリセットしてトップへ（失敗フロー「トップに戻る」など） */
+  const handleBackToTopWithReset = () => {
     setSessionId(null);
     localStorage.removeItem('eronator_sessionId');
     setState('TOP');
@@ -520,12 +532,19 @@ export default function Home() {
       productUrl: `https://www.dmm.co.jp/dc/doujin/-/detail/=/cid=${c.workId}/`,
     });
 
-    if (screen === 'RECOMMEND') {
-      setState('RECOMMEND');
-      return;
-    }
     if (screen === 'FAIL_LIST') {
-      setFailListCandidates(candidates.length > 0 ? candidates.map(toWork) : [DUMMY_WORK]);
+      if (candidates.length > 0) {
+        setFailListCandidates(candidates.map(toWork).slice(0, 10));
+      } else {
+        setFailListCandidates(
+          Array.from({ length: 10 }, (_, i) => ({
+            ...DUMMY_WORK,
+            workId: `debug-fail-${i}`,
+            title: `デバッグ候補${i + 1}`,
+            authorName: `作者${i + 1}`,
+          }))
+        );
+      }
       setState('FAIL_LIST');
       return;
     }
@@ -544,6 +563,7 @@ export default function Home() {
       setAlmostSuccessRecommendedWorks(candidates.slice(2, 7).map(x => ({ ...toWork(x), matchRate: 80 })));
       setQuestionCount(debugData?.session?.questionCount ?? 12);
       setState('ALMOST_SUCCESS');
+      return;
     }
   };
 
@@ -904,9 +924,9 @@ export default function Home() {
           whiteboardWide={true}
         >
           <Success
+            shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
             work={successWork}
             recommendedWorks={successRecommendedWorks}
-            onRestart={handleRestart}
             onBackToTop={() => setState('TOP')}
             mobileListBelow={isMobile}
             sessionId={sessionId}
@@ -947,11 +967,12 @@ export default function Home() {
               streamerMode={streamerMode}
             />
           ) : undefined}
+          whiteboardWide={true}
         >
           <Success
+            shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
             work={almostSuccessWork}
             recommendedWorks={almostSuccessRecommendedWorks}
-            onRestart={handleRestart}
             onBackToTop={() => setState('TOP')}
             successTitle={gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
@@ -980,6 +1001,7 @@ export default function Home() {
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
           thinkingSubType={thinkingSubType}
+          mobileExtendWhiteboard={failListWhiteboardFill ? undefined : false}
           characterSpeech={
             isThinking
               ? thinkingSpeech
@@ -1006,9 +1028,12 @@ export default function Home() {
             candidates={failListCandidates}
             onSelectWork={handleFailListSelectWork}
             onNotInList={handleFailListNotInList}
-            onRestart={handleRestart}
+            onBackToTop={() => setState('TOP')}
+            onBackToTopWithReset={handleBackToTopWithReset}
+            onWhiteboardVerticalFillChange={setFailListWhiteboardFill}
             notInListPrompt={gc?.failListNotInListPrompt ?? 'ない？ならここに作品名書いてよ！お願いだから！'}
             mobileListBelow={isMobile}
+            hideCandidateGrid={isMobile}
             streamerMode={streamerMode}
           />
           )}

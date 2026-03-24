@@ -160,7 +160,7 @@ model PlayHistory {
 model ContactInquiry {
   id        String   @id @default(cuid())
   name      String
-  email     String
+  email     String?
   subject   String?
   message   String
   createdAt DateTime @default(now())

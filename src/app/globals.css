@@ -53,6 +53,12 @@ h1, h2, h3 {
   filter: blur(4px);
 }
 
+/* 保存画像用オフスクリーン：伏字フォントのみ（全体に .streamer-mode を付けない＝サムネにぼかしがかからない） */
+.success-share-capture .streamer-censored {
+  font-family: var(--font-censored), 'Kosugi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
+  font-size: 0.9em;
+}
+
 /* 配信者モード: 伏字部分のスタイル（丸ゴシック・少し小さめ） */
 .streamer-mode .streamer-censored {
   font-family: var(--font-censored), 'Kosugi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;

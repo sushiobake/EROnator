@@ -161,8 +161,8 @@ model PlayHistory {
 model ContactInquiry {
   id        String   @id @default(cuid())
   name      String
-  email     String
-  subject   String?  // bug | feature | question | other など
+  email     String?
+  subject   String?  // 不具合の報告 | 同人誌の登録要望 | その他 など
   message   String
   createdAt DateTime @default(now())
 
