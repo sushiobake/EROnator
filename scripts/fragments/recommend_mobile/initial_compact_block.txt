@@ -1,0 +1,212 @@
+  if (step === 'initial') {
+    /** スマホ2画面目：白板 zoom=1・縦伸長・余白・ボタン高さを詰め、板内スクロールを出さない */
+    const im = isMobile;
+    const initialMobileBtn: CSSProperties = im
+      ? {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          minHeight: 34,
+          padding: '5px 10px',
+          fontSize: 13,
+          fontWeight: 500,
+          borderRadius: 8,
+          cursor: 'pointer',
+          boxSizing: 'border-box',
+        }
+      : {};
+    return (
+      <>
+      <Stage
+        characterVariant="usually"
+        characterSpeech={null}
+        whiteboardWide={true}
+        mobileExtendWhiteboard={im ? true : undefined}
+        mobileWhiteboardZoom={im ? 1 : undefined}
+        mobileWhiteboardPadding={im ? '4px 6px' : undefined}
+      >
+        <div
+          style={{
+            padding: im ? '0 0 2px' : '1rem 0',
+            maxWidth: '100%',
+            minWidth: 0,
+            ...(im ? { display: 'flex', flexDirection: 'column', gap: 0 } : {}),
+          }}
+        >
+          <p
+            style={{
+              margin: im ? '0 0 4px 0' : '0 0 16px 0',
+              fontWeight: 600,
+              color: 'var(--color-text)',
+              fontSize: im ? 14 : 17,
+              lineHeight: im ? 1.25 : undefined,
+            }}
+          >
+            {rc.initialMain}
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: im ? '1fr' : '1fr 1fr 1fr',
+              gap: im ? 5 : 8,
+              marginBottom: im ? 6 : 32,
+            }}
+          >
+            {[
+              { value: 'famous' as const, label: 'やっぱり有名作品！' },
+              { value: 'hidden' as const, label: '隠れた名作！' },
+              { value: 'middle' as const, label: '中間くらいの作品！' },
+            ].map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setPopularityChoice(value)}
+                style={{
+                  ...(im ? initialMobileBtn : initBtnBase),
+                  backgroundColor: popularityChoice === value ? '#dbeafe' : '#faf8f5',
+                  color: popularityChoice === value ? '#1d4ed8' : 'var(--color-text)',
+                  border: popularityChoice === value ? `2px solid ${INITIAL_BTN_BASE}` : '2px solid #e5e7eb',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p
+            style={{
+              margin: im ? '0 0 4px 0' : '0 0 16px 0',
+              fontWeight: 600,
+              color: 'var(--color-text)',
+              fontSize: im ? 14 : 17,
+              lineHeight: im ? 1.25 : undefined,
+            }}
+          >
+            {rc.initialPriorityQuestion}
+          </p>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: im ? '1fr' : '1fr 1fr 1fr',
+              gap: im ? 5 : 8,
+              marginBottom: im ? 6 : 20,
+            }}
+          >
+            {CATEGORIES.map((cat) => {
+              const idx = priorityOrder.indexOf(cat);
+              const selected = idx >= 0;
+              const shade = selected ? INITIAL_BTN_LIGHT[idx]! : INITIAL_BTN_BASE;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => addToPriority(cat)}
+                  style={{
+                    ...(im ? initialMobileBtn : initBtnBase),
+                    backgroundColor: selected ? `${shade}22` : '#faf8f5',
+                    color: selected ? '#1d4ed8' : 'var(--color-text)',
+                    border: selected ? `2px solid ${shade}` : '2px solid #e5e7eb',
+                    gap: 6,
+                  }}
+                >
+                  {cat}
+                  {selected && (
+                    <span style={{ fontSize: im ? 11 : 13, fontWeight: 'bold' }}>{['①', '②', '③'][idx]}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: im ? 6 : 12,
+              alignItems: 'center',
+              marginTop: im ? 2 : 0,
+            }}
+          >
+            <button
+              onClick={() => canProceedFromInitial && setStep('f1')}
+              disabled={!canProceedFromInitial}
+              style={{
+                ...(im
+                  ? {
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 600,
+                      minHeight: 38,
+                      padding: '7px 14px',
+                      fontSize: 14,
+                      boxSizing: 'border-box',
+                    }
+                  : isMobile
+                    ? mobileQuizLikeChoiceStyle({
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 600,
+                      })
+                    : { padding: '16px 32px', fontSize: 17, fontWeight: 600 }),
+                backgroundColor: canProceedFromInitial ? INITIAL_BTN_BASE : '#e5e7eb',
+                color: canProceedFromInitial ? '#fff' : '#9ca3af',
+                border: 'none',
+                borderRadius: 12,
+                cursor: canProceedFromInitial ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {rc.btnNext}
+            </button>
+            <button
+              onClick={resetInitial}
+              style={{
+                padding: im ? '5px 10px' : isMobile ? '8px 16px' : '10px 20px',
+                fontSize: im ? 11 : isMobile ? 13 : 14,
+                fontWeight: 600,
+                backgroundColor: 'transparent',
+                color: 'var(--color-text-muted)',
+                border: '1px solid #d1d5db',
+                borderRadius: 8,
+                cursor: 'pointer',
+              }}
+            >
+              {rc.btnRetry}
+            </button>
+          </div>
+          <div
+            style={{
+              marginTop: im ? 4 : 16,
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setStep('ai_gate')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: im ? 4 : 6,
+                padding: im ? '4px 8px' : '6px 12px',
+                fontSize: im ? 12 : 14,
+                cursor: 'pointer',
+                backgroundColor: 'transparent',
+                border: 'none',
+                borderRadius: 6,
+                color: 'var(--color-text-muted)',
+              }}
+            >
+              <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+              </svg>
+              {rcFixBack}
+            </button>
+          </div>
+        </div>
+      </Stage>
+      {isDebugLocal && (
+        <RecommendDebugPanel debug={debugData} open={debugPanelOpen} onToggle={() => setDebugPanelOpen(v => !v)} onForceNavigateToResults={handleForceNavigateToResults} />
+      )}
+      </>
+    );
+  }

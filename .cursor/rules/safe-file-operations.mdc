@@ -1,0 +1,38 @@
+---
+description: Prevent file corruption - NEVER use StrReplace on files with Japanese text
+alwaysApply: true
+---
+
+# CRITICAL: File Editing Rules
+
+## NEVER use StrReplace on files containing Japanese text
+
+The StrReplace tool silently converts Japanese characters to `?` when writing.
+This has caused catastrophic data loss in this project multiple times.
+
+### Required workflow for editing .tsx/.ts files with Japanese:
+
+1. Write a Python script that reads the file with `encoding='utf-8'`
+2. Apply changes via string replacement in Python
+3. Write back with `encoding='utf-8'`
+4. Verify with `npx tsc --noEmit`
+5. Verify Japanese text is intact by reading the file
+
+### Files known to contain Japanese (NEVER use StrReplace):
+
+- `src/app/components/RecommendMode.tsx`
+- `src/app/components/Stage.tsx`
+- `src/app/components/AiGate.tsx`
+- `config/mvpConfig.json`
+- Any file in `src/` that imports from config or contains Japanese literals
+
+## NEVER restore from .backup/ directories or *.backup.* files without verification
+
+- Always check encoding first: read with Python, confirm Japanese characters display
+- NEVER use `git checkout` to overwrite working changes without explicit user consent
+
+## Scope discipline
+
+- When asked to modify "screen X", ONLY modify the code block for that screen
+- Do NOT modify shared components (Stage.tsx) unless explicitly asked
+- After each edit, run `npx tsc --noEmit` to verify no regressions

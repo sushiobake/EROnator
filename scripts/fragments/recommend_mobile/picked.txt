@@ -1,0 +1,71 @@
+/** ピル1行分（約）。2行目はこの中でスクロール */
+const PICKED_TAGS_ROW_HEIGHT = 44;
+const PICKED_TAGS_ROW_HEIGHT_COMPACT = 28;
+
+/** 本編 Stage MobileStageInner と揃えた白板ズーム（キャンバス下リストのラッパー用） */
+const MOBILE_WB_ZOOM = 1.62;
+
+/** 本編 Quiz.tsx の選択肢に近いタッチターゲット */
+function mobileQuizLikeChoiceStyle(overrides: CSSProperties = {}): CSSProperties {
+  return {
+    fontSize: 17,
+    fontWeight: 500,
+    padding: '8px 16px',
+    minHeight: 40,
+    boxSizing: 'border-box',
+    ...overrides,
+  };
+}
+
+/**
+ * いま選んでいるタグの要約（ピル型・やや小さめ）。グリッドの角長ボタンと見た目を分ける。
+ * 「これでok」行の下。整理画面では使わない。空でも minHeight でスペース確保。
+ */
+function RecommendPickedTagsRow({ tags, isMobile, compact }: { tags: SelectedTag[]; isMobile: boolean; compact?: boolean }) {
+  const rowH = compact ? PICKED_TAGS_ROW_HEIGHT_COMPACT : PICKED_TAGS_ROW_HEIGHT;
+  return (
+    <div
+      style={{
+        marginTop: compact ? 4 : 6,
+        width: '100%',
+        maxWidth: 640,
+        minHeight: rowH,
+        maxHeight: rowH,
+        overflowY: 'auto',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: compact ? 4 : 6,
+        alignContent: 'flex-start',
+        alignItems: 'flex-start',
+        boxSizing: 'border-box',
+      }}
+    >
+      {tags.map((t) => (
+        <span
+          key={t.tagKey}
+          title={t.displayName}
+          style={{
+            display: 'inline-block',
+            fontSize: compact ? 10 : isMobile ? 13 : 11,
+            fontWeight: 500,
+            lineHeight: 1.3,
+            padding: compact ? '2px 7px' : isMobile ? '5px 11px' : '4px 10px',
+            borderRadius: 9999,
+            backgroundColor: '#dbeafe',
+            color: '#1d4ed8',
+            border: '1px solid #93c5fd',
+            maxWidth: 200,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            boxSizing: 'border-box',
+            verticalAlign: 'middle',
+          }}
+        >
+          {t.displayName}
+        </span>
+      ))}
+    </div>
+  );
+}
+

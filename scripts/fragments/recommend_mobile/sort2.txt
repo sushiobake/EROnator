@@ -1,0 +1,193 @@
+    const renderCol = (col: typeof backTags, idx: number) => (
+      <div key={`sort2-col-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {col.map(t => {
+          const r = sort2Ranks.get(t.tagKey);
+          return (
+            <button
+              key={t.tagKey}
+              type="button"
+              onClick={() => toggleRank(t.tagKey)}
+              style={{
+                ...(isMobile
+                  ? mobileQuizLikeChoiceStyle({
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                      color: r ? '#1d4ed8' : 'var(--color-text)',
+                      border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                    })
+                  : {
+                      padding: '10px 14px',
+                      fontSize: 14,
+                      fontWeight: 500,
+                      textAlign: 'left',
+                      backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                      color: r ? '#1d4ed8' : 'var(--color-text)',
+                      border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                      borderRadius: 8,
+                      cursor: 'pointer',
+                    }),
+              }}
+            >
+              {t.displayName}
+            </button>
+          );
+        })}
+      </div>
+    );
+    const sort2MobileOrdered: typeof combined = [];
+    {
+      const seenK = new Set<string>();
+      for (const t of combined) {
+        if (seenK.has(t.tagKey)) continue;
+        seenK.add(t.tagKey);
+        sort2MobileOrdered.push(t);
+      }
+    }
+    const sort2MobileBelow =
+      isMobile && sort2MobileOrdered.length > 0 ? (
+        <div style={{ width: '100%', maxWidth: 480, margin: '0 auto', zoom: MOBILE_WB_ZOOM }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {sort2MobileOrdered.map(t => {
+              const r = sort2Ranks.get(t.tagKey);
+              return (
+                <button
+                  key={t.tagKey}
+                  type="button"
+                  onClick={() => toggleRank(t.tagKey)}
+                  style={mobileQuizLikeChoiceStyle({
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    textAlign: 'left',
+                    backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                    color: r ? '#1d4ed8' : 'var(--color-text)',
+                    border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                  })}
+                >
+                  {t.displayName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : undefined;
+    const sortBtnStyle = { padding: isMobile ? '8px 16px' : '10px 20px', fontSize: isMobile ? 13 : 14, fontWeight: 600, borderRadius: 8, cursor: 'pointer' as const };
+    return (
+      <>
+        <Stage
+          characterVariant="usually"
+          characterSpeech={<p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{getSortPromptBack(rc)}</p>}
+          whiteboardWide={true}
+          mobileBelowCanvas={sort2MobileBelow}
+          mobileExtendWhiteboard={isMobile && sort2MobileBelow ? false : undefined}
+        >
+          <div style={{ padding: isMobile ? '0.5rem 0' : '0.55rem 0', maxWidth: '100%', minWidth: 0 }}>
+            <p style={{ fontSize: isMobile ? 11 : 10, color: 'var(--color-text-muted)', margin: '0 0 8px 0', fontWeight: 500 }}>前半の１位～５位</p>
+            {!isMobile && (
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
+                <div style={{ flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 140 }}>
+                    {rankedFamous.map(t => {
+                      const r = sort2Ranks.get(t.tagKey);
+                      return (
+                        <button
+                          key={t.tagKey}
+                          type="button"
+                          onClick={() => toggleRank(t.tagKey)}
+                          style={{
+                            padding: '10px 14px',
+                            fontSize: 14,
+                            fontWeight: 500,
+                            textAlign: 'left',
+                            backgroundColor: r ? '#dbeafe' : '#faf8f5',
+                            color: r ? '#1d4ed8' : 'var(--color-text)',
+                            border: `2px solid ${r ? '#3b82f6' : '#e5e7eb'}`,
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {t.displayName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, borderLeft: '3px solid #6b7280', paddingLeft: 16 }}>
+                  {col1.length > 0 && renderCol(col1, 0)}
+                  {col2.length > 0 && renderCol(col2, 1)}
+                  {col3.length > 0 && renderCol(col3, 2)}
+                </div>
+              </div>
+            )}
+            <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 8, flexDirection: 'row' }}>
+              {Array.from({ length: sort2Max }, (_, i) => (i + 1) as 1 | 2 | 3 | 4 | 5).map(r => {
+                const t = ranked.find((_, i) => i + 1 === r);
+                return (
+                  <span
+                    key={r}
+                    style={{
+                      padding: '6px 12px',
+                      minWidth: 80,
+                      fontSize: isMobile ? 13 : 13,
+                      backgroundColor: t ? '#dbeafe' : 'transparent',
+                      color: t ? '#1d4ed8' : 'var(--color-text-muted)',
+                      borderRadius: 8,
+                      border: `2px solid ${t ? '#3b82f6' : '#e5e7eb'}`,
+                    }}
+                  >
+                    {r}位{t ? `: ${t.displayName}` : ''}
+                  </span>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={proceedFromSort2}
+                  disabled={!canProceedSort2}
+                  style={{
+                    ...(isMobile
+                      ? mobileQuizLikeChoiceStyle({
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 600,
+                        })
+                      : { padding: '16px 32px', fontSize: 17, fontWeight: 600 }),
+                    backgroundColor: canProceedSort2 ? '#3b82f6' : '#e5e7eb',
+                    color: canProceedSort2 ? '#fff' : '#9ca3af',
+                    border: 'none',
+                    borderRadius: 12,
+                    cursor: canProceedSort2 ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  {getBtnNextSortBack(rc)}
+                </button>
+                <button type="button" onClick={resetSort2} style={{ ...sortBtnStyle, backgroundColor: '#faf8f5', color: 'var(--color-text)', border: '2px solid #e5e7eb' }}>
+                  {rc.btnRetry}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSort2Ranks(new Map());
+                  setStep(stepBeforeSort2 ?? 's8');
+                }}
+                style={sortFixBtnStyle}
+              >
+                <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7.83 11H20v2H7.83l5.59 5.59L12 20l-8-8 8-8 1.41 1.41L7.83 11z" />
+                </svg>
+                {rcFixBack}
+              </button>
+            </div>
+          </div>
+        </Stage>
