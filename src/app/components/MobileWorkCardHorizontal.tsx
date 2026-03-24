@@ -26,8 +26,10 @@ interface MobileWorkCardHorizontalProps {
   /** おすすめ用：％表示のラベル（本編は「似てる度」、推薦は「好みマッチ度」など） */
   matchRate?: number;
   matchRateLabel?: string;
-  /** FANZAクリック記録用 */
+  /** FANZAクリック記録用（本編セッション） */
   sessionId?: string | null;
+  /** 推薦モードのプレイ履歴用 */
+  recommendSessionId?: string | null;
   /** 2列グリッド用：画像を小さく */
   compact?: boolean;
   /** 配信者モード時はタイトルを部分的伏字 */
@@ -41,6 +43,7 @@ export function MobileWorkCardHorizontal({
   matchRate,
   matchRateLabel = '似てる度',
   sessionId,
+  recommendSessionId,
   compact = false,
   streamerMode,
 }: MobileWorkCardHorizontalProps) {
@@ -95,7 +98,13 @@ export function MobileWorkCardHorizontal({
         <p style={{ fontSize: 10, color: 'var(--color-text-muted)', margin: 0 }}>{work.authorName}</p>
         {showFanzaLink && (
           <div style={{ marginTop: 5, fontSize: 12 }}>
-            <ExternalLink href={work.productUrl} linkText={LINK_TEXT} compact sessionId={sessionId}>
+            <ExternalLink
+              href={work.productUrl}
+              linkText={LINK_TEXT}
+              compact
+              sessionId={sessionId}
+              recommendSessionId={recommendSessionId}
+            >
               {LINK_TEXT}
             </ExternalLink>
           </div>

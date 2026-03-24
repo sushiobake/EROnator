@@ -156,6 +156,20 @@ model PlayHistory {
   @@index([createdAt])
 }
 
+// RecommendPlayHistory: 推薦モード完了1プレイ＝1レコード（詳細は detailJson）
+model RecommendPlayHistory {
+  id                 String    @id @default(cuid())
+  recommendSessionId String    @unique
+  sessionStartedAt   DateTime?
+  clickedFanza       Boolean   @default(false)
+  detailJson         String    @default("{}")
+  topWorkId          String?
+  topWorkTitle       String?
+  createdAt          DateTime  @default(now())
+
+  @@index([createdAt])
+}
+
 // お問い合わせフォーム（管理画面で一覧表示。将来メール転送用）
 model ContactInquiry {
   id        String   @id @default(cuid())

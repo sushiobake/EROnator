@@ -154,6 +154,14 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
   const mobileResultRef = useRef<HTMLDivElement>(null);
   const [captureMosaic, setCaptureMosaic] = useState(false);
 
+  const [recommendSessionId] = useState(() =>
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `rec-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+  const sessionStartedAtRef = useRef<number>(Date.now());
+  const stepTransitionsRef = useRef<Array<{ step: string; at: number }>>([]);
+
   const rc = recommendCopy ?? {
     aiGatePreamble: 'あなたの好みは？',
     aiGateMain: 'AI生成作品？それとも違う？',
@@ -239,6 +247,10 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    stepTransitionsRef.current.push({ step: String(step), at: Date.now() });
+  }, [step]);
 
   const resetInitial = () => {
     setPopularityChoice(null);
@@ -522,6 +534,56 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             works: data.debug.works ?? [],
           });
         }
+        const recs = data.recommendedWorks as WorkResult[];
+        const sort1Obj = Object.fromEntries(sort1Ranks);
+        const sort2Obj = Object.fromEntries(sort2Ranks);
+        const detail = {
+          version: 1 as const,
+          recommendSessionId,
+          sessionStartedAt: new Date(sessionStartedAtRef.current).toISOString(),
+          endedAt: new Date().toISOString(),
+          totalDurationMs: Date.now() - sessionStartedAtRef.current,
+          aiGateChoice,
+          popularityChoice,
+          priorityOrder,
+          stepTransitions: stepTransitionsRef.current,
+          rankedFamous: rankedFamous.map(t => ({
+            tagKey: t.tagKey,
+            displayName: t.displayName,
+            rank: t.rank,
+            category: t.category,
+          })),
+          selectedFamous,
+          selectedUnknown,
+          sort1Ranks: sort1Obj,
+          sort2Ranks: sort2Obj,
+          rankedFinal: ranked.map(t => ({
+            tagKey: t.tagKey,
+            displayName: t.displayName,
+            rank: t.rank,
+            category: t.category,
+          })),
+          recommendedWorks: recs.map(w => ({
+            workId: w.workId,
+            title: w.title,
+            authorName: w.authorName,
+            matchRate: w.matchRate,
+          })),
+          totalMatched: data.totalMatched ?? 0,
+          isMobile,
+        };
+        const top = recs[0];
+        void fetch('/api/recommend/play-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recommendSessionId,
+            sessionStartedAt: new Date(sessionStartedAtRef.current).toISOString(),
+            detail,
+            topWorkId: top?.workId ?? null,
+            topWorkTitle: top?.title ?? null,
+          }),
+        }).catch(() => {});
       } else {
         setStep('initial');
       }
@@ -823,7 +885,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
               {recommendedWorks.slice(0, 10).map(rec => (
-                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} matchRateLabel="好みマッチ度" />
+                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} matchRateLabel="好みマッチ度" recommendSessionId={recommendSessionId} />
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
@@ -945,6 +1007,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           shareText={shareText}
           onSharePC={handleSharePC}
           isMobile={false}
+          recommendSessionId={recommendSessionId}
         />
       </Stage>
       {isDebugLocal && (
@@ -2302,6 +2365,7 @@ function RecommendResultsGrid({
   shareText,
   onSharePC,
   isMobile,
+  recommendSessionId,
 }: {
   works: WorkResult[];
   totalMatched: number;
@@ -2310,6 +2374,7 @@ function RecommendResultsGrid({
   shareText: string;
   onSharePC?: (withMosaic?: boolean) => void;
   isMobile: boolean;
+  recommendSessionId: string;
 }) {
   const tweetIntent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
   const s = REC_SCALE;
@@ -2389,7 +2454,7 @@ function RecommendResultsGrid({
           </p>
           <p style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
           <div style={{ fontSize: isMobile ? 10 : 13, color: 'var(--color-text-muted)' }}>
-            <ExternalLink href={rec.productUrl} linkText={LINK_TEXT}>
+            <ExternalLink href={rec.productUrl} linkText={LINK_TEXT} recommendSessionId={recommendSessionId}>
               {LINK_TEXT}
             </ExternalLink>
           </div>

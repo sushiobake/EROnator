@@ -12,9 +12,11 @@ interface ExternalLinkProps {
   compact?: boolean; // 余白を小さく（カード内用）
   /** FANZAで見るリンク用：指定時はクリックを記録してから遷移 */
   sessionId?: string | null;
+  /** 推薦モード用（PlayHistory とは別レコード） */
+  recommendSessionId?: string | null;
 }
 
-export function ExternalLink({ href, children, linkText, compact, sessionId }: ExternalLinkProps) {
+export function ExternalLink({ href, children, linkText, compact, sessionId, recommendSessionId }: ExternalLinkProps) {
   // AFFILIATE_IDは環境変数で分離（本番のみ本番ID）
   const affiliateId = process.env.NEXT_PUBLIC_AFFILIATE_ID || '';
   
@@ -22,6 +24,16 @@ export function ExternalLink({ href, children, linkText, compact, sessionId }: E
   const url = affiliateId ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}` : href;
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (recommendSessionId) {
+      e.preventDefault();
+      fetch('/api/track-fanza-click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recommendSessionId }),
+      }).catch(() => {});
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (sessionId) {
       e.preventDefault();
       fetch('/api/track-fanza-click', {
@@ -33,13 +45,15 @@ export function ExternalLink({ href, children, linkText, compact, sessionId }: E
     }
   };
 
+  const tracked = Boolean(recommendSessionId || sessionId);
+
   return (
     <div style={{ margin: compact ? '0' : '8px 0' }}>
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={sessionId ? handleClick : undefined}
+        onClick={tracked ? handleClick : undefined}
         style={{ color: '#0066cc', textDecoration: 'underline', fontSize: compact ? 'inherit' : undefined }}
       >
         {linkText || children}
