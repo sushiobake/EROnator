@@ -9,19 +9,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
+import {
+  buildDisplayNameToTagKeyDeterministic,
+  getFamousTagsGroupedForApi,
+} from '@/server/recommend/famousTagsEngine';
 import fs from 'fs';
 import path from 'path';
-
-/** 推薦フローで使う3カテゴリ。tagCategories のキーにマッピング */
-const RECOMMEND_CATEGORIES = ['ストーリー', 'プレイ', 'キャラクター'] as const;
-const FAMOUS_PER_CATEGORY = 40;
-
-/** 推薦カテゴリ → tagCategories の tagsByCategory キー */
-const CATEGORY_MAP: Record<string, string[]> = {
-  ストーリー: ['シチュエーション/系統', '関係性'],
-  プレイ: ['プレイ・行為', '場所'],
-  キャラクター: ['キャラ・職業', '属性', 'キャラクター'],
-};
 
 function loadIncludeUnify(): { include: Record<string, string[]>; unify: string[][] } {
   try {
@@ -33,25 +26,11 @@ function loadIncludeUnify(): { include: Record<string, string[]>; unify: string[
   }
 }
 
-function loadTagsByCategory(): Record<string, string[]> {
-  try {
-    const p = path.join(process.cwd(), 'config', 'tagCategories.json');
-    const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-    return data.tagsByCategory ?? {};
-  } catch {
-    return {};
-  }
-}
-
 /** tagKey → 代表 tagKey のマッピング（統合・包括適用用） */
 async function loadTagKeyToRepresentative(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const { include, unify } = loadIncludeUnify();
-  const allTags = await prisma.tag.findMany({ select: { tagKey: true, displayName: true } });
-  const displayNameToTagKey = new Map<string, string>();
-  for (const t of allTags) {
-    if (!displayNameToTagKey.has(t.displayName)) displayNameToTagKey.set(t.displayName, t.tagKey);
-  }
+  const displayNameToTagKey = await buildDisplayNameToTagKeyDeterministic(prisma);
   for (const [rep, subs] of Object.entries(include)) {
     const repKey = displayNameToTagKey.get(rep);
     if (!repKey) continue;
@@ -74,72 +53,7 @@ async function loadTagKeyToRepresentative(): Promise<Map<string, string>> {
 export async function GET() {
   try {
     await ensurePrismaConnected();
-
-    const { include, unify } = loadIncludeUnify();
-    const tagsByCategory = loadTagsByCategory();
-
-    const excluded = new Set<string>();
-    for (const included of Object.values(include)) {
-      for (const x of included) excluded.add(x);
-    }
-    for (const group of unify) {
-      for (let i = 1; i < group.length; i++) excluded.add(group[i]);
-    }
-
-    const allTags = await prisma.tag.findMany({
-      select: { tagKey: true, displayName: true },
-    });
-    const displayNameToTagKey = new Map<string, string>();
-    for (const t of allTags) {
-      if (!displayNameToTagKey.has(t.displayName)) displayNameToTagKey.set(t.displayName, t.tagKey);
-    }
-
-    const workTagCounts = await prisma.workTag.groupBy({
-      by: ['tagKey'],
-      _count: { tagKey: true },
-      having: { tagKey: { _count: { gte: 10 } } },
-    });
-    const countByKey = new Map(workTagCounts.map(w => [w.tagKey, w._count.tagKey]));
-
-    const grouped: Record<string, Array<{ tagKey: string; displayName: string; count: number }>> = {
-      ストーリー: [],
-      プレイ: [],
-      キャラクター: [],
-    };
-
-    for (const recCat of RECOMMEND_CATEGORIES) {
-      const sourceNames = new Set<string>();
-      for (const sourceKey of CATEGORY_MAP[recCat]) {
-        for (const dn of tagsByCategory[sourceKey] ?? []) sourceNames.add(dn);
-      }
-      const seen = new Set<string>();
-      for (const displayName of sourceNames) {
-        if (excluded.has(displayName)) continue;
-        const tagKey = displayNameToTagKey.get(displayName);
-        if (!tagKey) continue;
-        let count = countByKey.get(tagKey) ?? 0;
-        if (include[displayName]) {
-          for (const sub of include[displayName]) {
-            const sk = displayNameToTagKey.get(sub);
-            if (sk) count += countByKey.get(sk) ?? 0;
-          }
-        }
-        const unifyGroup = unify.find(g => g.includes(displayName));
-        if (unifyGroup && unifyGroup[0] === displayName) {
-          for (let i = 1; i < unifyGroup.length; i++) {
-            const uk = displayNameToTagKey.get(unifyGroup[i]);
-            if (uk) count += countByKey.get(uk) ?? 0;
-          }
-        }
-        if (count < 10) continue;
-        if (seen.has(displayName)) continue;
-        seen.add(displayName);
-        grouped[recCat].push({ tagKey, displayName, count });
-      }
-      grouped[recCat].sort((a, b) => b.count - a.count);
-      grouped[recCat] = grouped[recCat].slice(0, FAMOUS_PER_CATEGORY);
-    }
-
+    const grouped = await getFamousTagsGroupedForApi(prisma);
     return NextResponse.json({ success: true, tags: grouped });
   } catch (error) {
     console.error('Error in /api/recommend GET:', error);

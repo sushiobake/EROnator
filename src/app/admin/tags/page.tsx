@@ -14,6 +14,7 @@ import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
 import ChangelogTab from './tabs/ChangelogTab';
 import ConfigTab from './tabs/ConfigTab';
+import RecommendFamousTagsTab from './tabs/RecommendFamousTagsTab';
 import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT, RANK_CHIP } from '../constants/rankColors';
@@ -62,7 +63,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'history' | 'recommendHistory' | 'contact' | 'changelog';
+type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'config' | 'recFamous' | 'history' | 'recommendHistory' | 'contact' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 
@@ -2138,6 +2139,22 @@ export default function AdminTagsPage() {
             コンフィグ
           </button>
           <button
+            onClick={() => setActiveTab('recFamous')}
+            style={{
+              padding: '0.5rem 1rem',
+              fontSize: '0.9rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'recFamous' ? '#0070f3' : 'transparent',
+              color: activeTab === 'recFamous' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'recFamous' ? '3px solid #0070f3' : '3px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'recFamous' ? 'bold' : 'normal',
+            }}
+          >
+            推薦・有名タグ
+          </button>
+          <button
             onClick={() => setActiveTab('history')}
             style={{
               padding: '0.5rem 1rem',
@@ -2891,6 +2908,12 @@ export default function AdminTagsPage() {
       {activeTab === 'summary' && (
         <section style={{ marginBottom: '2rem' }}>
           <SummaryQuestionEditor adminToken={adminToken} />
+        </section>
+      )}
+
+      {activeTab === 'recFamous' && (
+        <section style={{ marginBottom: '2rem' }}>
+          <RecommendFamousTagsTab adminToken={adminToken} />
         </section>
       )}
 
