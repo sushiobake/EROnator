@@ -9,6 +9,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
+import RemoteAdminDiagnosticPanel from '../components/RemoteAdminDiagnosticPanel';
 import ManualTagging from '../components/ManualTagging';
 import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
@@ -355,7 +356,6 @@ export default function AdminTagsPage() {
   const [productionHistoryToken, setProductionHistoryToken] = useState('');
   /** プレビューデプロイ用。入力があるときは本番URLより優先。localStorage に保存してリロード後も残す */
   const [previewHistoryUrl, setPreviewHistoryUrl] = useState('');
-  const [remotePingLoading, setRemotePingLoading] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1601,41 +1601,6 @@ export default function AdminTagsPage() {
 
   /** リモート取得先: プレビューURLが空でなければそれ、否则本番URL */
   const remoteDeploymentUrl = previewHistoryUrl.trim() || productionHistoryUrl.trim();
-
-  const runRemoteAdminPing = async () => {
-    const token = productionHistoryToken || adminToken;
-    if (!adminToken) {
-      alert('管理トークンを入力してください。');
-      return;
-    }
-    if (!remoteDeploymentUrl) {
-      alert('本番URLかプレビューURLを入力してください。');
-      return;
-    }
-    setRemotePingLoading(true);
-    try {
-      const r = await fetch('/api/admin/remote-admin-ping', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-eronator-admin-token': adminToken,
-        },
-        body: JSON.stringify({ targetUrl: remoteDeploymentUrl, token }),
-      });
-      const d = await r.json();
-      if (!d.success && d.error) {
-        alert(d.hint ? `${d.hint}\n\n${d.error}` : d.error);
-        return;
-      }
-      alert(
-        `${d.hint}\n\nHTTP ${d.httpStatus} / HTML？ ${d.isHtml ? 'はい' : 'いいえ'}\nVercel保護バイパス(.env.local): ${d.vercelBypassConfigured ? '設定あり' : '未設定'}\n\n${d.requestUrl}\n\n---\n${d.bodySnippet ?? ''}`
-      );
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'エラー');
-    } finally {
-      setRemotePingLoading(false);
-    }
-  };
 
   const fetchPlayHistory = async (page: number = 1) => {
     const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
@@ -4856,27 +4821,11 @@ export default function AdminTagsPage() {
                         })()
                       : '未設定（本番URLかプレビューURLを入力）'}
                 </p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    onClick={() => void runRemoteAdminPing()}
-                    disabled={remotePingLoading || !adminToken || !remoteDeploymentUrl}
-                    style={{
-                      padding: '0.45rem 0.9rem',
-                      fontSize: '0.9rem',
-                      backgroundColor:
-                        remotePingLoading || !adminToken || !remoteDeploymentUrl ? '#ccc' : '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor:
-                        remotePingLoading || !adminToken || !remoteDeploymentUrl ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {remotePingLoading ? '確認中…' : '接続テスト（お問い合わせAPI）'}
-                  </button>
-                  <span style={{ fontSize: '0.8rem', color: '#666' }}>curl 不要。結果はダイアログに出ます。</span>
-                </div>
+                <RemoteAdminDiagnosticPanel
+                  adminToken={adminToken}
+                  remoteDeploymentUrl={remoteDeploymentUrl}
+                  tokenForRemote={productionHistoryToken.trim() || adminToken}
+                />
                 <label>
                   本番用管理トークン:（未入力なら上の「管理トークン」を使用）
                   <input

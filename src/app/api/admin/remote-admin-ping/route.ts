@@ -1,6 +1,6 @@
 /**
- * ローカル管理画面用: 取得先URLへ /api/admin/contact-inquiries を1回だけ叩き、HTTPコードと本文冒頭を返す。
- * curl 不要で切り分け用。
+ * ローカル管理画面用: 取得先URLへ管理APIを1回だけ叩き、HTTPコードと本文冒頭を返す。
+ * probe で対象を切り替え（お問い合わせ / 推薦プレイ履歴）。curl 不要で切り分け用。
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -44,9 +44,14 @@ export async function POST(request: NextRequest) {
     }
 
     const base = targetUrl.replace(/\/$/, '');
-    const requestUrl = appendVercelProtectionBypassQuery(
-      `${base}/api/admin/contact-inquiries?page=1&limit=1`
-    );
+    const probeRaw = typeof body.probe === 'string' ? body.probe.trim().toLowerCase() : 'contact';
+    const probe = probeRaw === 'recommendplayhistory' || probeRaw === 'recommend_play_history' ? 'recommendPlayHistory' : 'contact';
+
+    const path =
+      probe === 'recommendPlayHistory'
+        ? '/api/admin/recommend-play-history?page=1&limit=10'
+        : '/api/admin/contact-inquiries?page=1&limit=1';
+    const requestUrl = appendVercelProtectionBypassQuery(`${base}${path}`);
 
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), 20000);
@@ -65,10 +70,15 @@ export async function POST(request: NextRequest) {
 
     let hint = '';
     if (res.status === 200) {
-      hint = '接続OK。このあと「お問い合わせ」タブで再読み込みしてください。';
+      hint =
+        probe === 'recommendPlayHistory'
+          ? '接続OK（推薦プレイ履歴API）。管理画面の「推薦プレイ履歴」でリモート取得を再実行してください。'
+          : '接続OK（お問い合わせAPI）。「お問い合わせ」タブで再読み込みしてください。';
     } else if (res.status === 403) {
       hint =
-        '403 Forbidden → Vercel の ERONATOR_ADMIN_TOKEN がローカルと同じか、Preview にも変数があるか確認。';
+        probe === 'recommendPlayHistory'
+          ? '403 Forbidden → リモート先の ERONATOR_ADMIN_TOKEN と「本番用管理トークン」（未入力なら上の管理トークン）が一致しているか確認。Vercel 本番の環境変数を開き直す。'
+          : '403 Forbidden → Vercel の ERONATOR_ADMIN_TOKEN がローカルと同じか、Preview にも変数があるか確認。';
     } else if (res.status === 404 && isHtml) {
       hint = getVercelProtectionBypassSecret()
         ? '404+HTML（バイパス設定済みでも失敗）。Vercel のシークレットを再確認するか、Preview の Deployment Protection を一時オフ。'
@@ -83,6 +93,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      probe,
       httpStatus: res.status,
       isHtml,
       hint,
