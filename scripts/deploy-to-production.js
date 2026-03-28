@@ -114,6 +114,31 @@ async function main() {
     process.exit(0);
   }
 
+  // ── マイグレーションチェック ──
+  // develop に新しいマイグレーションが main に未マージの場合は事前適用を促す
+  try {
+    const newFiles = execSync(
+      'git diff main..develop --name-only -- prisma/migrations/',
+      { encoding: 'utf-8' }
+    ).trim().split('\n').filter(Boolean);
+    if (newFiles.length > 0) {
+      const dirs = [...new Set(newFiles.map((f) => f.split('/').slice(0, 3).join('/')))];
+      console.log('\n⚠️  本番DBに未適用のマイグレーションがあります:');
+      dirs.forEach((d) => console.log('  -', d));
+      console.log('\nデプロイ前に npm run db:migrate:prod を実行して本番DBに適用してください。');
+      const applyAns = await question('本番DBへの適用は完了していますか？ (yes/skip): ');
+      if (applyAns.toLowerCase() !== 'yes') {
+        console.log('\nデプロイを中断しました。');
+        console.log('  1. npm run db:migrate:prod を実行');
+        console.log('  2. 再度 npm run deploy:prod を実行');
+        rl.close();
+        process.exit(0);
+      }
+    }
+  } catch {
+    // main ブランチが存在しない場合等は無視
+  }
+
   // schema.prisma を PostgreSQL に切り替え（本番環境用）
   try {
     switchToPostgres();
@@ -163,8 +188,6 @@ async function main() {
   console.log('\n✅ デプロイが完了しました！');
   console.log('本番環境: https://eronator.vercel.app');
   console.log('Vercelでデプロイの進行状況を確認できます。\n');
-  console.log('ℹ️  本番ビルド時に prisma migrate deploy が自動実行されます（Postgres の DATABASE_URL がビルドに渡る前提）。');
-  console.log('   詳細: docs/DEPLOY-DB.md\n');
 
   rl.close();
 }

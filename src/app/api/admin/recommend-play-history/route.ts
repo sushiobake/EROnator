@@ -1,14 +1,10 @@
 /**
- * GET /api/admin/recommend-play-history — 推薦プレイ履歴一覧（管理用）
+ * GET /api/admin/recommend-play-history — 推詐プレイ履歴一覧（管理用）
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
-import { ensurePrismaConnected } from '@/server/db/client';
-import {
-  countRecommendPlayHistoryAdmin,
-  listRecommendPlayHistoryAdminPage,
-} from '@/server/recommendPlayHistory/listRecommendPlayHistoryCompat';
+import { prisma, ensurePrismaConnected } from '@/server/db/client';
 
 export async function GET(request: NextRequest) {
   if (!isAdminAllowed(request)) {
@@ -24,8 +20,12 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     const [items, total] = await Promise.all([
-      listRecommendPlayHistoryAdminPage(offset, limit),
-      countRecommendPlayHistoryAdmin(),
+      prisma.recommendPlayHistory.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.recommendPlayHistory.count(),
     ]);
 
     return NextResponse.json({
