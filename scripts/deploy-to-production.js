@@ -115,38 +115,23 @@ async function main() {
     process.exit(0);
   }
 
-  // ── マイグレーション自動適用 ──
-  // develop に新しいマイグレーションがあれば自動で本番DBに適用する
+  // ── 本番 DB の列を自動補完 ──
+  // PROD_DATABASE_URL が設定されていれば、不足している列を自動で追加する
+  console.log('\n本番DBの列を確認・補完中...');
   try {
-    const newFiles = execSync(
-      'git diff main..develop --name-only -- prisma/migrations/',
-      { encoding: 'utf-8' }
-    ).trim().split('\n').filter(Boolean);
-    if (newFiles.length > 0) {
-      const dirs = [...new Set(newFiles.map((f) => f.split('/').slice(0, 3).join('/')))];
-      console.log('\n未適用のマイグレーションを検出しました:');
-      dirs.forEach((d) => console.log('  -', d));
-      console.log('\n本番DBに自動適用中...');
-      try {
-        execSync('node scripts/migrate-prod-db.js', {
-          stdio: 'inherit',
-          cwd: path.join(__dirname, '..'),
-          env: process.env,
-        });
-        console.log('✅ マイグレーション適用完了。');
-      } catch {
-        console.log('\n⚠️  マイグレーションの自動適用に失敗しました。');
-        console.log('   .env.local の PROD_DATABASE_URL が未設定の可能性があります。');
-        const skipAns = await question('マイグレーション適用なしでデプロイを続行しますか？ (yes/no): ');
-        if (skipAns.toLowerCase() !== 'yes') {
-          console.log('デプロイをキャンセルしました。');
-          rl.close();
-          process.exit(0);
-        }
-      }
-    }
+    execSync('node scripts/ensure-prod-columns.js', {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: process.env,
+    });
   } catch {
-    // git diff が失敗した場合等は無視
+    console.log('\n⚠️  本番DB列の確認に失敗しました。PROD_DATABASE_URL が未設定の可能性があります。');
+    const skipAns = await question('列確認なしでデプロイを続行しますか？ (yes/no): ');
+    if (skipAns.toLowerCase() !== 'yes') {
+      console.log('デプロイをキャンセルしました。');
+      rl.close();
+      process.exit(0);
+    }
   }
 
   // schema.prisma を PostgreSQL に切り替え（本番環境用）
