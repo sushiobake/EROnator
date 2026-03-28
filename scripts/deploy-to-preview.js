@@ -99,6 +99,7 @@ function main() {
 
     log('=== プレビューデプロイ完了 ===');
     log('Vercel の develop 用 URL で確認してください。');
+    log('プレビュービルド時も Postgres なら prisma migrate deploy が走ります（Preview の DATABASE_URL）。docs/DEPLOY-DB.md 参照。');
   } catch (error) {
     log('エラー発生。可能な限りローカルを復元します。');
     try {

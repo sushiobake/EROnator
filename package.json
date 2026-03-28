@@ -7,7 +7,7 @@
     "deploy:preview": "node scripts/deploy-to-preview.js",
     "dev": "node scripts/dev-with-lock.js",
     "dev:clean": "node -e \"process.env.CLEAN_NEXT='true'; require('./scripts/dev-with-lock.js')\"",
-    "build": "node scripts/auto-switch-schema.js && prisma generate && next build",
+    "build": "node scripts/auto-switch-schema.js && node scripts/run-migrate-if-postgres.js && prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",

@@ -574,17 +574,27 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
           isMobile,
         };
         const top = recs[0];
-        void fetch('/api/recommend/play-history', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recommendSessionId,
-            sessionStartedAt: new Date(sessionStartedAtRef.current).toISOString(),
-            detail,
-            topWorkId: top?.workId ?? null,
-            topWorkTitle: top?.title ?? null,
-          }),
-        }).catch(() => {});
+        void (async () => {
+          try {
+            const res = await fetch('/api/recommend/play-history', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                recommendSessionId,
+                sessionStartedAt: new Date(sessionStartedAtRef.current).toISOString(),
+                detail,
+                topWorkId: top?.workId ?? null,
+                topWorkTitle: top?.title ?? null,
+              }),
+            });
+            if (!res.ok) {
+              const errText = await res.text().catch(() => '');
+              console.warn('[recommend] play-history save failed', res.status, errText.slice(0, 300));
+            }
+          } catch (err) {
+            console.warn('[recommend] play-history save error', err);
+          }
+        })();
       } else {
         setStep('initial');
       }

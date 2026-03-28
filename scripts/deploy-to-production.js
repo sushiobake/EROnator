@@ -163,6 +163,8 @@ async function main() {
   console.log('\n✅ デプロイが完了しました！');
   console.log('本番環境: https://eronator.vercel.app');
   console.log('Vercelでデプロイの進行状況を確認できます。\n');
+  console.log('ℹ️  本番ビルド時に prisma migrate deploy が自動実行されます（Postgres の DATABASE_URL がビルドに渡る前提）。');
+  console.log('   詳細: docs/DEPLOY-DB.md\n');
 
   rl.close();
 }
