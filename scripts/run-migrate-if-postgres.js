@@ -6,7 +6,6 @@
  *   SKIP_PRISMA_MIGRATE_ON_BUILD=1  … 緊急時のみ（スキーマズレの再発リスクあり）
  *
  * Vercel: Production / Preview の環境変数に DATABASE_URL がビルド時に渡ること（通常はデフォルトで渡る）。
- * DIRECT_URL があれば Prisma がマイグレーションに利用する（schema.postgres.prisma の directUrl）。
  */
 const { execSync } = require('child_process');
 const path = require('path');
@@ -25,9 +24,6 @@ if (!isPostgres) {
 }
 
 console.log('[migrate] Postgres を検出。prisma migrate deploy を実行します…');
-if (process.env.DIRECT_URL) {
-  console.log('[migrate] DIRECT_URL が設定されています（マイグレーションに利用されます）。');
-}
 const cwd = path.resolve(__dirname, '..');
 execSync('npx prisma migrate deploy', { stdio: 'inherit', cwd, env: process.env });
 console.log('[migrate] migrate deploy 完了。');

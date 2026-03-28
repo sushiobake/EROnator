@@ -10,6 +10,8 @@
 
 Vercel は `buildCommand` で `npm run build` を使うため、**本番・プレビューのビルド時に、それぞれの環境の DB へ未適用マイグレーションが適用**されます（`DATABASE_URL` がその環境用に設定されている前提）。
 
+Postgres スキーマから **`directUrl` / `DIRECT_URL` は外してある**（未設定だと Prisma がビルドで P1012 になるため）。`migrate deploy` は **`DATABASE_URL` のみ**を使う。プーラー URL だけでマイグレーションが拒否されるプロバイダのときは、ビルド用に直接接続の `DATABASE_URL` を使う等の対応が必要。
+
 ## デメリット・注意（隠れていない前提）
 
 | 項目 | 内容 |
@@ -31,7 +33,7 @@ Vercel では該当環境の環境変数に一時的に設定する必要があ�
 
 ## 手元で本番相当の DB に当てる
 
-`.env.local` で `DATABASE_URL`（＋必要なら `DIRECT_URL`）を本番用 Postgres に向けたうえで:
+`.env.local` で `DATABASE_URL` を本番用 Postgres に向けたうえで:
 
 ```bash
 npm run db:migrate:deploy

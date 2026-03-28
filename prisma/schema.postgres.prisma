@@ -6,9 +6,10 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")      // 接続プーリング用（Vercel serverless用）
-  directUrl = env("DIRECT_URL")        // 直接接続用（マイグレーション用、オプション）
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl は未設定だと Prisma が env を要求して Vercel ビルドが落ちるため省略。
+  // プーラー経由で migrate が失敗する場合は DATABASE_URL を直接接続にするか、ホストの手順に従う。
 }
 
 // Works: 作品データ
