@@ -28,17 +28,30 @@ export async function createRecommendPlayHistory(input: {
   });
 }
 
+function isMissingClickedFanzaWorkIdColumnError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /clickedFanzaWorkId/.test(msg) && /does not exist/i.test(msg);
+}
+
 export async function updateRecommendPlayHistoryClickedFanza(
   recommendSessionId: string,
   fanzaWorkId?: string | null
 ): Promise<void> {
   const wid =
     typeof fanzaWorkId === 'string' && fanzaWorkId.length > 0 ? fanzaWorkId.slice(0, 128) : null;
-  await prisma.recommendPlayHistory.updateMany({
-    where: { recommendSessionId },
-    data: {
-      clickedFanza: true,
-      ...(wid ? { clickedFanzaWorkId: wid } : {}),
-    },
-  });
+  try {
+    await prisma.recommendPlayHistory.updateMany({
+      where: { recommendSessionId },
+      data: {
+        clickedFanza: true,
+        ...(wid ? { clickedFanzaWorkId: wid } : {}),
+      },
+    });
+  } catch (e) {
+    if (!isMissingClickedFanzaWorkIdColumnError(e)) throw e;
+    await prisma.recommendPlayHistory.updateMany({
+      where: { recommendSessionId },
+      data: { clickedFanza: true },
+    });
+  }
 }

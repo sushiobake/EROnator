@@ -1069,12 +1069,20 @@ import { execSync } from 'child_process';
 function ensureWorkerBundle(): void {
   const bundlePath = path.resolve(process.cwd(), 'dist/simulationWorker.js');
   const srcPath = path.resolve(process.cwd(), 'src/server/simulation/simulationWorker.ts');
+  const configDeps = [
+    path.resolve(process.cwd(), 'src/server/config/schema.ts'),
+    path.resolve(process.cwd(), 'src/server/config/loader.ts'),
+  ];
   try {
     const srcStat = fs.statSync(srcPath);
+    const depMtime = Math.max(
+      srcStat.mtimeMs,
+      ...configDeps.map((p) => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : 0))
+    );
     let needsBuild = !fs.existsSync(bundlePath);
     if (!needsBuild) {
       const bundleStat = fs.statSync(bundlePath);
-      needsBuild = srcStat.mtimeMs > bundleStat.mtimeMs;
+      needsBuild = depMtime > bundleStat.mtimeMs;
     }
     if (needsBuild) {
       const distDir = path.resolve(process.cwd(), 'dist');

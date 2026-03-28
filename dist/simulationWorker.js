@@ -812,25 +812,16 @@ function setWorkTagMatrixDirect(data) {
   cachedMatrix = data;
 }
 function getWorkTagMatrix() {
-  if (process.env.DISABLE_WORKTAG_MATRIX === "1") {
-    console.log("[perf] getWorkTagMatrix: DISABLED");
-    return null;
-  }
+  if (process.env.DISABLE_WORKTAG_MATRIX === "1") return null;
   if (cachedMatrix) return cachedMatrix;
   try {
     const p = import_path.default.join(process.cwd(), "data", "workTagMatrix.json");
-    if (!import_fs.default.existsSync(p)) {
-      console.log("[perf] getWorkTagMatrix: NULL(file not found)");
-      return null;
-    }
-    const t0 = Date.now();
+    if (!import_fs.default.existsSync(p)) return null;
     const raw = JSON.parse(import_fs.default.readFileSync(p, "utf-8"));
     cachedMatrix = raw;
-    console.log("[perf] getWorkTagMatrix: LOADED", Date.now() - t0, "ms");
     return cachedMatrix;
   } catch (err) {
     console.error("[WorkTag] Matrix load failed:", err);
-    console.log("[perf] getWorkTagMatrix: NULL(error)");
     return null;
   }
 }
@@ -2007,16 +1998,13 @@ function loadEroticDisplayNames() {
 }
 async function fetchWorkTags(workIds, options) {
   if (workIds.length === 0) return [];
-  const tFetch = Date.now();
   const t = perfStart("fetchWorkTags");
   const matrix = getWorkTagMatrix();
   if (matrix) {
     const out = getWorkTagsFromMatrix(workIds, options);
     perfEnd("fetchWorkTags", t);
-    console.log("[perf] fetchWorkTags: matrix", Date.now() - tFetch, "ms");
     return out;
   }
-  console.log("[perf] fetchWorkTags: DB start (matrix=null)");
   const result = await prisma.workTag.findMany({
     where: {
       workId: { in: workIds },
@@ -2025,7 +2013,6 @@ async function fetchWorkTags(workIds, options) {
     select: { workId: true, tagKey: true, derivedConfidence: true }
   });
   perfEnd("fetchWorkTags", t);
-  console.log("[perf] fetchWorkTags: DB", Date.now() - tFetch, "ms");
   return result.map((r) => ({
     workId: r.workId,
     tagKey: r.tagKey,
@@ -2052,10 +2039,15 @@ function filterWorksByAiGate(works, aiGateChoice) {
 }
 async function selectNextQuestion(weights, probabilities, questionCount, questionHistory, config, options) {
   const t = perfStart("selectNextQuestion");
-  const tSelectNext = Date.now();
   try {
+    if (options?.revealRejectedWorkIds?.length) {
+      const rejectedSet = new Set(options.revealRejectedWorkIds);
+      const filtered = weights.filter((w) => !rejectedSet.has(w.workId));
+      if (filtered.length === 0) return null;
+      weights = filtered;
+      probabilities = normalizeWeights(filtered);
+    }
     await ensureTagCacheLoaded();
-    console.log("[perf] selectNextQuestion: after ensureTagCacheLoaded", Date.now() - tSelectNext, "ms qIndex=", questionCount + 1);
     const questionIndex = questionCount + 1;
     const usedSummaryIds = new Set(
       questionHistory.filter((q) => !!q.summaryQuestionId).map((q) => q.summaryQuestionId)
@@ -2065,7 +2057,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
     perfEnd("buildUsedTagKeysFromHistory", tUsed);
     if (questionCount === 0) {
       const summaries = loadSummaryQuestions();
-      const unused = summaries.filter((s) => !usedSummaryIds.has(s.id) && !s.erotic);
+      const unused = summaries.filter((s) => !usedSummaryIds.has(s.id) && !s.erotic && !s.disabled);
       if (unused.length > 0) {
         const workIds = weights.map((w) => w.workId);
         const workTagsAll = await fetchWorkTags(workIds);
@@ -2155,7 +2147,6 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     }
     if (specialSlotIndices.includes(qIndex)) {
-      console.log("[perf] selectNextQuestion: specialSlot branch start", Date.now() - tSelectNext, "ms");
       const usedSpecialTypes = new Set(
         questionHistory.filter(
           (q) => q.kind === "SPECIAL_QUESTION" && !!q.specialQuestionType
@@ -2171,7 +2162,6 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         syllableChars: q.syllableChars,
         answer: q.answer
       }));
-      const tSpecial = Date.now();
       const specialResult = await selectSpecialQuestion(
         probabilities,
         usedSpecialTypes,
@@ -2180,7 +2170,6 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         titleCharTypeAnsweredUnknown,
         historyForRescue
       );
-      console.log("[perf] selectNextQuestion: selectSpecialQuestion", Date.now() - tSpecial, "ms");
       if (specialResult) {
         return {
           kind: "SPECIAL_QUESTION",
@@ -2208,7 +2197,6 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     );
     if (shouldConfirm) {
-      console.log("[perf] selectNextQuestion: confirm branch start", Date.now() - tSelectNext, "ms");
       const tConfirm = perfStart("selectNextQuestion_confirm");
       try {
         const usedHardTypes = questionHistory.filter((q) => q.kind === "HARD_CONFIRM").map((q) => q.hardConfirmType).filter((t2) => !!t2);
@@ -2500,10 +2488,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       const hardInjected = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
       if (hardInjected) return hardInjected;
     }
-    console.log("[perf] selectNextQuestion: selectUnifiedExploreOrSummary start", Date.now() - tSelectNext, "ms");
-    const tUnified = Date.now();
     const unified = await selectUnifiedExploreOrSummary(qIndex, weights, probabilities, questionHistory, config, usedSummaryIds, usedTagKeys);
-    console.log("[perf] selectNextQuestion: selectUnifiedExploreOrSummary", Date.now() - tUnified, "ms");
     if (unified) return unified;
     const fallbackEnabled = config.algo.explorePValueFallbackEnabled !== false && getExplorePValueBand(config) != null;
     if (fallbackEnabled) {
@@ -2513,10 +2498,7 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
       }
     }
     if (qIndex >= 4) {
-      console.log("[perf] selectNextQuestion: selectExploreQuestion start", Date.now() - tSelectNext, "ms");
-      const tExplore = Date.now();
       const exploreResult = await selectExploreQuestion(weights, probabilities, questionHistory, config, buildExploreOptions(qIndex), usedTagKeys);
-      console.log("[perf] selectNextQuestion: selectExploreQuestion", Date.now() - tExplore, "ms");
       if (exploreResult) return exploreResult;
       if (fallbackEnabled) {
         const hardFallback = await tryGetHardConfirmQuestion(weights, probabilities, questionHistory, config, questionCount);
@@ -2745,11 +2727,11 @@ async function selectUnifiedExploreOrSummary(questionIndex, weights, probabiliti
     const summaries = loadSummaryQuestions();
     let summaryCandidates = [];
     if (questionIndex >= 2 && questionIndex <= 3) {
-      summaryCandidates = summaries.filter((s) => !usedSummaryIds.has(s.id) && !s.erotic);
+      summaryCandidates = summaries.filter((s) => !s.disabled && !usedSummaryIds.has(s.id) && !s.erotic);
     } else if (questionIndex >= 4 && questionIndex <= 5) {
-      summaryCandidates = summaries.filter((s) => !usedSummaryIds.has(s.id));
+      summaryCandidates = summaries.filter((s) => !s.disabled && !usedSummaryIds.has(s.id));
     } else if (questionIndex >= 6) {
-      summaryCandidates = summaries.filter((s) => !usedSummaryIds.has(s.id));
+      summaryCandidates = summaries.filter((s) => !s.disabled && !usedSummaryIds.has(s.id));
     }
     const allSummaryDisplayNames = /* @__PURE__ */ new Set();
     for (const s of summaryCandidates) for (const d of s.displayNames) allSummaryDisplayNames.add(d);
@@ -7560,17 +7542,156 @@ var DataQualitySchema = external_exports.object({
 var PopularitySchema = external_exports.object({
   playBonusOnSuccess: external_exports.number().nonnegative()
 }).strict();
+var GameCopySchema = external_exports.object({
+  /** トップ画面。{workCount} は作品数に置換。行は配列で最大5行程度 */
+  topLines: external_exports.array(external_exports.string()).min(1).max(5),
+  /** 質問の前段（質問文の直上1行） */
+  questionPreamble: external_exports.string(),
+  /** 断定画面：前段＋メイン */
+  revealPreamble: external_exports.string(),
+  revealMain: external_exports.string(),
+  /** 正解時：キャラ台詞＋成功タイトル＋おすすめタイトル */
+  successSpeech: external_exports.string(),
+  successTitle: external_exports.string(),
+  recommendTitle: external_exports.string(),
+  /** 外れ① FAIL_LIST（リスト表示） */
+  failListSpeech: external_exports.string(),
+  failListSubMobile: external_exports.string(),
+  failListSubPc: external_exports.string(),
+  /** 外れ①「リストにない」押下後（作品名入力の上の一文） */
+  failListNotInListPrompt: external_exports.string(),
+  /** 外れ② ALMOST_SUCCESS（惜しかった） */
+  almostSuccessSpeech: external_exports.string(),
+  /** AI_GATE（最初のゲート）前段＋メイン */
+  aiGatePreamble: external_exports.string(),
+  aiGateMain: external_exports.string()
+}).strict();
+var InGameThinkingLevelSchema = external_exports.object({
+  texts: external_exports.array(external_exports.string()).min(1).max(5)
+});
+var InGameThinkingSchema = external_exports.object({
+  displayMode: external_exports.enum(["random", "sequential"]),
+  early: InGameThinkingLevelSchema,
+  mid: InGameThinkingLevelSchema,
+  late: InGameThinkingLevelSchema,
+  closing: InGameThinkingLevelSchema
+}).strict();
+var SingleThinkingSchema = external_exports.object({
+  text: external_exports.string()
+}).strict();
 var ThinkingSchema = external_exports.object({
-  /** 複数文言の表示方法: random=ランダム, sequential=順番 */
+  inGame: InGameThinkingSchema,
+  opening: SingleThinkingSchema,
+  endingCorrect: SingleThinkingSchema,
+  endingWrong: SingleThinkingSchema,
+  /** 失敗リストで作品を選んだときの考え中 */
+  failListSelect: SingleThinkingSchema.optional(),
+  /** 失敗リストで「リストにない」を送ったときの考え中 */
+  failListNotInList: SingleThinkingSchema.optional()
+}).strict();
+var LegacyThinkingSchema = external_exports.object({
   displayMode: external_exports.enum(["random", "sequential"]),
   early: external_exports.array(external_exports.string()).min(1).max(5),
   mid: external_exports.array(external_exports.string()).min(1).max(5),
   late: external_exports.array(external_exports.string()).min(1).max(5),
   closing: external_exports.array(external_exports.string()).min(1).max(5)
 }).strict();
+var RecommendCopySchema = external_exports.object({
+  /** AIゲート前段（あなたの好みは？） */
+  aiGatePreamble: external_exports.string(),
+  /** AIゲートメイン（AI生成作品？それとも違う？） */
+  aiGateMain: external_exports.string(),
+  /** 初期画面メイン（あなたの好みは？） */
+  initialMain: external_exports.string(),
+  /** 有名度選択の質問（やっぱり有名作品！等の上） */
+  initialPopularityQuestion: external_exports.string().optional(),
+  /** 優先度の質問（あなたが優先したいのは？順位をつけて！） */
+  initialPriorityQuestion: external_exports.string(),
+  /**
+   * 有名タグ質問の共通フォールバック（カテゴリ別が未設定のとき）
+   * 後方互換のため残す
+   */
+  questionFamous: external_exports.string().optional(),
+  /** 今の質問が「ストーリー」カテゴリのタグを聞いているときの文言（優先順位に関係なく） */
+  questionFamousStory: external_exports.string().optional(),
+  /** 今の質問が「プレイ」カテゴリのタグを聞いているときの文言 */
+  questionFamousPlay: external_exports.string().optional(),
+  /** 今の質問が「キャラクター」カテゴリのタグを聞いているときの文言 */
+  questionFamousCharacter: external_exports.string().optional(),
+  /** 無名タグ質問4-6の文言 */
+  questionUnknown: external_exports.string(),
+  /** 特に重視のプロンプト（廃止・互換用。新フローでは sortPrompt を使用） */
+  importantPrompt: external_exports.string().optional(),
+  /** 整理プロンプトの共通フォールバック（前半・後半が空のとき） */
+  sortPrompt: external_exports.string().optional(),
+  /** 整理ページ（前半・sort1）のキャラ台詞 */
+  sortPromptFront: external_exports.string().optional(),
+  /** 整理ページ（後半・sort2）のキャラ台詞 */
+  sortPromptBack: external_exports.string().optional(),
+  /** 考え中（あなたにぴったりの作品を探しているわ…） */
+  thinkingText: external_exports.string(),
+  /** 推薦結果画面の見出し（例：こんな作品なんてどう？） */
+  recommendResultsHeading: external_exports.string().optional(),
+  /** ボタン文言（初期画面の「次へ」等・整理ボタンのフォールバック） */
+  btnNext: external_exports.string().optional(),
+  /** 整理ページ（前半・sort1）のメインボタン */
+  btnNextSortFront: external_exports.string().optional(),
+  /** 整理ページ（後半・sort2）のメインボタン（例：結果を示す） */
+  btnNextSortBack: external_exports.string().optional(),
+  btnRetry: external_exports.string().optional(),
+  btnOk: external_exports.string().optional(),
+  btnNotInList: external_exports.string().optional(),
+  /** 前半有名タグ：20→40 件に広げる */
+  btnFamousExpand: external_exports.string().optional(),
+  /** 前半有名タグ：40→20 件に戻す */
+  btnFamousCollapse: external_exports.string().optional(),
+  btnFix: external_exports.string().optional(),
+  /** 推薦モードのみ「ひとつ前に戻る」等（通常の btnFix と差し替え） */
+  btnFixRecommend: external_exports.string().optional(),
+  btnTopReset: external_exports.string().optional(),
+  /** 有名タグ：カテゴリ内で0件のまま進もうとしたとき */
+  famousPickMinHint: external_exports.string().optional()
+}).strict();
+var DEFAULT_QUESTION_FAMOUS = "\u3042\u306A\u305F\u304C\u671B\u3080\u540C\u4EBA\u8A8C\u306B\u306F\u3069\u3093\u306A\u7279\u5FB4\u304C\u3042\u308B\uFF1F 3\u3064\u307E\u3067\u9078\u3093\u3067\uFF01 \u7279\u306B\u91CD\u8981\u306A\u3082\u306E\u304C\u3042\u308C\u30701\u3064\u3060\u3051\u30C1\u30A7\u30C3\u30AF\u3057\u3066\uFF01";
+var DEFAULT_RECOMMEND_COPY = {
+  aiGatePreamble: "\u3042\u306A\u305F\u306E\u597D\u307F\u306F\uFF1F",
+  aiGateMain: "AI\u751F\u6210\u4F5C\u54C1\uFF1F\u305D\u308C\u3068\u3082\u9055\u3046\uFF1F",
+  initialMain: "\u3042\u306A\u305F\u306E\u597D\u307F\u306F\uFF1F",
+  initialPopularityQuestion: "\u3084\u3063\u3071\u308A\u6709\u540D\u4F5C\u54C1\uFF01\u3000\u96A0\u308C\u305F\u540D\u4F5C\uFF01\u3000\u4E2D\u9593\u304F\u3089\u3044\u306E\u4F5C\u54C1\uFF01",
+  initialPriorityQuestion: "\u3042\u306A\u305F\u304C\u512A\u5148\u3057\u305F\u3044\u306E\u306F\uFF1F\u9806\u4F4D\u3092\u3064\u3051\u3066\uFF01",
+  questionFamous: DEFAULT_QUESTION_FAMOUS,
+  questionFamousStory: DEFAULT_QUESTION_FAMOUS,
+  questionFamousPlay: DEFAULT_QUESTION_FAMOUS,
+  questionFamousCharacter: DEFAULT_QUESTION_FAMOUS,
+  questionUnknown: "\u3053\u306E\u4E2D\u306B\u6B32\u3057\u3044\u7279\u5FB4\u306F\u3042\u308B\uFF1F 3\u3064\u307E\u3067\u9078\u3093\u3067\uFF01",
+  importantPrompt: "\u7279\u306B\u91CD\u8996\u3059\u308B\u8981\u7D20\u306F\u3042\u308B\uFF1F\u3042\u308C\u3070\u9078\u3093\u3067\uFF01",
+  sortPrompt: "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066",
+  sortPromptFront: "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066",
+  sortPromptBack: "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066",
+  thinkingText: "\u3042\u306A\u305F\u306B\u3074\u3063\u305F\u308A\u306E\u4F5C\u54C1\u3092\u63A2\u3057\u3066\u3044\u308B\u308F\u2026",
+  recommendResultsHeading: "\u3053\u3093\u306A\u4F5C\u54C1\u306A\u3093\u3066\u3069\u3046\uFF1F",
+  btnNext: "\u6B21\u3078",
+  btnNextSortFront: "\u6B21\u3078",
+  btnNextSortBack: "\u6B21\u3078",
+  btnRetry: "\u3084\u308A\u76F4\u3057",
+  btnOk: "\u3053\u308C\u3067ok",
+  btnNotInList: "\u3053\u306E\u4E2D\u306B\u306F\u306A\u3044",
+  btnFamousExpand: "\u9078\u629E\u80A2\u3092\u5897\u3084\u3059",
+  btnFamousCollapse: "\u9078\u629E\u80A2\u3092\u6E1B\u3089\u3059",
+  btnFix: "\u4FEE\u6B63\u3059\u308B",
+  btnFixRecommend: "\u3072\u3068\u3064\u524D\u306B\u623B\u308B",
+  btnTopReset: "\u30C8\u30C3\u30D7\u306B\u623B\u308B",
+  famousPickMinHint: "\uFF11\u500B\u304F\u3089\u3044\u6C17\u306B\u306A\u308B\u3084\u3064\u9078\u3093\u3067\u3088\uFF01"
+};
+var DEFAULT_SORT_PROMPT_LINE = DEFAULT_RECOMMEND_COPY.sortPrompt ?? "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066";
 var MvpConfigSchema = external_exports.object({
   version: external_exports.literal("v1.5"),
-  thinking: ThinkingSchema.optional(),
+  /** ゲーム文言。未設定時は DEFAULT_GAME_COPY */
+  gameCopy: GameCopySchema.optional(),
+  /** 推薦モードの文言。未設定時は DEFAULT_RECOMMEND_COPY */
+  recommendCopy: RecommendCopySchema.optional(),
+  /** 考え中7種。未設定または旧形式のときは migrateThinking で新形式に */
+  thinking: external_exports.union([ThinkingSchema, LegacyThinkingSchema]).optional(),
   confirm: ConfirmSchema,
   algo: AlgoSchema,
   flow: FlowSchema,
@@ -7770,7 +7891,14 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
           effectiveCandidates,
           questionCount
         })) break;
-        const question = await selectNextQuestion(weights, probabilities, questionCount, questionHistory, config);
+        const question = await selectNextQuestion(
+          weights,
+          probabilities,
+          questionCount,
+          questionHistory,
+          config,
+          { revealRejectedWorkIds: revealedWrongWorkIds.size > 0 ? [...revealedWrongWorkIds] : void 0 }
+        );
         if (!question) {
           endedBy = "NO_MORE_QUESTIONS";
           const forceRevealWorkId = sorted[0]?.workId;
