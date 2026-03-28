@@ -10,6 +10,7 @@ import { useState, useEffect, useMemo } from 'react';
 import type { ChangeEvent } from 'react';
 import ImportWorkflow from '../components/ImportWorkflow';
 import RemoteAdminDiagnosticPanel from '../components/RemoteAdminDiagnosticPanel';
+import { RecommendPlayHistoryDetailModal, formatRecommendFinalFiveSummary } from '../components/RecommendPlayHistoryDetailModal';
 import ManualTagging from '../components/ManualTagging';
 import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
@@ -319,6 +320,7 @@ export default function AdminTagsPage() {
   const [historyLimit] = useState(50);
   const [historyOutcome, setHistoryOutcome] = useState<string>('');
   const [historyUseRemote, setHistoryUseRemote] = useState(true);
+  const [historyRemoteSettingsOpen, setHistoryRemoteSettingsOpen] = useState(false);
   const [historyDetailRowId, setHistoryDetailRowId] = useState<string | null>(null);
   const [historySelectedIds, setHistorySelectedIds] = useState<Set<string>>(new Set());
   const [historyDeleteLoading, setHistoryDeleteLoading] = useState(false);
@@ -331,6 +333,7 @@ export default function AdminTagsPage() {
       recommendSessionId: string;
       sessionStartedAt: string | null;
       clickedFanza: boolean;
+      clickedFanzaWorkId?: string | null;
       detailJson: unknown;
       topWorkId: string | null;
       topWorkTitle: string | null;
@@ -1973,18 +1976,18 @@ export default function AdminTagsPage() {
       </section>
 
       {/* タブナビゲーション */}
-      <div style={{ borderBottom: '2px solid #ddd', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
+      <div style={{ borderBottom: '2px solid #ddd', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.06rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
           <button
             onClick={() => setActiveTab('works')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'works' ? '#0070f3' : 'transparent',
               color: activeTab === 'works' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'works' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'works' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'works' ? 'bold' : 'normal',
             }}
@@ -1994,13 +1997,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('tags')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'tags' ? '#0070f3' : 'transparent',
               color: activeTab === 'tags' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'tags' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'tags' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'tags' ? 'bold' : 'normal',
             }}
@@ -2010,13 +2013,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('summary')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'summary' ? '#0070f3' : 'transparent',
               color: activeTab === 'summary' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'summary' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'summary' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'summary' ? 'bold' : 'normal',
             }}
@@ -2026,13 +2029,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('import')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'import' ? '#0070f3' : 'transparent',
               color: activeTab === 'import' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'import' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'import' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'import' ? 'bold' : 'normal',
             }}
@@ -2042,13 +2045,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('manual')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'manual' ? '#28a745' : 'transparent',
               color: activeTab === 'manual' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'manual' ? '3px solid #28a745' : '3px solid transparent',
+              borderBottom: activeTab === 'manual' ? '2px solid #28a745' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'manual' ? 'bold' : 'normal',
             }}
@@ -2058,13 +2061,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('initial')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'initial' ? '#0d9488' : 'transparent',
               color: activeTab === 'initial' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'initial' ? '3px solid #0d9488' : '3px solid transparent',
+              borderBottom: activeTab === 'initial' ? '2px solid #0d9488' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'initial' ? 'bold' : 'normal',
             }}
@@ -2074,13 +2077,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('simulate')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'simulate' ? '#ff6600' : 'transparent',
               color: activeTab === 'simulate' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'simulate' ? '3px solid #ff6600' : '3px solid transparent',
+              borderBottom: activeTab === 'simulate' ? '2px solid #ff6600' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'simulate' ? 'bold' : 'normal',
             }}
@@ -2090,13 +2093,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('config')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'config' ? '#0070f3' : 'transparent',
               color: activeTab === 'config' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'config' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'config' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'config' ? 'bold' : 'normal',
             }}
@@ -2106,13 +2109,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('recFamous')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'recFamous' ? '#0070f3' : 'transparent',
               color: activeTab === 'recFamous' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'recFamous' ? '3px solid #0070f3' : '3px solid transparent',
+              borderBottom: activeTab === 'recFamous' ? '2px solid #0070f3' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'recFamous' ? 'bold' : 'normal',
             }}
@@ -2122,13 +2125,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('history')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'history' ? '#6b21a8' : 'transparent',
               color: activeTab === 'history' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'history' ? '3px solid #6b21a8' : '3px solid transparent',
+              borderBottom: activeTab === 'history' ? '2px solid #6b21a8' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'history' ? 'bold' : 'normal',
             }}
@@ -2139,13 +2142,13 @@ export default function AdminTagsPage() {
             type="button"
             onClick={() => setActiveTab('recommendHistory')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'recommendHistory' ? '#7c3aed' : 'transparent',
               color: activeTab === 'recommendHistory' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'recommendHistory' ? '3px solid #7c3aed' : '3px solid transparent',
+              borderBottom: activeTab === 'recommendHistory' ? '2px solid #7c3aed' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'recommendHistory' ? 'bold' : 'normal',
             }}
@@ -2155,13 +2158,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('contact')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'contact' ? '#0d9488' : 'transparent',
               color: activeTab === 'contact' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'contact' ? '3px solid #0d9488' : '3px solid transparent',
+              borderBottom: activeTab === 'contact' ? '2px solid #0d9488' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'contact' ? 'bold' : 'normal',
             }}
@@ -2171,13 +2174,13 @@ export default function AdminTagsPage() {
           <button
             onClick={() => setActiveTab('changelog')}
             style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
               flexShrink: 0,
               backgroundColor: activeTab === 'changelog' ? '#059669' : 'transparent',
               color: activeTab === 'changelog' ? 'white' : '#666',
               border: 'none',
-              borderBottom: activeTab === 'changelog' ? '3px solid #059669' : '3px solid transparent',
+              borderBottom: activeTab === 'changelog' ? '2px solid #059669' : '2px solid transparent',
               cursor: 'pointer',
               fontWeight: activeTab === 'changelog' ? 'bold' : 'normal',
             }}
@@ -4753,21 +4756,62 @@ export default function AdminTagsPage() {
       {/* サービスプレイ履歴タブ */}
       {activeTab === 'history' && (
         <section style={{ marginTop: '1rem' }}>
-          <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>本番プレイ履歴</h2>
-          <p style={{ color: '#666', marginBottom: '1rem' }}>
-            1プレイ＝1レコード。質問列・回答・結果・時刻を保存。滞在時間・FANZAクリックを表示するには本番へデプロイが必要です。
-          </p>
-          <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0f4ff', borderRadius: '8px', border: '1px solid #c5d4f0' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <input
-                type="checkbox"
-                checked={historyUseRemote}
-                onChange={(e) => setHistoryUseRemote(e.target.checked)}
-              />
-              <strong>本番の履歴を表示する</strong>（ローカルからデプロイ先DBのプレイ履歴・お問い合わせを取得）
-            </label>
-            {historyUseRemote && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+          <div style={{ marginBottom: '0.35rem', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.45rem' }}>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>本番プレイ履歴</h2>
+            <span style={{ color: '#666', fontSize: '0.78rem' }}>1プレイ＝1レコード。FANZAクリック等は本番デプロイ後。</span>
+          </div>
+          <div style={{ marginBottom: '0.5rem', padding: '0.35rem 0.55rem', background: '#f0f4ff', borderRadius: '6px', border: '1px solid #c5d4f0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', rowGap: '0.2rem' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={historyUseRemote}
+                  onChange={(e) => setHistoryUseRemote(e.target.checked)}
+                />
+                <strong>本番の履歴</strong>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>（デプロイ先DB）</span>
+              </label>
+              {historyUseRemote ? (
+                <>
+                  <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
+                    {previewHistoryUrl.trim()
+                      ? (() => {
+                          try {
+                            return `→ ${new URL(previewHistoryUrl.trim()).host}`;
+                          } catch {
+                            return '→ プレビュー（URL要確認）';
+                          }
+                        })()
+                      : productionHistoryUrl.trim()
+                        ? (() => {
+                            try {
+                              return `→ ${new URL(productionHistoryUrl.trim()).host}`;
+                            } catch {
+                              return '→ 本番（URL要確認）';
+                            }
+                          })()
+                        : '→ 未設定'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryRemoteSettingsOpen((o) => !o)}
+                    style={{
+                      padding: '0.15rem 0.45rem',
+                      fontSize: '0.72rem',
+                      backgroundColor: '#fff',
+                      border: '1px solid #94a3b8',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      marginLeft: 'auto',
+                    }}
+                  >
+                    {historyRemoteSettingsOpen ? '設定を閉じる' : 'URL・トークン・診断を開く'}
+                  </button>
+                </>
+              ) : null}
+            </div>
+            {historyUseRemote && historyRemoteSettingsOpen ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.45rem', paddingTop: '0.45rem', borderTop: '1px solid #c5d4f0' }}>
                 <label>
                   本番URL（いつもここは本番のまま）:
                   <input
@@ -4842,7 +4886,7 @@ export default function AdminTagsPage() {
                   <code>ERONATOR_REMOTE_ADMIN_TRUST_VERCEL_APP=1</code>（ローカル開発のみ）。本番サーバー上ではこの取得APIは無効です。
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
           <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <label>
@@ -5264,21 +5308,22 @@ export default function AdminTagsPage() {
                 </button>
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
-                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>選択</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left' }}>1位作品</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'left', whiteSpace: 'nowrap', width: '1%' }}>日時</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="推薦開始〜記録まで">滞在</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>FANZA</th>
-                      <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>詳細</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'center', width: '1%' }}>選択</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'left', minWidth: '200px' }}>最終5タグ</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'left', maxWidth: '140px' }}>1位作品</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'left', whiteSpace: 'nowrap', width: '1%' }}>日時</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'center', width: '1%' }} title="推薦開始〜記録まで">滞在</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'center', width: '1%' }}>FANZA</th>
+                      <th style={{ padding: '0.45rem', textAlign: 'center', width: '1%' }}>詳細</th>
                     </tr>
                   </thead>
                   <tbody>
                     {recHistItems.map((row) => (
                       <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <td style={{ padding: '0.45rem', textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             checked={recHistSelectedIds.has(row.id)}
@@ -5292,13 +5337,22 @@ export default function AdminTagsPage() {
                             }
                           />
                         </td>
-                        <td style={{ padding: '0.5rem', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.topWorkTitle ?? undefined}>
+                        <td
+                          style={{ padding: '0.45rem', maxWidth: '360px', fontSize: '0.8rem', lineHeight: 1.35, wordBreak: 'break-word' }}
+                          title={formatRecommendFinalFiveSummary(row.detailJson)}
+                        >
+                          {formatRecommendFinalFiveSummary(row.detailJson)}
+                        </td>
+                        <td
+                          style={{ padding: '0.45rem', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.8rem' }}
+                          title={row.topWorkTitle ?? row.topWorkId ?? undefined}
+                        >
                           {row.topWorkTitle ?? row.topWorkId ?? '—'}
                         </td>
-                        <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
+                        <td style={{ padding: '0.45rem', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                           {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '0.45rem', textAlign: 'center', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                           {row.sessionStartedAt && row.createdAt
                             ? (() => {
                                 const start = new Date(row.sessionStartedAt).getTime();
@@ -5311,16 +5365,25 @@ export default function AdminTagsPage() {
                               })()
                             : '—'}
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center' }} title={row.clickedFanza ? 'リンクをクリック済み' : ''}>
-                          {row.clickedFanza ? '◎' : 'ー'}
+                        <td
+                          style={{ padding: '0.45rem', textAlign: 'center', fontSize: '0.75rem' }}
+                          title={
+                            row.clickedFanza
+                              ? row.clickedFanzaWorkId
+                                ? `クリック: ${row.clickedFanzaWorkId}`
+                                : 'クリック済み（作品IDは旧データ）'
+                              : ''
+                          }
+                        >
+                          {row.clickedFanza ? (row.clickedFanzaWorkId ? '◎' : '○') : 'ー'}
                         </td>
-                        <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                        <td style={{ padding: '0.45rem', textAlign: 'center' }}>
                           <button
                             type="button"
                             onClick={() => setRecHistDetailRowId(row.id)}
                             style={{
-                              padding: '0.25rem 0.5rem',
-                              fontSize: '0.85rem',
+                              padding: '0.22rem 0.45rem',
+                              fontSize: '0.82rem',
                               backgroundColor: '#7c3aed',
                               color: 'white',
                               border: 'none',
@@ -5338,67 +5401,8 @@ export default function AdminTagsPage() {
               </div>
               {recHistDetailRowId != null && (() => {
                 const row = recHistItems.find((r) => r.id === recHistDetailRowId);
-                const detail = row?.detailJson;
-                const text =
-                  detail != null && typeof detail === 'object'
-                    ? JSON.stringify(detail, null, 2)
-                    : String(detail ?? '');
-                return (
-                  <div
-                    style={{
-                      position: 'fixed',
-                      inset: 0,
-                      background: 'rgba(0,0,0,0.4)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      zIndex: 10000,
-                    }}
-                    onClick={() => setRecHistDetailRowId(null)}
-                  >
-                    <div
-                      style={{
-                        background: '#fff',
-                        borderRadius: '8px',
-                        width: '95vw',
-                        maxWidth: '900px',
-                        height: '85vh',
-                        maxHeight: '800px',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong style={{ fontSize: '1.05rem' }}>推薦プレイ詳細（JSON）</strong>
-                        <button
-                          type="button"
-                          onClick={() => setRecHistDetailRowId(null)}
-                          style={{ padding: '0.4rem 1rem', background: '#666', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' }}
-                        >
-                          閉じる
-                        </button>
-                      </div>
-                      <pre
-                        style={{
-                          margin: 0,
-                          padding: '1rem',
-                          overflow: 'auto',
-                          flex: 1,
-                          fontSize: '0.8rem',
-                          lineHeight: 1.45,
-                          background: '#fafafa',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-word',
-                        }}
-                      >
-                        {text}
-                      </pre>
-                    </div>
-                  </div>
-                );
+                if (!row) return null;
+                return <RecommendPlayHistoryDetailModal row={row} onClose={() => setRecHistDetailRowId(null)} />;
               })()}
               {recHistTotal > recHistLimit && (
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>

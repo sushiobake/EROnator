@@ -162,6 +162,8 @@ model RecommendPlayHistory {
   recommendSessionId String    @unique
   sessionStartedAt   DateTime?
   clickedFanza       Boolean   @default(false)
+  /** FANZAで見るを押した作品の workId（未クリック・旧データは null） */
+  clickedFanzaWorkId String?
   detailJson         String    @default("{}")
   topWorkId          String?
   topWorkTitle       String?

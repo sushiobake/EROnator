@@ -43,6 +43,7 @@ export default function RemoteAdminDiagnosticPanel({
   /** リモート先に送る x-eronator-admin-token（本番用が空なら管理トークンと同じ） */
   tokenForRemote: string;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState<PingProbe | null>(null);
   const [text, setText] = useState('（下のボタンで診断。ここに全文が出ます。コピー可）');
 
@@ -109,8 +110,48 @@ export default function RemoteAdminDiagnosticPanel({
 
   const disabled = !adminToken.trim() || !remoteDeploymentUrl.trim() || loading !== null;
 
+  if (!expanded) {
+    return (
+      <div style={{ marginTop: '0.5rem' }}>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          style={{
+            padding: '0.35rem 0.75rem',
+            fontSize: '0.85rem',
+            backgroundColor: '#f1f5f9',
+            color: '#334155',
+            border: '1px solid #cbd5e1',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          ▶ リモート API 診断・結果コピー（開く）
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ marginTop: '0.75rem' }}>
+    <div style={{ marginTop: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '0.65rem 0.75rem', backgroundColor: '#fafafa' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          style={{
+            padding: '0.35rem 0.65rem',
+            fontSize: '0.85rem',
+            backgroundColor: '#64748b',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+          }}
+        >
+          ▼ 閉じる
+        </button>
+        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>お問い合わせAPI / 推薦プレイ履歴API の診断と結果テキスト</span>
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
         <button
           type="button"

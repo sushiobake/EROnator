@@ -14,9 +14,19 @@ interface ExternalLinkProps {
   sessionId?: string | null;
   /** 推薦モード用（PlayHistory とは別レコード） */
   recommendSessionId?: string | null;
+  /** 推薦モードで「どの作品のFANZAか」を履歴に残す */
+  recommendFanzaWorkId?: string | null;
 }
 
-export function ExternalLink({ href, children, linkText, compact, sessionId, recommendSessionId }: ExternalLinkProps) {
+export function ExternalLink({
+  href,
+  children,
+  linkText,
+  compact,
+  sessionId,
+  recommendSessionId,
+  recommendFanzaWorkId,
+}: ExternalLinkProps) {
   // AFFILIATE_IDは環境変数で分離（本番のみ本番ID）
   const affiliateId = process.env.NEXT_PUBLIC_AFFILIATE_ID || '';
   
@@ -29,7 +39,10 @@ export function ExternalLink({ href, children, linkText, compact, sessionId, rec
       fetch('/api/track-fanza-click', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recommendSessionId }),
+        body: JSON.stringify({
+          recommendSessionId,
+          ...(recommendFanzaWorkId ? { fanzaWorkId: recommendFanzaWorkId } : {}),
+        }),
       }).catch(() => {});
       window.open(url, '_blank', 'noopener,noreferrer');
       return;

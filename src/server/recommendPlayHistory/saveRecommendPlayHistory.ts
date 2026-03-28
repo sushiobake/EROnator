@@ -28,9 +28,17 @@ export async function createRecommendPlayHistory(input: {
   });
 }
 
-export async function updateRecommendPlayHistoryClickedFanza(recommendSessionId: string): Promise<void> {
+export async function updateRecommendPlayHistoryClickedFanza(
+  recommendSessionId: string,
+  fanzaWorkId?: string | null
+): Promise<void> {
+  const wid =
+    typeof fanzaWorkId === 'string' && fanzaWorkId.length > 0 ? fanzaWorkId.slice(0, 128) : null;
   await prisma.recommendPlayHistory.updateMany({
     where: { recommendSessionId },
-    data: { clickedFanza: true },
+    data: {
+      clickedFanza: true,
+      ...(wid ? { clickedFanzaWorkId: wid } : {}),
+    },
   });
 }

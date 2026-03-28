@@ -567,6 +567,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             workId: w.workId,
             title: w.title,
             authorName: w.authorName,
+            productUrl: w.productUrl,
             matchRate: w.matchRate,
           })),
           totalMatched: data.totalMatched ?? 0,
@@ -885,7 +886,7 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
               {recommendedWorks.slice(0, 10).map(rec => (
-                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} matchRateLabel="好みマッチ度" recommendSessionId={recommendSessionId} />
+                <MobileWorkCardHorizontal key={rec.workId} work={rec} showFanzaLink={true} matchRate={rec.matchRate} matchRateLabel="好みマッチ度" recommendSessionId={recommendSessionId} recommendFanzaWorkId={rec.workId} />
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
@@ -2454,7 +2455,7 @@ function RecommendResultsGrid({
           </p>
           <p style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
           <div style={{ fontSize: isMobile ? 10 : 13, color: 'var(--color-text-muted)' }}>
-            <ExternalLink href={rec.productUrl} linkText={LINK_TEXT} recommendSessionId={recommendSessionId}>
+            <ExternalLink href={rec.productUrl} linkText={LINK_TEXT} recommendSessionId={recommendSessionId} recommendFanzaWorkId={rec.workId}>
               {LINK_TEXT}
             </ExternalLink>
           </div>

@@ -64,6 +64,26 @@ const backupTargets = [
     type: 'file'
   },
   {
+    source: 'prisma/schema.sqlite.prisma',
+    dest: 'prisma/schema.sqlite.prisma',
+    type: 'file'
+  },
+  {
+    source: 'prisma/schema.postgres.prisma',
+    dest: 'prisma/schema.postgres.prisma',
+    type: 'file'
+  },
+  {
+    source: 'prisma/migrations',
+    dest: 'prisma/migrations',
+    type: 'directory'
+  },
+  {
+    source: 'data/workTagMatrix.json',
+    dest: 'data/workTagMatrix.json',
+    type: 'file'
+  },
+  {
     source: 'package.json',
     dest: 'package.json',
     type: 'file'
@@ -191,6 +211,21 @@ function main() {
       successCount++;
     } catch (err) {
       console.error('   ❌ Failed: prisma/dev.db', err.message);
+      failCount++;
+    }
+  }
+
+  // data/last-sync.json（任意・同期メタ）
+  const lastSyncPath = path.resolve('data/last-sync.json');
+  if (fs.existsSync(lastSyncPath)) {
+    const destDataDir = path.join(backupDir, 'data');
+    if (!fs.existsSync(destDataDir)) fs.mkdirSync(destDataDir, { recursive: true });
+    try {
+      fs.copyFileSync(lastSyncPath, path.join(destDataDir, 'last-sync.json'));
+      console.log('   ✅ Success: data/last-sync.json');
+      successCount++;
+    } catch (err) {
+      console.error('   ❌ Failed: data/last-sync.json', err.message);
       failCount++;
     }
   }

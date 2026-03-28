@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
         recommendSessionId: row.recommendSessionId,
         sessionStartedAt: row.sessionStartedAt?.toISOString() ?? null,
         clickedFanza: row.clickedFanza ?? false,
+        clickedFanzaWorkId: row.clickedFanzaWorkId ?? null,
         detailJson: (() => {
           try {
             return JSON.parse(row.detailJson ?? '{}');

@@ -20,7 +20,11 @@ export async function POST(request: NextRequest) {
     const sessionId = typeof body.sessionId === 'string' ? body.sessionId : null;
 
     if (recommendSessionId) {
-      await updateRecommendPlayHistoryClickedFanza(recommendSessionId);
+      const fanzaWorkId =
+        typeof body.fanzaWorkId === 'string' && body.fanzaWorkId.length > 0
+          ? String(body.fanzaWorkId).slice(0, 128)
+          : null;
+      await updateRecommendPlayHistoryClickedFanza(recommendSessionId, fanzaWorkId);
       return NextResponse.json({ success: true });
     }
 

@@ -10,5 +10,6 @@ import { SiteFooter } from './SiteFooter';
 export function ConditionalSiteFooter() {
   const pathname = usePathname();
   if (pathname === '/') return null;
+  if (pathname?.startsWith('/admin')) return null;
   return <SiteFooter />;
 }

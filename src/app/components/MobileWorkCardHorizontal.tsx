@@ -30,6 +30,8 @@ interface MobileWorkCardHorizontalProps {
   sessionId?: string | null;
   /** 推薦モードのプレイ履歴用 */
   recommendSessionId?: string | null;
+  /** 推薦モード：どの作品のFANZAか記録 */
+  recommendFanzaWorkId?: string | null;
   /** 2列グリッド用：画像を小さく */
   compact?: boolean;
   /** 配信者モード時はタイトルを部分的伏字 */
@@ -44,6 +46,7 @@ export function MobileWorkCardHorizontal({
   matchRateLabel = '似てる度',
   sessionId,
   recommendSessionId,
+  recommendFanzaWorkId,
   compact = false,
   streamerMode,
 }: MobileWorkCardHorizontalProps) {
@@ -104,6 +107,7 @@ export function MobileWorkCardHorizontal({
               compact
               sessionId={sessionId}
               recommendSessionId={recommendSessionId}
+              recommendFanzaWorkId={recommendSessionId ? (recommendFanzaWorkId ?? work.workId) : undefined}
             >
               {LINK_TEXT}
             </ExternalLink>
