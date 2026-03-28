@@ -8,6 +8,7 @@
  * 注意:
  *   - このスクリプトは develop ブランチの変更を main ブランチにマージします
  *   - 本番環境（https://eronator.vercel.app）に変更が反映されます
+ *   - 新しいマイグレーションがある場合は自動で本番DBに適用します（PROD_DATABASE_URL 要設定）
  */
 
 const { execSync } = require('child_process');
@@ -114,8 +115,8 @@ async function main() {
     process.exit(0);
   }
 
-  // ── マイグレーションチェック ──
-  // develop に新しいマイグレーションが main に未マージの場合は事前適用を促す
+  // ── マイグレーション自動適用 ──
+  // develop に新しいマイグレーションがあれば自動で本番DBに適用する
   try {
     const newFiles = execSync(
       'git diff main..develop --name-only -- prisma/migrations/',
@@ -123,20 +124,29 @@ async function main() {
     ).trim().split('\n').filter(Boolean);
     if (newFiles.length > 0) {
       const dirs = [...new Set(newFiles.map((f) => f.split('/').slice(0, 3).join('/')))];
-      console.log('\n⚠️  本番DBに未適用のマイグレーションがあります:');
+      console.log('\n未適用のマイグレーションを検出しました:');
       dirs.forEach((d) => console.log('  -', d));
-      console.log('\nデプロイ前に npm run db:migrate:prod を実行して本番DBに適用してください。');
-      const applyAns = await question('本番DBへの適用は完了していますか？ (yes/skip): ');
-      if (applyAns.toLowerCase() !== 'yes') {
-        console.log('\nデプロイを中断しました。');
-        console.log('  1. npm run db:migrate:prod を実行');
-        console.log('  2. 再度 npm run deploy:prod を実行');
-        rl.close();
-        process.exit(0);
+      console.log('\n本番DBに自動適用中...');
+      try {
+        execSync('node scripts/migrate-prod-db.js', {
+          stdio: 'inherit',
+          cwd: path.join(__dirname, '..'),
+          env: process.env,
+        });
+        console.log('✅ マイグレーション適用完了。');
+      } catch {
+        console.log('\n⚠️  マイグレーションの自動適用に失敗しました。');
+        console.log('   .env.local の PROD_DATABASE_URL が未設定の可能性があります。');
+        const skipAns = await question('マイグレーション適用なしでデプロイを続行しますか？ (yes/no): ');
+        if (skipAns.toLowerCase() !== 'yes') {
+          console.log('デプロイをキャンセルしました。');
+          rl.close();
+          process.exit(0);
+        }
       }
     }
   } catch {
-    // main ブランチが存在しない場合等は無視
+    // git diff が失敗した場合等は無視
   }
 
   // schema.prisma を PostgreSQL に切り替え（本番環境用）
