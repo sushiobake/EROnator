@@ -1,0 +1,10 @@
+feat: visitorId追跡・Q番号重複修正・REVEAL MISS履歴保存・管理UI改善
+
+- Session/PlayHistory/RecommendPlayHistory に visitorId 列追加
+- クライアントで eronator.visitorId を localStorage 管理・送信
+- engine.ts: REVEAL後の qIndex を max(questionHistory)+1 に修正（重複バグ解消）
+- reveal/route.ts: REVEAL->NO 時に断定ミス行を questionHistory に注入
+- 管理API: visitorId + 推薦/通常モードクロス参照フラグ追加
+- 管理UI: 日時下に ID末尾8文字バッジ（推薦/通常アイコン付き）
+- 管理UI: 詳細モーダルに outcome と ID末尾を表示
+- 管理UI: FAIL_LIST スナップショット未保存時も旧データメッセージ表示
