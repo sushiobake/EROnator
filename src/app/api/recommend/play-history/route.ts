@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { ensurePrismaConnected } from '@/server/db/client';
 import { createRecommendPlayHistory } from '@/server/recommendPlayHistory/saveRecommendPlayHistory';
 
@@ -42,10 +43,11 @@ export async function POST(request: NextRequest) {
     const topWorkTitle =
       typeof body.topWorkTitle === 'string' ? body.topWorkTitle.slice(0, 512) : null;
 
-    const visitorId =
+    const clientVisitorId =
       typeof body.visitorId === 'string' && body.visitorId.length > 0
         ? body.visitorId.slice(0, 128)
         : null;
+    const visitorId = clientVisitorId ?? randomUUID();
 
     await createRecommendPlayHistory({
       recommendSessionId,
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       visitorId,
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, visitorId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
     if (msg.includes('Unique constraint') || msg.includes('unique constraint')) {

@@ -399,6 +399,13 @@ export default function Home() {
       const data = await response.json();
       setSessionId(data.sessionId);
       localStorage.setItem('eronator_sessionId', data.sessionId);
+      if (typeof data.visitorId === 'string' && data.visitorId.length > 0) {
+        try {
+          localStorage.setItem('eronator.visitorId', data.visitorId);
+        } catch {
+          /* ignore */
+        }
+      }
       questionShownAtRef.current = Date.now();
       setQuestion(data.question);
       setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));

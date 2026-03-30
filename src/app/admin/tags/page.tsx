@@ -5006,12 +5006,16 @@ export default function AdminTagsPage() {
                       </td>
                       <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
                         <div>{row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}</div>
-                        {row.visitorId && (
-                          <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
-                            #{row.visitorId.slice(-8)}
-                            {row.hasRecommendPlay && <span style={{ marginLeft: '0.3rem', color: '#7c3aed', fontWeight: 'bold', fontSize: '0.7rem' }}>推薦◎</span>}
-                          </div>
-                        )}
+                        <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
+                          {row.visitorId ? (
+                            <>
+                              #{row.visitorId.slice(-8)}
+                              {row.hasRecommendPlay && <span style={{ marginLeft: '0.3rem', color: '#7c3aed', fontWeight: 'bold', fontSize: '0.7rem' }}>推薦◎</span>}
+                            </>
+                          ) : (
+                            <span style={{ color: '#bbb' }}>ID未記録（実装前／未送信）</span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         {row.sessionStartedAt && row.createdAt
@@ -5371,12 +5375,16 @@ export default function AdminTagsPage() {
                         </td>
                         <td style={{ padding: '0.45rem', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
                           <div>{row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}</div>
-                          {row.visitorId && (
-                            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
-                              #{row.visitorId.slice(-8)}
-                              {row.hasNormalPlay && <span style={{ marginLeft: '0.3rem', color: '#0070f3', fontWeight: 'bold', fontSize: '0.7rem' }}>通常◎</span>}
-                            </div>
-                          )}
+                          <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
+                            {row.visitorId ? (
+                              <>
+                                #{row.visitorId.slice(-8)}
+                                {row.hasNormalPlay && <span style={{ marginLeft: '0.3rem', color: '#0070f3', fontWeight: 'bold', fontSize: '0.7rem' }}>通常◎</span>}
+                              </>
+                            ) : (
+                              <span style={{ color: '#bbb' }}>ID未記録（実装前／未送信）</span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '0.45rem', textAlign: 'center', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                           {row.sessionStartedAt && row.createdAt

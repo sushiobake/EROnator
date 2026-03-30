@@ -590,9 +590,16 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                 })(),
               }),
             });
+            const recPhBody = await res.json().catch(() => ({}));
             if (!res.ok) {
-              const errText = await res.text().catch(() => '');
-              console.warn('[recommend] play-history save failed', res.status, errText.slice(0, 300));
+              const errText = typeof recPhBody?.error === 'string' ? recPhBody.error : JSON.stringify(recPhBody);
+              console.warn('[recommend] play-history save failed', res.status, String(errText).slice(0, 300));
+            } else if (typeof recPhBody?.visitorId === 'string' && recPhBody.visitorId.length > 0) {
+              try {
+                localStorage.setItem('eronator.visitorId', recPhBody.visitorId);
+              } catch {
+                /* ignore */
+              }
             }
           } catch (err) {
             console.warn('[recommend] play-history save error', err);

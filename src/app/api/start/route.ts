@@ -39,10 +39,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { aiGateChoice } = body;
 
-    const visitorId =
+    const clientVisitorId =
       typeof body.visitorId === 'string' && body.visitorId.length > 0
         ? body.visitorId.slice(0, 128)
         : null;
+    /** 未送信時はサーバーで付与（本番で localStorage 不可でも履歴に ID を残す） */
+    const visitorId = clientVisitorId ?? randomUUID();
 
     if (!aiGateChoice || !['YES', 'NO', 'DONT_CARE'].includes(aiGateChoice)) {
       throw new ApiError(
@@ -178,7 +180,7 @@ export async function POST(request: NextRequest) {
         weights: JSON.stringify(weightsToStored(weightsMap)),
         weightsHistory: '[]',
         questionHistory: JSON.stringify([firstQuestionEntry]),
-        ...(visitorId ? { visitorId } : {}),
+        visitorId,
       },
     });
     await prisma.sessionWeightsSnapshot.create({
@@ -226,6 +228,7 @@ export async function POST(request: NextRequest) {
     };
     const payload = {
       sessionId,
+      visitorId,
       state: 'QUIZ',
       question: questionResponse,
       sessionState,
