@@ -1,0 +1,40 @@
+---
+description: Production DB schema changes — never prisma migrate deploy; use ensure-prod-columns
+alwaysApply: true
+---
+
+# 本番 DB（Supabase Postgres）とマイグレーション
+
+## このプロジェクトの前提
+
+- **ローカル**: SQLite（`schema.sqlite.prisma` / `prisma migrate` の履歴は **sqlite ロック**）
+- **本番**: Supabase **PostgreSQL**
+- `prisma/migrations/migration_lock.toml` の `provider` は **sqlite** のため、本番 Postgres に対して **`npx prisma migrate deploy` は P3019 で失敗する**。これは設定ミスではなく構成上の事実。
+
+## エージェントがやってはいけないこと
+
+- 本番スキーマ同期の第一手段として **`prisma migrate deploy`** を提案・実行しない（このリポジトリでは成立しない）。
+- 「列がない」エラーに対して、**互換レイヤーや生 SQL の findMany 回避**を最初の正解にしない。まず **本番に列があるか** を疑う。
+
+## 正しい手順（本番に列を足す・不足を直す）
+
+1. **`npm run db:ensure:prod`**  
+   - 実体: `scripts/ensure-prod-columns.js`（`pg` で直接接続し、不足列を `ALTER TABLE`）
+   - 接続先: `.env.local` の `PROD_DATABASE_URL` 優先。無ければ `.env.supabase` の `DATABASE_URL`（**Vercel と同系の pooler URL / 6543** を推奨。`db.*.supabase.co:5432` はローカルからタイムアウトしやすい）。
+2. **`npm run deploy:prod`** はデプロイ前に上記スクリプトを走らせる想定。**手動で毎回 Supabase SQL Editor を開く必要はない**（Editor の upstream timeout でロックが残る事故もある）。
+
+## 新しい列を本番に追加するとき（開発者タスク）
+
+- Prisma スキーマを変えたら、**`scripts/ensure-prod-columns.js` 内の `COLUMNS_TO_ENSURE` に `{ table, column, type }` を1件追加**する。  
+  これが「本番で自動補完される列」の一覧。
+- `prisma/migrations/**/migration_postgres.sql` は人間向けメモ・手動実行用の補助。エージェントは **ensure スクリプトを正**とする。
+
+## ハング・タイムアウト時
+
+- Supabase SQL Editor の timeout 後も **サーバー側で ALTER が走り続けロック**することがある。`ensure-prod-columns.js` は該当テーブル周りのブロッキングセッションを終了してから ALTER する。
+
+## 参照
+
+- `docs/DEPLOY-DB.md`
+- `scripts/ensure-prod-columns.js`
+- `scripts/deploy-to-production.js`（デプロイ前の列確認）

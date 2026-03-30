@@ -97,6 +97,12 @@ export async function toQuestionResponse(
       exploreTagKind: entry.exploreTagKind,
     };
   }
+  if (entry.kind === 'REVEAL') {
+    return {
+      kind: 'REVEAL',
+      displayText: entry.displayText ?? '',
+    };
+  }
   // EXPLORE_TAG or SOFT_CONFIRM
   if (!entry.tagKey) {
     throw new Error('tagKey is required for EXPLORE_TAG or SOFT_CONFIRM');

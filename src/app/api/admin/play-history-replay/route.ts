@@ -113,6 +113,9 @@ function historyEntryToQuestionData(entry: QuestionHistoryEntry): QuestionData {
     specialQuestionType: entry.specialQuestionType,
     seriesTagKeys: entry.seriesTagKeys,
     titleCharType: entry.titleCharType,
+    revealWorkId: entry.revealWorkId,
+    revealWorkTitle: entry.revealWorkTitle,
+    revealResult: entry.revealResult,
   };
 }
 
@@ -184,6 +187,30 @@ export async function POST(request: NextRequest) {
     const steps: ReplayStep[] = [];
 
     for (const entry of sortedEntries) {
+      const entryKind = (entry as { kind?: string }).kind;
+      if (entryKind === 'REVEAL') {
+        const e = entry as QuestionHistoryEntry & {
+          revealResult?: string;
+          revealWorkId?: string;
+          revealWorkTitle?: string;
+        };
+        steps.push({
+          qIndex: entry.qIndex ?? steps.length + 1,
+          kind: 'REVEAL',
+          displayText: entry.displayText,
+          answer: entry.answer,
+          tagCoverage: undefined,
+          confidenceBefore: 0,
+          confidenceAfter: 0,
+          wasNoisy: false,
+          ...(entry.durationSeconds != null && { durationSeconds: entry.durationSeconds }),
+          revealResult: (e.revealResult as 'SUCCESS' | 'MISS') ?? 'SUCCESS',
+          revealWorkId: e.revealWorkId,
+          revealWorkTitle: e.revealWorkTitle,
+        });
+        continue;
+      }
+
       const probabilities = normalizeWeights(weights);
       const sorted = [...probabilities].sort((a, b) => {
         if (a.probability !== b.probability) return b.probability - a.probability;
@@ -253,7 +280,8 @@ export async function POST(request: NextRequest) {
     });
     const finalConfidence = finalSorted[0]?.probability ?? 0;
     const topWorkId = finalSorted[0]?.workId;
-    if (finalConfidence >= revealThreshold && topWorkId) {
+    const hasStoredReveal = sortedEntries.some((e) => (e as { kind?: string }).kind === 'REVEAL');
+    if (!hasStoredReveal && finalConfidence >= revealThreshold && topWorkId) {
       const topWork = await prisma.work.findUnique({
         where: { workId: topWorkId },
         select: { title: true },

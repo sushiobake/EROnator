@@ -149,6 +149,8 @@ model PlayHistory {
   submittedTitleText  String?   // リスト外入力（NOT_IN_LIST 時）
   sessionStartedAt   DateTime? // セッション開始時刻（総合滞在時間算出用）
   clickedFanza        Boolean   @default(false) // FANZAで見るリンクをクリックしたか
+  /// FAIL_LIST 時のみ: 候補スナップショット等（管理画面・分析用 JSON）
+  failListContextJson String?
   createdAt           DateTime  @default(now())
 
   @@index([sessionId])

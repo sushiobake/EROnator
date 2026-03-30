@@ -31,7 +31,7 @@ export interface TagResponse {
  * - 質問プール全体・候補質問一覧・質問IDの全量を返さない（Brief）
  */
 export interface QuestionResponse {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL';
   displayText: string;
   tagKey?: string; // EXPLORE_TAG, SOFT_CONFIRM用
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER'; // HARD_CONFIRM用

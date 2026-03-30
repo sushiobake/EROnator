@@ -4,23 +4,35 @@
  */
 
 import { prisma } from '@/server/db/client';
+import type { FailListContextSnapshot } from '@/server/playHistory/buildFailListContext';
 import type { SessionState } from '@/server/session/manager';
 
 export type PlayOutcome = 'SUCCESS' | 'FAIL_LIST' | 'ALMOST_SUCCESS' | 'NOT_IN_LIST';
 
 /**
  * プレイ終了時に1レコード作成（SUCCESS または FAIL_LIST）
+ * @param failListContext FAIL_LIST のときのみ: 候補スナップショット（失敗時は null で保存）
  */
 export async function createPlayHistory(
   session: SessionState,
   outcome: 'SUCCESS' | 'FAIL_LIST',
-  resultWorkId?: string | null
+  resultWorkId?: string | null,
+  failListContext?: FailListContextSnapshot | null
 ): Promise<void> {
   const sessionRow = await prisma.session.findUnique({
     where: { sessionId: session.sessionId },
     select: { createdAt: true },
   });
   const sessionStartedAt = sessionRow?.createdAt ?? null;
+
+  let failListContextJson: string | null = null;
+  if (outcome === 'FAIL_LIST' && failListContext) {
+    try {
+      failListContextJson = JSON.stringify(failListContext);
+    } catch {
+      failListContextJson = null;
+    }
+  }
 
   await prisma.playHistory.create({
     data: {
@@ -32,6 +44,7 @@ export async function createPlayHistory(
       resultWorkId: resultWorkId ?? null,
       submittedTitleText: null,
       sessionStartedAt,
+      failListContextJson,
     },
   });
 }

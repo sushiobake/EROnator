@@ -22,6 +22,7 @@ import { buildDebugPayload, type BeforeState } from '@/server/debug/buildDebugPa
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { SESSION_NOT_FOUND_CODE } from '@/constants/apiCodes';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
+import { buildFailListContextSnapshot } from '@/server/playHistory/buildFailListContext';
 
 export async function POST(request: NextRequest) {
   try {
@@ -231,10 +232,18 @@ export async function POST(request: NextRequest) {
     // FAIL_LIST: PlayHistory 作成して返却
     if (result.state === 'FAIL_LIST') {
       try {
-        await createPlayHistory(
-          { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
-          'FAIL_LIST'
-        );
+        const sessionPayload = {
+          ...session,
+          questionCount: newQuestionCount,
+          questionHistory: historyWithAnswer,
+        };
+        let snap = null;
+        try {
+          snap = await buildFailListContextSnapshot(sessionPayload, config);
+        } catch (err) {
+          console.warn('[PlayHistory] failList snapshot:', err);
+        }
+        await createPlayHistory(sessionPayload, 'FAIL_LIST', undefined, snap);
       } catch (e) {
         console.error('[PlayHistory] create FAIL_LIST failed:', e);
       }
@@ -280,10 +289,18 @@ export async function POST(request: NextRequest) {
 
     // フォールバック（REVEAL で work が見つからなかった等）
     try {
-      await createPlayHistory(
-        { ...session, questionCount: newQuestionCount, questionHistory: historyWithAnswer },
-        'FAIL_LIST'
-      );
+      const sessionPayload = {
+        ...session,
+        questionCount: newQuestionCount,
+        questionHistory: historyWithAnswer,
+      };
+      let snap = null;
+      try {
+        snap = await buildFailListContextSnapshot(sessionPayload, config);
+      } catch (err) {
+        console.warn('[PlayHistory] failList snapshot:', err);
+      }
+      await createPlayHistory(sessionPayload, 'FAIL_LIST', undefined, snap);
     } catch (e) {
       console.error('[PlayHistory] create FAIL_LIST failed:', e);
     }

@@ -249,7 +249,7 @@ export function initializeWeightsFromWorks(
 export type ExploreTagKind = 'summary' | 'erotic' | 'abstract' | 'normal';
 
 export interface QuestionData {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL';
   displayText: string;
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER';
@@ -276,6 +276,10 @@ export interface QuestionData {
   titleSyllable2Branch?: 'yesBranch' | 'noBranch';
   /** SPECIAL_QUESTION AUTHOR_CHAR_TYPE の聞く文字種 */
   authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
+  /** REVEAL 断定（履歴からの再構築用） */
+  revealWorkId?: string;
+  revealWorkTitle?: string;
+  revealResult?: 'SUCCESS' | 'MISS' | string;
 }
 
 /** selectNextQuestion のオプション（REVEAL失敗直後など） */

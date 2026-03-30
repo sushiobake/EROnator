@@ -24,6 +24,8 @@ import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { SESSION_NOT_FOUND_CODE } from '@/constants/apiCodes';
 import { computeTagBasedMatchRate } from '@/server/utils/tagMatchRate';
 import { createPlayHistory } from '@/server/playHistory/savePlayHistory';
+import { buildFailListContextSnapshot } from '@/server/playHistory/buildFailListContext';
+import type { QuestionHistoryEntry } from '@/server/session/manager';
 import { getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 
 export async function POST(request: NextRequest) {
@@ -174,7 +176,22 @@ export async function POST(request: NextRequest) {
         const recommendedWorks = recommended.map(({ work, matchRate }) => ({ ...work, matchRate }));
 
         try {
-          await createPlayHistory(session, 'SUCCESS', topWorkId);
+          const h = session.questionHistory ?? [];
+          const maxQ = h.length > 0 ? Math.max(...h.map((x) => x.qIndex ?? 0)) : 0;
+          const revealEntry = {
+            qIndex: maxQ + 1,
+            kind: 'REVEAL',
+            displayText: `断定: この作品は「${topWork.title}」ですか？`,
+            answer: 'YES',
+            revealResult: 'SUCCESS',
+            revealWorkId: topWorkId,
+            revealWorkTitle: topWork.title,
+          } as unknown as QuestionHistoryEntry;
+          const sessionForHistory: typeof session = {
+            ...session,
+            questionHistory: [...h, revealEntry],
+          };
+          await createPlayHistory(sessionForHistory, 'SUCCESS', topWorkId);
         } catch (e) {
           console.error('[PlayHistory] create SUCCESS failed:', e);
         }
@@ -203,7 +220,13 @@ export async function POST(request: NextRequest) {
       const updatedSession = await SessionManager.getSession(sessionId);
       if (updatedSession) {
         try {
-          await createPlayHistory(updatedSession, 'FAIL_LIST');
+          let snap = null;
+          try {
+            snap = await buildFailListContextSnapshot(updatedSession, config);
+          } catch (err) {
+            console.warn('[PlayHistory] failList snapshot:', err);
+          }
+          await createPlayHistory(updatedSession, 'FAIL_LIST', undefined, snap);
         } catch (e) {
           console.error('[PlayHistory] create FAIL_LIST failed:', e);
         }

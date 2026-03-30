@@ -314,6 +314,7 @@ export default function AdminTagsPage() {
     sessionStartedAt?: string | null;
     clickedFanza?: boolean;
     createdAt: string;
+    failListContext?: unknown | null;
   }>>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
@@ -5186,6 +5187,12 @@ export default function AdminTagsPage() {
                             })}
                           </tbody>
                         </table>
+                      )}
+                      {row?.outcome === 'FAIL_LIST' && row.failListContext != null && (
+                        <div style={{ marginTop: '1rem', padding: '0.85rem', background: '#fff8e1', borderRadius: '6px', border: '1px solid #ffcc80', fontSize: '0.88rem' }}>
+                          <strong style={{ display: 'block', marginBottom: '0.5rem' }}>FAIL_LIST 時の候補スナップショット（分析用）</strong>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '240px', overflow: 'auto', fontSize: '0.8rem' }}>{JSON.stringify(row.failListContext, null, 2)}</pre>
+                        </div>
                       )}
                     </div>
                   </div>

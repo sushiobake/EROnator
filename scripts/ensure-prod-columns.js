@@ -54,6 +54,11 @@ const COLUMNS_TO_ENSURE = [
     column: 'clickedFanzaWorkId',
     type: 'TEXT',
   },
+  {
+    table: 'PlayHistory',
+    column: 'failListContextJson',
+    type: 'TEXT',
+  },
 ];
 
 async function connect() {

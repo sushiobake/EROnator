@@ -30,6 +30,7 @@
     "db:push:supabase": "node scripts/run-db-push-supabase.js",
     "backup:admin-tags": "node scripts/auto-backup-admin-tags.js",
     "backup:project": "node scripts/backup-project.js",
+    "backup:snapshot": "node scripts/backup-full-snapshot.js",
     "verify:admin": "node scripts/verify-admin-critical.js",
     "verify:sync": "node scripts/verify-sync-result.js",
     "setup:git-hooks": "node scripts/setup-git-hooks.js",

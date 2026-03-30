@@ -66,7 +66,7 @@ export interface WeightsHistoryEntry {
 
 export interface QuestionHistoryEntry {
   qIndex: number;
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL';
   tagKey?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER';
   hardConfirmValue?: string;
@@ -96,6 +96,10 @@ export interface QuestionHistoryEntry {
   durationSeconds?: number;
   /** EXPLORE_TAG の出所（まとめ/エロ/抽象/通常）。表示は変えずタグ・バッジ用 */
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
+  /** REVEAL 断定行（履歴・リプレイ用） */
+  revealWorkId?: string;
+  revealWorkTitle?: string;
+  revealResult?: 'SUCCESS' | 'MISS' | string;
 }
 
 /**

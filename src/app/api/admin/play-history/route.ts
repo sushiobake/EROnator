@@ -21,6 +21,8 @@ export interface PlayHistoryListResponse {
     submittedTitleText: string | null;
     sessionStartedAt: string | null;
     clickedFanza: boolean;
+    /** FAIL_LIST 時の候補スナップショット（JSON オブジェクト） */
+    failListContext: unknown | null;
     createdAt: string;
   }>;
   total?: number;
@@ -83,6 +85,15 @@ export async function GET(request: NextRequest) {
         submittedTitleText: row.submittedTitleText,
         sessionStartedAt: row.sessionStartedAt?.toISOString() ?? null,
         clickedFanza: row.clickedFanza ?? false,
+        failListContext: (() => {
+          const raw = row.failListContextJson;
+          if (raw == null || raw === '') return null;
+          try {
+            return JSON.parse(raw) as unknown;
+          } catch {
+            return null;
+          }
+        })(),
         createdAt: row.createdAt.toISOString(),
       })),
       total,
