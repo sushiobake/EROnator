@@ -49,6 +49,7 @@ export interface SessionState {
   weights: Record<string, number>; // { workId: weight }
   weightsHistory: WeightsHistoryEntry[]; // 修正機能用
   questionHistory: QuestionHistoryEntry[];
+  visitorId?: string | null;
 }
 
 /** 楽観的ロック競合時（他リクエストが先に更新済み） */
@@ -167,6 +168,7 @@ export class SessionManager {
       weights: weightsFromStored(JSON.parse(session.weights || '{}')),
       weightsHistory,
       questionHistory: JSON.parse(session.questionHistory || '[]'),
+      visitorId: (session as { visitorId?: string | null }).visitorId ?? null,
     };
   }
 

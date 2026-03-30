@@ -23,6 +23,8 @@ export interface PlayHistoryListResponse {
     clickedFanza: boolean;
     /** FAIL_LIST 時の候補スナップショット（JSON オブジェクト） */
     failListContext: unknown | null;
+    visitorId: string | null;
+    hasRecommendPlay: boolean;
     createdAt: string;
   }>;
   total?: number;
@@ -65,6 +67,15 @@ export async function GET(request: NextRequest) {
         : [];
     const titleByWorkId = Object.fromEntries(workTitles.map((w) => [w.workId, w.title]));
 
+    const visitorIds = [...new Set(items.map((r) => r.visitorId).filter(Boolean) as string[])];
+    const recPlays = visitorIds.length > 0
+      ? await prisma.recommendPlayHistory.findMany({
+          where: { visitorId: { in: visitorIds } },
+          select: { visitorId: true },
+        })
+      : [];
+    const recVisitorIds = new Set(recPlays.map((r) => r.visitorId).filter(Boolean) as string[]);
+
     return NextResponse.json({
       success: true,
       items: items.map((row) => ({
@@ -94,6 +105,8 @@ export async function GET(request: NextRequest) {
             return null;
           }
         })(),
+        visitorId: row.visitorId ?? null,
+        hasRecommendPlay: row.visitorId ? recVisitorIds.has(row.visitorId) : false,
         createdAt: row.createdAt.toISOString(),
       })),
       total,

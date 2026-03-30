@@ -28,6 +28,15 @@ export async function GET(request: NextRequest) {
       prisma.recommendPlayHistory.count(),
     ]);
 
+    const visitorIdsRH = [...new Set(items.map((r) => r.visitorId).filter(Boolean) as string[])];
+    const normalPlays = visitorIdsRH.length > 0
+      ? await prisma.playHistory.findMany({
+          where: { visitorId: { in: visitorIdsRH } },
+          select: { visitorId: true },
+        })
+      : [];
+    const normalVisitorIds = new Set(normalPlays.map((r) => r.visitorId).filter(Boolean) as string[]);
+
     return NextResponse.json({
       success: true,
       items: items.map((row) => ({
@@ -45,6 +54,8 @@ export async function GET(request: NextRequest) {
         })(),
         topWorkId: row.topWorkId,
         topWorkTitle: row.topWorkTitle,
+        visitorId: row.visitorId ?? null,
+        hasNormalPlay: row.visitorId ? normalVisitorIds.has(row.visitorId) : false,
         createdAt: row.createdAt.toISOString(),
       })),
       total,

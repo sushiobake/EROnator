@@ -585,6 +585,9 @@ export function RecommendMode({ onBack }: RecommendModeProps) {
                 detail,
                 topWorkId: top?.workId ?? null,
                 topWorkTitle: top?.title ?? null,
+                visitorId: (() => {
+                  try { return typeof window !== 'undefined' ? localStorage.getItem('eronator.visitorId') : null; } catch { return null; }
+                })(),
               }),
             });
             if (!res.ok) {

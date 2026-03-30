@@ -6,10 +6,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-  // directUrl は未設定だと Prisma が env を要求して Vercel ビルドが落ちるため省略。
-  // プーラー経由で migrate が失敗する場合は DATABASE_URL を直接接続にするか、ホストの手順に従う。
 }
 
 // Works: 作品データ
@@ -106,12 +104,14 @@ model Session {
   weights                 String   @default("{}") // JSON object: { workId: weight }
   weightsHistory          String   @default("[]") // 互換用。実体は SessionWeightsSnapshot に格納
   questionHistory         String   @default("[]") // JSON array
+  visitorId               String?  // ブラウザ識別用（localStorage由来）
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
   weightsSnapshots        SessionWeightsSnapshot[]
 
   @@index([sessionId])
+  @@index([visitorId])
 }
 
 // 修正機能用: 重みスナップショットを別テーブルで保持（セッション本体の肥大化を防止）
@@ -151,12 +151,15 @@ model PlayHistory {
   submittedTitleText  String?   // リスト外入力（NOT_IN_LIST 時）
   sessionStartedAt   DateTime? // セッション開始時刻（総合滞在時間算出用）
   clickedFanza        Boolean   @default(false) // FANZAで見るリンクをクリックしたか
+  /// FAIL_LIST 時のみ: 候補スナップショット等（管理画面・分析用 JSON）
   failListContextJson String?
+  visitorId           String?   // ブラウザ識別用（localStorage由来）
   createdAt           DateTime  @default(now())
 
   @@index([sessionId])
   @@index([outcome])
   @@index([createdAt])
+  @@index([visitorId])
 }
 
 // RecommendPlayHistory: 推薦モード完了1プレイ＝1レコード（詳細は detailJson）
@@ -165,13 +168,16 @@ model RecommendPlayHistory {
   recommendSessionId String    @unique
   sessionStartedAt   DateTime?
   clickedFanza       Boolean   @default(false)
+  /// FANZAで見るを押した作品の workId（未クリック・旧データは null）
   clickedFanzaWorkId String?
   detailJson         String    @default("{}")
   topWorkId          String?
   topWorkTitle       String?
+  visitorId          String?   // ブラウザ識別用（localStorage由来）
   createdAt          DateTime  @default(now())
 
   @@index([createdAt])
+  @@index([visitorId])
 }
 
 // お問い合わせフォーム（管理画面で一覧表示。将来メール転送用）
@@ -179,7 +185,7 @@ model ContactInquiry {
   id        String   @id @default(cuid())
   name      String
   email     String?
-  subject   String?  // 不具合の報告 | 同人誌の登録要望 | その他 など
+  subject   String?
   message   String
   createdAt DateTime @default(now())
 

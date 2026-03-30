@@ -45,6 +45,7 @@ export async function createPlayHistory(
       submittedTitleText: null,
       sessionStartedAt,
       failListContextJson,
+      visitorId: session.visitorId ?? null,
     },
   });
 }

@@ -2344,7 +2344,10 @@ export async function handleRevealResponse(
     return { state: 'FAIL_LIST', sessionUpdates: baseSessionUpdates };
   }
 
-  const newQIndex = session.questionCount + 1;
+  const maxQIndex = session.questionHistory.length > 0
+    ? Math.max(...session.questionHistory.map((e) => e.qIndex ?? 0))
+    : 0;
+  const newQIndex = maxQIndex + 1;
   const newHistory: QuestionHistoryEntry[] = [
     ...session.questionHistory,
     {

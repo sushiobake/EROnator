@@ -59,6 +59,21 @@ const COLUMNS_TO_ENSURE = [
     column: 'failListContextJson',
     type: 'TEXT',
   },
+  {
+    table: 'Session',
+    column: 'visitorId',
+    type: 'TEXT',
+  },
+  {
+    table: 'PlayHistory',
+    column: 'visitorId',
+    type: 'TEXT',
+  },
+  {
+    table: 'RecommendPlayHistory',
+    column: 'visitorId',
+    type: 'TEXT',
+  },
 ];
 
 async function connect() {

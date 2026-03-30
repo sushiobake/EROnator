@@ -208,6 +208,45 @@ export async function POST(request: NextRequest) {
 
     // FAIL_LIST / QUIZ: セッション更新を適用。QUIZ のときはスナップショットを 1 行だけ INSERT。
     if (result.sessionUpdates) {
+      // REVEAL→NO 時: 断定ミス行を questionHistory に追加（管理画面での分析用）
+      if (answer === 'NO') {
+        const rejectedSetForReveal = new Set(session.revealRejectedWorkIds ?? []);
+        const sortedForReveal = [...probabilities].sort((a, b) => b.probability - a.probability);
+        const revealedWorkId = sortedForReveal.find((p) => !rejectedSetForReveal.has(p.workId))?.workId ?? null;
+        if (revealedWorkId) {
+          const revealedWork = await prisma.work.findUnique({
+            where: { workId: revealedWorkId },
+            select: { title: true },
+          });
+          const existingHist = session.questionHistory;
+          const maxExistingQ = existingHist.length > 0
+            ? Math.max(...existingHist.map((e) => e.qIndex ?? 0))
+            : 0;
+          const revealMissEntry: QuestionHistoryEntry = {
+            qIndex: maxExistingQ + 1,
+            kind: 'REVEAL',
+            displayText: `断定: この作品は「${revealedWork?.title ?? revealedWorkId}」ですか？`,
+            answer: 'NO',
+            revealResult: 'MISS',
+            revealWorkId: revealedWorkId,
+            revealWorkTitle: revealedWork?.title ?? undefined,
+          };
+          if (result.state === 'QUIZ' && result.sessionUpdates.questionHistory) {
+            const hist = result.sessionUpdates.questionHistory;
+            const lastEntry = hist[hist.length - 1];
+            result.sessionUpdates.questionHistory = [
+              ...hist.slice(0, -1),
+              revealMissEntry,
+              { ...lastEntry, qIndex: maxExistingQ + 2 },
+            ];
+            if (result.sessionUpdates.questionCount != null) {
+              result.sessionUpdates.questionCount = maxExistingQ + 2;
+            }
+          } else if (result.state === 'FAIL_LIST') {
+            result.sessionUpdates.questionHistory = [...session.questionHistory, revealMissEntry];
+          }
+        }
+      }
       await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
       if (result.state === 'QUIZ' && result.sessionUpdates.questionCount != null && result.sessionUpdates.weights) {
         const snapshotArray = Object.entries(result.sessionUpdates.weights).map(([workId, weight]) => ({ workId, weight }));

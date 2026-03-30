@@ -12,6 +12,7 @@ export async function createRecommendPlayHistory(input: {
   detailJson: string;
   topWorkId: string | null;
   topWorkTitle: string | null;
+  visitorId?: string | null;
 }): Promise<void> {
   const len = new TextEncoder().encode(input.detailJson).length;
   if (len > MAX_DETAIL_JSON_BYTES) {
@@ -24,6 +25,7 @@ export async function createRecommendPlayHistory(input: {
       detailJson: input.detailJson,
       topWorkId: input.topWorkId,
       topWorkTitle: input.topWorkTitle,
+      visitorId: input.visitorId ?? null,
     },
   });
 }

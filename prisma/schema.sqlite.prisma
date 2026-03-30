@@ -104,12 +104,14 @@ model Session {
   weights                 String   @default("{}") // JSON object: { workId: weight }
   weightsHistory          String   @default("[]") // 互換用。実体は SessionWeightsSnapshot に格納
   questionHistory         String   @default("[]") // JSON array
+  visitorId               String?  // ブラウザ識別用（localStorage由来）
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
   weightsSnapshots        SessionWeightsSnapshot[]
 
   @@index([sessionId])
+  @@index([visitorId])
 }
 
 // 修正機能用: 重みスナップショットを別テーブルで保持（セッション本体の肥大化を防止）
@@ -151,11 +153,13 @@ model PlayHistory {
   clickedFanza        Boolean   @default(false) // FANZAで見るリンクをクリックしたか
   /// FAIL_LIST 時のみ: 候補スナップショット等（管理画面・分析用 JSON）
   failListContextJson String?
+  visitorId           String?   // ブラウザ識別用（localStorage由来）
   createdAt           DateTime  @default(now())
 
   @@index([sessionId])
   @@index([outcome])
   @@index([createdAt])
+  @@index([visitorId])
 }
 
 // RecommendPlayHistory: 推薦モード完了1プレイ＝1レコード（詳細は detailJson）
@@ -169,9 +173,11 @@ model RecommendPlayHistory {
   detailJson         String    @default("{}")
   topWorkId          String?
   topWorkTitle       String?
+  visitorId          String?   // ブラウザ識別用（localStorage由来）
   createdAt          DateTime  @default(now())
 
   @@index([createdAt])
+  @@index([visitorId])
 }
 
 // お問い合わせフォーム（管理画面で一覧表示。将来メール転送用）

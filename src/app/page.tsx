@@ -372,7 +372,19 @@ export default function Home() {
         fetch('/api/start', {
           method: 'POST',
           headers,
-          body: JSON.stringify({ aiGateChoice: choice }),
+          body: JSON.stringify({
+            aiGateChoice: choice,
+            visitorId: (() => {
+              try {
+                let vid = localStorage.getItem('eronator.visitorId');
+                if (!vid) {
+                  vid = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+                  localStorage.setItem('eronator.visitorId', vid);
+                }
+                return vid;
+              } catch { return null; }
+            })(),
+          }),
         }),
         minDelay,
       ]);

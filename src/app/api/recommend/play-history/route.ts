@@ -42,12 +42,18 @@ export async function POST(request: NextRequest) {
     const topWorkTitle =
       typeof body.topWorkTitle === 'string' ? body.topWorkTitle.slice(0, 512) : null;
 
+    const visitorId =
+      typeof body.visitorId === 'string' && body.visitorId.length > 0
+        ? body.visitorId.slice(0, 128)
+        : null;
+
     await createRecommendPlayHistory({
       recommendSessionId,
       sessionStartedAt,
       detailJson,
       topWorkId,
       topWorkTitle,
+      visitorId,
     });
 
     return NextResponse.json({ success: true });

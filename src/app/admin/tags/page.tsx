@@ -315,6 +315,8 @@ export default function AdminTagsPage() {
     clickedFanza?: boolean;
     createdAt: string;
     failListContext?: unknown | null;
+    visitorId?: string | null;
+    hasRecommendPlay?: boolean;
   }>>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
@@ -339,6 +341,8 @@ export default function AdminTagsPage() {
       topWorkId: string | null;
       topWorkTitle: string | null;
       createdAt: string;
+      visitorId?: string | null;
+      hasNormalPlay?: boolean;
     }>
   >([]);
   const [recHistTotal, setRecHistTotal] = useState(0);
@@ -5001,7 +5005,13 @@ export default function AdminTagsPage() {
                         {row.resultWorkId != null ? (row.resultWorkTitle ?? '—') : (row.submittedTitleText ?? '—')}
                       </td>
                       <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                        {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
+                        <div>{row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}</div>
+                        {row.visitorId && (
+                          <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
+                            #{row.visitorId.slice(-8)}
+                            {row.hasRecommendPlay && <span style={{ marginLeft: '0.3rem', color: '#7c3aed', fontWeight: 'bold', fontSize: '0.7rem' }}>推薦◎</span>}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         {row.sessionStartedAt && row.createdAt
@@ -5188,10 +5198,13 @@ export default function AdminTagsPage() {
                           </tbody>
                         </table>
                       )}
-                      {row?.outcome === 'FAIL_LIST' && row.failListContext != null && (
+                      {row?.outcome === 'FAIL_LIST' && (
                         <div style={{ marginTop: '1rem', padding: '0.85rem', background: '#fff8e1', borderRadius: '6px', border: '1px solid #ffcc80', fontSize: '0.88rem' }}>
                           <strong style={{ display: 'block', marginBottom: '0.5rem' }}>FAIL_LIST 時の候補スナップショット（分析用）</strong>
-                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '240px', overflow: 'auto', fontSize: '0.8rem' }}>{JSON.stringify(row.failListContext, null, 2)}</pre>
+                          {row.failListContext != null
+                            ? <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '240px', overflow: 'auto', fontSize: '0.8rem' }}>{JSON.stringify(row.failListContext, null, 2)}</pre>
+                            : <p style={{ margin: 0, color: '#999', fontSize: '0.8rem' }}>スナップショット未保存（旧データまたは保存エラー）</p>
+                          }
                         </div>
                       )}
                     </div>
@@ -5357,7 +5370,13 @@ export default function AdminTagsPage() {
                           {row.topWorkTitle ?? row.topWorkId ?? '—'}
                         </td>
                         <td style={{ padding: '0.45rem', whiteSpace: 'nowrap', fontSize: '0.8rem' }}>
-                          {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
+                          <div>{row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}</div>
+                          {row.visitorId && (
+                            <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
+                              #{row.visitorId.slice(-8)}
+                              {row.hasNormalPlay && <span style={{ marginLeft: '0.3rem', color: '#0070f3', fontWeight: 'bold', fontSize: '0.7rem' }}>通常◎</span>}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.45rem', textAlign: 'center', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
                           {row.sessionStartedAt && row.createdAt

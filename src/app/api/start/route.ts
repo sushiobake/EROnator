@@ -39,6 +39,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { aiGateChoice } = body;
 
+    const visitorId =
+      typeof body.visitorId === 'string' && body.visitorId.length > 0
+        ? body.visitorId.slice(0, 128)
+        : null;
+
     if (!aiGateChoice || !['YES', 'NO', 'DONT_CARE'].includes(aiGateChoice)) {
       throw new ApiError(
         400,
@@ -173,6 +178,7 @@ export async function POST(request: NextRequest) {
         weights: JSON.stringify(weightsToStored(weightsMap)),
         weightsHistory: '[]',
         questionHistory: JSON.stringify([firstQuestionEntry]),
+        ...(visitorId ? { visitorId } : {}),
       },
     });
     await prisma.sessionWeightsSnapshot.create({
