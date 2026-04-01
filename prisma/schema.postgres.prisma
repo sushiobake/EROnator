@@ -145,7 +145,7 @@ model Log {
 model PlayHistory {
   id                  String    @id @default(cuid())
   sessionId           String    @unique // 1セッション＝1レコード
-  outcome             String    // "SUCCESS" | "FAIL_LIST" | "ALMOST_SUCCESS" | "NOT_IN_LIST"
+  outcome             String    // "SUCCESS" | "FAIL_LIST" | "ALMOST_SUCCESS" | "NOT_IN_LIST" | "ABANDONED"
   questionCount       Int       @default(0)
   questionHistory     String    @default("[]") // JSON: 質問列（displayText, kind, answer 等）
   aiGateChoice        String?   // "YES" | "NO" | "DONT_CARE"

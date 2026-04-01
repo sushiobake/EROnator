@@ -5,9 +5,9 @@
 
 import { prisma } from '@/server/db/client';
 import type { FailListContextSnapshot } from '@/server/playHistory/buildFailListContext';
-import type { SessionState } from '@/server/session/manager';
+import { SessionManager, type SessionState } from '@/server/session/manager';
 
-export type PlayOutcome = 'SUCCESS' | 'FAIL_LIST' | 'ALMOST_SUCCESS' | 'NOT_IN_LIST';
+export type PlayOutcome = 'SUCCESS' | 'FAIL_LIST' | 'ALMOST_SUCCESS' | 'NOT_IN_LIST' | 'ABANDONED';
 
 /**
  * プレイ終了時に1レコード作成（SUCCESS または FAIL_LIST）
@@ -90,4 +90,47 @@ export async function updatePlayHistoryClickedFanza(sessionId: string): Promise<
     where: { sessionId },
     data: { clickedFanza: true },
   });
+}
+
+/**
+ * 途中離脱（pagehide 等）: まだ PlayHistory が無いセッションのみ 1 件作成。既に終了済みなら no-op。
+ */
+export async function recordAbandonedPlayHistory(
+  sessionId: string
+): Promise<{ recorded: boolean; reason?: string }> {
+  const existing = await prisma.playHistory.findUnique({
+    where: { sessionId },
+    select: { id: true },
+  });
+  if (existing) {
+    return { recorded: false, reason: 'play_history_exists' };
+  }
+
+  const session = await SessionManager.getSession(sessionId);
+  if (!session) {
+    return { recorded: false, reason: 'session_not_found' };
+  }
+
+  const sessionRow = await prisma.session.findUnique({
+    where: { sessionId },
+    select: { createdAt: true },
+  });
+  const sessionStartedAt = sessionRow?.createdAt ?? null;
+
+  await prisma.playHistory.create({
+    data: {
+      sessionId,
+      outcome: 'ABANDONED',
+      questionCount: session.questionCount,
+      questionHistory: JSON.stringify(session.questionHistory ?? []),
+      aiGateChoice: session.aiGateChoice ?? null,
+      resultWorkId: null,
+      submittedTitleText: null,
+      sessionStartedAt,
+      failListContextJson: null,
+      visitorId: session.visitorId ?? null,
+    },
+  });
+
+  return { recorded: true };
 }

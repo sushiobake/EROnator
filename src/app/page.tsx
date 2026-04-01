@@ -185,6 +185,44 @@ export default function Home() {
   const [pendingThinkingType, setPendingThinkingType] = useState<'opening' | 'inGame' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList' | null>(null);
   const { showToast } = useToast();
 
+  const sessionIdRef = useRef<string | null>(null);
+  const gameStateRef = useRef<GameState>('TOP');
+
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    gameStateRef.current = state;
+  }, [state]);
+
+  /** 本番のみ: QUIZ/REVEAL 中に離脱したとき Session を元に ABANDONED を記録 */
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (process.env.NEXT_PUBLIC_VERCEL_ENV !== 'production') return;
+
+    const onPageHide = () => {
+      const sid = sessionIdRef.current;
+      const st = gameStateRef.current;
+      if (!sid) return;
+      if (st !== 'QUIZ' && st !== 'REVEAL') return;
+      const payload = JSON.stringify({ sessionId: sid });
+      const url = `${window.location.origin}/api/play-history/abandon`;
+      const blob = new Blob([payload], { type: 'application/json' });
+      if (!navigator.sendBeacon(url, blob)) {
+        void fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
+
   const clearStaleSessionAndReturnTop = useCallback(() => {
     setSessionId(null);
     if (typeof window !== 'undefined') {

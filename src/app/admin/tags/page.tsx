@@ -4906,6 +4906,7 @@ export default function AdminTagsPage() {
                 <option value="FAIL_LIST">FAIL_LIST（候補から未選択）</option>
                 <option value="ALMOST_SUCCESS">ALMOST_SUCCESS（候補から選択）</option>
                 <option value="NOT_IN_LIST">NOT_IN_LIST（リスト外入力）</option>
+                <option value="ABANDONED">ABANDONED（途中離脱）</option>
               </select>
             </label>
             <button
@@ -4994,7 +4995,7 @@ export default function AdminTagsPage() {
                       </td>
                       <td style={{ padding: '0.5rem' }}>
                         <span style={{
-                          color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : '#666',
+                          color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : row.outcome === 'ABANDONED' ? '#e65100' : '#666',
                           fontWeight: 'bold',
                         }}>
                           {row.outcome}
