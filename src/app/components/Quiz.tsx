@@ -83,6 +83,9 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
   const visibleChoices = questionCount >= DONT_CARE_FROM_QUESTION
     ? ANSWER_CHOICES
     : ANSWER_CHOICES.filter((c) => c.value !== 'DONT_CARE');
+  const finalChoices = question.kind === 'NOISE_GUIDE_RECOMMEND'
+    ? visibleChoices.filter((c) => c.value === 'YES' || c.value === 'NO')
+    : visibleChoices;
 
   const handleBack = () => {
     if (interactionDisabled) return;
@@ -103,7 +106,7 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
               boxShadow: 'var(--shadow-md)',
             }}
           >
-          {visibleChoices.map((choice, index) => {
+          {finalChoices.map((choice, index) => {
             const isBlocked = isBlockedDisabled && (SPECIAL_QUESTION_BLOCKED_VALUES as readonly string[]).includes(choice.value);
             const isDisabled = interactionDisabled || isBlocked;
             return (

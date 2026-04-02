@@ -521,6 +521,10 @@ export default function Home() {
         await loadFailList();
       } else if (data.state === 'RECOMMEND') {
         setState('RECOMMEND');
+      } else if (data.state === 'TOP') {
+        setSessionId(null);
+        localStorage.removeItem('eronator_sessionId');
+        setState('TOP');
       } else if (data.state === 'QUIZ') {
         questionShownAtRef.current = Date.now();
         setQuestion(data.question);
@@ -721,7 +725,11 @@ export default function Home() {
     }
   };
 
-  const handleFailListSelectWork = async (workId: string) => {
+  const handleFailListSelectWork = async (
+    workId: string,
+    selectedFrom: 'topCandidates' | 'search' = 'topCandidates',
+    searchQuery?: string
+  ) => {
     if (!sessionId) return;
 
     setPendingThinkingType('failListSelect');
@@ -730,7 +738,7 @@ export default function Home() {
     try {
       const [response] = await Promise.all([
         fetch(
-          `/api/failList/selected?sessionId=${encodeURIComponent(sessionId)}&workId=${encodeURIComponent(workId)}`
+          `/api/failList/selected?sessionId=${encodeURIComponent(sessionId)}&workId=${encodeURIComponent(workId)}&selectedFrom=${encodeURIComponent(selectedFrom)}${searchQuery ? `&searchQuery=${encodeURIComponent(searchQuery)}` : ''}`
         ),
         minDelay,
       ]);
@@ -1079,6 +1087,7 @@ export default function Home() {
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
           thinkingSubType={thinkingSubType}
+          hideCharacter={true}
           mobileExtendWhiteboard={failListWhiteboardFill ? undefined : false}
           characterSpeech={
             isThinking
@@ -1107,6 +1116,7 @@ export default function Home() {
             onSelectWork={handleFailListSelectWork}
             onNotInList={handleFailListNotInList}
             onBackToTop={() => setState('TOP')}
+            onGoRecommend={() => setState('RECOMMEND')}
             onBackToTopWithReset={handleBackToTopWithReset}
             onWhiteboardVerticalFillChange={setFailListWhiteboardFill}
             notInListPrompt={gc?.failListNotInListPrompt ?? 'ない？ならここに作品名書いてよ！お願いだから！'}

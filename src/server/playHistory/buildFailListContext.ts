@@ -47,7 +47,7 @@ export async function buildFailListContextSnapshot(
     });
     const rejected = getRejectedSet(session);
     const filtered = sorted.filter((p) => !rejected.has(p.workId));
-    const failListN = config.flow.failListN as number;
+    const failListN = (config.failHub?.candidateCount ?? config.flow.failListN) as number;
     const slice = filtered.slice(0, Math.max(failListN * 3, 30));
     const workIds = slice.map((p) => p.workId);
     const works =

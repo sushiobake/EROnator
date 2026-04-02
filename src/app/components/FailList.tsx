@@ -29,8 +29,9 @@ const CARD_GAP = 10;
 
 interface FailListProps {
   candidates: FailListCandidateItem[];
-  onSelectWork: (workId: string) => void;
+  onSelectWork: (workId: string, selectedFrom?: 'topCandidates' | 'search', searchQuery?: string) => void;
   onNotInList: (submittedTitleText: string) => void;
+  onGoRecommend?: () => void;
   /** 結果画面と同様の「トップに戻る」（セッション維持でトップへ） */
   onBackToTop: () => void;
   /** リストにない送信後：セッションリセットしてトップへ（表示は「トップに戻る」） */
@@ -45,6 +46,14 @@ interface FailListProps {
   hideCandidateGrid?: boolean;
   /** 配信者モード時はタイトルを部分的伏字 */
   streamerMode?: boolean;
+}
+
+interface SearchCandidateItem {
+  workId: string;
+  title: string;
+  authorName: string;
+  thumbnailUrl?: string | null;
+  source?: 'active' | 'reserve';
 }
 
 function FailListWorkTile({
@@ -152,6 +161,7 @@ export function FailList({
   onSelectWork,
   onNotInList,
   onBackToTop,
+  onGoRecommend,
   onBackToTopWithReset,
   onWhiteboardVerticalFillChange,
   notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT,
@@ -162,6 +172,9 @@ export function FailList({
   const [submittedText, setSubmittedText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchCandidateItem[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
   const chrome = getFailListBottomRowStyles(isMobile);
@@ -173,8 +186,34 @@ export function FailList({
 
   const handleSelectWork = (workId: string) => {
     if (interactionDisabled) return;
-    onSelectWork(workId);
+    onSelectWork(workId, 'topCandidates');
   };
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        setSearchLoading(true);
+        const res = await fetch(`/api/works/search?q=${encodeURIComponent(q)}`);
+        if (!res.ok) {
+          setSearchResults([]);
+          return;
+        }
+        const data = await res.json();
+        setSearchResults(Array.isArray(data?.works) ? data.works : []);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleNotInList = () => {
     if (interactionDisabled || !submittedText.trim()) return;
@@ -232,6 +271,11 @@ export function FailList({
           <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
             リストにない
           </button>
+          {onGoRecommend && (
+            <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
+              推薦で探す
+            </button>
+          )}
           <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
             トップに戻る
           </button>
@@ -307,6 +351,74 @@ export function FailList({
           </div>
         </div>
       )}
+      <div
+        style={{
+          marginTop: isMobile ? '0.75rem' : '1rem',
+          width: '100%',
+          maxWidth: 520,
+          minWidth: 0,
+          alignSelf: 'center',
+          boxSizing: 'border-box',
+          border: '1px solid #e5e7eb',
+          borderRadius: 10,
+          padding: isMobile ? '8px' : '10px',
+          background: '#fff',
+        }}
+      >
+        <p style={{ margin: '0 0 8px 0', fontSize: chrome.fontBody, fontWeight: 600, color: 'var(--color-text)' }}>
+          タイトルの一部を入力して。私の頭脳に照らし合わせるから
+        </p>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{ ...inputStyle, width: '100%' }}
+          placeholder="例: 鬼、学園、寝取られ など"
+        />
+        {searchLoading && (
+          <p style={{ margin: '8px 0 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>検索中...</p>
+        )}
+        {searchResults.length > 0 && (
+          <div style={{ marginTop: 8, display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+            {searchResults.map((w) => (
+              <button
+                key={`search-${w.workId}`}
+                type="button"
+                onClick={() => onSelectWork(w.workId, 'search', searchQuery.trim())}
+                disabled={interactionDisabled}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '64px 1fr',
+                  gap: 8,
+                  alignItems: 'center',
+                  width: '100%',
+                  textAlign: 'left',
+                  border: '1px solid #e5e7eb',
+                  background: '#fafafa',
+                  borderRadius: 8,
+                  padding: 8,
+                  cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+                }}
+              >
+                <img
+                  src={w.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(w.workId)}`}
+                  alt={w.title}
+                  style={{ width: 64, height: 48, borderRadius: 6, objectFit: 'cover' }}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>
+                    {streamerMode ? <StreamerCensoredText text={w.title} censorAll /> : w.title}
+                  </p>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                    {w.authorName}
+                    {w.source === 'reserve' ? ' / reserve' : ''}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       {submittedNotInList && onBackToTopWithReset && (
         <button type="button" onClick={onBackToTopWithReset} style={failFlowBackToTopButtonStyle(isMobile)}>
           トップに戻る

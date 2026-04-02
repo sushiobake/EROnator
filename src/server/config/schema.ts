@@ -109,6 +109,50 @@ const FlowSchema = z.object({
     })
     .strict()
     .optional(),
+  /**
+   * 早期分岐レビュー（Q25/Q30/Q35/Q40 など）。
+   * 3条件中 requiredConditions 個以上を満たしたら「詰み」と判定。
+   */
+  earlyExitReview: z
+    .object({
+      enabled: z.boolean().optional(),
+      reviewIndices: z.array(z.number().int().positive()),
+      requiredConditions: z.number().int().min(1).max(3).optional(),
+      thresholds: z
+        .object({
+          q25: z
+            .object({
+              minConfidence: z.number().min(0).max(1),
+              maxEffectiveCandidates: z.number().positive(),
+              maxConfidenceDelta5: z.number().min(0).max(1),
+            })
+            .strict(),
+          q30: z
+            .object({
+              minConfidence: z.number().min(0).max(1),
+              maxEffectiveCandidates: z.number().positive(),
+              maxConfidenceDelta5: z.number().min(0).max(1),
+            })
+            .strict(),
+          q35: z
+            .object({
+              minConfidence: z.number().min(0).max(1),
+              maxEffectiveCandidates: z.number().positive(),
+              maxConfidenceDelta5: z.number().min(0).max(1),
+            })
+            .strict(),
+          q40: z
+            .object({
+              minConfidence: z.number().min(0).max(1),
+              maxEffectiveCandidates: z.number().positive(),
+              maxConfidenceDelta5: z.number().min(0).max(1),
+            })
+            .strict(),
+        })
+        .strict(),
+    })
+    .strict()
+    .optional(),
 }).strict();
 
 /** 新タグ質問（Q2/Q7/Q13 等）。未設定時は無効 */
@@ -133,6 +177,18 @@ const NoiseGuideRecommendSchema = z
   .object({
     enabled: z.boolean().optional(),
     questionText: z.string(),
+  })
+  .strict();
+
+/** FAIL_LIST（FailHub）の表示・検索設定 */
+const FailHubSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    candidateCount: z.number().int().positive().optional(),
+    searchDebounceMs: z.number().int().min(0).optional(),
+    searchLimitDefault: z.number().int().positive().optional(),
+    searchLimitMax: z.number().int().positive().optional(),
+    showRecommendEntry: z.boolean().optional(),
   })
   .strict();
 
@@ -454,6 +510,7 @@ export const MvpConfigSchema = z.object({
   popularity: PopularitySchema,
   newTagQuestions: NewTagQuestionsSchema.optional(),
   noiseGuideRecommend: NoiseGuideRecommendSchema.optional(),
+  failHub: FailHubSchema.optional(),
 }).strict();
 
 export type MvpConfig = z.infer<typeof MvpConfigSchema>;

@@ -202,6 +202,18 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+    if (result.state === 'TOP') {
+      await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+      const snapshotWeightsArrayTop = Object.entries(snapshotWeights).map(([workId, weight]) => ({ workId, weight }));
+      await SessionManager.saveWeightsSnapshot(sessionId, currentQuestion.qIndex, snapshotWeightsArrayTop);
+      return NextResponse.json({
+        state: 'TOP',
+        sessionState: {
+          questionCount: newQuestionCount,
+          confidence,
+        },
+      });
+    }
 
     // セッション更新（全パターン共通）。weightsHistory は渡さず、スナップショットは 1 行だけ INSERT。
     await SessionManager.updateSession(sessionId, result.sessionUpdates, session);

@@ -1429,7 +1429,8 @@ function normalizeConfig(raw) {
     POPULARITY: base.POPULARITY,
     TITLE_SYLLABLE: { ranges },
     TITLE_SYLLABLE_2: base.TITLE_SYLLABLE_2,
-    AUTHOR_CHAR_TYPE: base.AUTHOR_CHAR_TYPE
+    AUTHOR_CHAR_TYPE: base.AUTHOR_CHAR_TYPE,
+    TITLE_LENGTH_STYLE: base.TITLE_LENGTH_STYLE
   };
 }
 function loadSpecialQuestionsConfig() {
@@ -1481,8 +1482,6 @@ function workHasSeriesTag(workId, workTagMap) {
   if (!tags) return false;
   return SERIES_TAG_KEYS.some((tk) => tags.has(tk));
 }
-var SLOT_A_POOL = ["SERIES", "POPULARITY"];
-var SLOT_B_EXTRA = "TITLE_CHAR_TYPE";
 function getRangeIdFromSyllableChars(chars) {
   const ranges = getTitleSyllableRanges();
   const charSet = new Set(chars);
@@ -1498,15 +1497,17 @@ async function selectSpecialQuestion(probabilities, usedSpecialTypes, workIds, s
   const config = loadSpecialQuestionsConfig();
   let allowedTypes = null;
   if (slotIndex === 3) {
-    allowedTypes = SLOT_A_POOL.filter((t) => !usedSpecialTypes.has(t));
+    allowedTypes = ["SERIES", "POPULARITY"].filter((t) => !usedSpecialTypes.has(t));
   } else if (slotIndex === 5) {
-    const fromA = SLOT_A_POOL.filter((t) => !usedSpecialTypes.has(t));
-    const hasChar = !usedSpecialTypes.has(SLOT_B_EXTRA);
-    allowedTypes = [...fromA, ...hasChar ? [SLOT_B_EXTRA] : []];
-  } else if (slotIndex === 9 || slotIndex === 16 || slotIndex === 11) {
+    allowedTypes = !usedSpecialTypes.has("TITLE_SYLLABLE") ? ["TITLE_SYLLABLE"] : null;
+  } else if (slotIndex === 9) {
+    allowedTypes = ["SERIES", "POPULARITY"].filter((t) => !usedSpecialTypes.has(t));
+  } else if (slotIndex === 12) {
+    allowedTypes = ["TITLE_LENGTH_STYLE", "TITLE_CHAR_TYPE"].filter((t) => !usedSpecialTypes.has(t));
+  } else if (slotIndex === 11) {
     const all = ["SERIES", "TITLE_CHAR_TYPE", "POPULARITY", "TITLE_SYLLABLE"];
     allowedTypes = all.filter((t) => !usedSpecialTypes.has(t));
-  } else if (slotIndex === 20 || slotIndex === 24) {
+  } else if (slotIndex === 16 || slotIndex === 20 || slotIndex === 24) {
     const rescueCandidates = [];
     if (!usedSpecialTypes.has("AUTHOR_CHAR_TYPE")) rescueCandidates.push("AUTHOR_CHAR_TYPE");
     const lastSyllable = (questionHistory ?? []).filter((q) => q.kind === "SPECIAL_QUESTION" && q.specialQuestionType === "TITLE_SYLLABLE").pop();
@@ -1514,6 +1515,7 @@ async function selectSpecialQuestion(probabilities, usedSpecialTypes, workIds, s
     if (!usedSpecialTypes.has("TITLE_SYLLABLE_2") && syllableAnsweredOk) {
       rescueCandidates.push("TITLE_SYLLABLE_2");
     }
+    if (!usedSpecialTypes.has("TITLE_LENGTH_STYLE")) rescueCandidates.push("TITLE_LENGTH_STYLE");
     allowedTypes = rescueCandidates.length > 0 ? rescueCandidates : null;
   }
   const candidates = [];
@@ -1583,6 +1585,36 @@ async function selectSpecialQuestion(probabilities, usedSpecialTypes, workIds, s
         specialQuestionType: "TITLE_CHAR_TYPE",
         displayText: questionText,
         titleCharType: chosen
+      }
+    });
+  }
+  if ((!allowedTypes || allowedTypes.includes("TITLE_LENGTH_STYLE")) && !usedSpecialTypes.has("TITLE_LENGTH_STYLE")) {
+    const tls = config.TITLE_LENGTH_STYLE;
+    const yesMin = tls?.yesMinLength ?? 10;
+    const noMax = tls?.noMaxLength ?? 20;
+    const _swdTls = getSimWorkDataMap();
+    const worksTls = _swdTls ? workIds.map((id) => _swdTls.get(id)).filter((w) => w != null) : await prisma.work.findMany({
+      where: { workId: { in: workIds } },
+      select: { workId: true, title: true }
+    });
+    const workLenMap = /* @__PURE__ */ new Map();
+    for (const w of worksTls) {
+      workLenMap.set(w.workId, (w.title ?? "").length);
+    }
+    let pYesTls = 0;
+    for (const p of probabilities) {
+      const len = workLenMap.get(p.workId) ?? 0;
+      if (len >= yesMin) pYesTls += p.probability;
+    }
+    const questionTextTls = tls?.questionText ?? "\u306A\u308D\u3046\u7CFB\u307F\u305F\u3044\u306B\u9577\u3044\u30BF\u30A4\u30C8\u30EB\uFF1F";
+    candidates.push({
+      type: "TITLE_LENGTH_STYLE",
+      pYes: pYesTls,
+      result: {
+        specialQuestionType: "TITLE_LENGTH_STYLE",
+        displayText: questionTextTls,
+        titleLengthYesMin: yesMin,
+        titleLengthNoMax: noMax
       }
     });
   }
@@ -1722,6 +1754,16 @@ async function selectSpecialQuestion(probabilities, usedSpecialTypes, workIds, s
     });
   }
   if (candidates.length === 0) return null;
+  if (slotIndex === 12) {
+    const only = candidates.filter(
+      (c) => c.type === "TITLE_LENGTH_STYLE" || c.type === "TITLE_CHAR_TYPE"
+    );
+    if (only.length >= 2) {
+      const picked = only[Math.floor(Math.random() * only.length)];
+      return picked.result;
+    }
+    if (only.length === 1) return only[0].result;
+  }
   if (slotIndex === 3 || slotIndex === 5 || slotIndex === 9 || slotIndex === 11 || slotIndex === 16 || slotIndex === 20 || slotIndex === 24) {
     candidates.sort((a, b) => informationGain(b.pYes) - informationGain(a.pYes));
     const topN = Math.min(3, candidates.length);
@@ -2037,6 +2079,45 @@ function filterWorksByAiGate(works, aiGateChoice) {
   }
   return works.map((w) => w.workId);
 }
+function shouldOfferNoiseGuideRecommend(questionHistory, nextQIndex, config) {
+  if (config.noiseGuideRecommend?.enabled === false) return false;
+  if (questionHistory.some((q) => q.kind === "NOISE_GUIDE_RECOMMEND")) return false;
+  const q5 = questionHistory.find(
+    (h) => h.qIndex === 5 && h.kind === "SPECIAL_QUESTION" && h.specialQuestionType === "TITLE_SYLLABLE"
+  );
+  const q12 = questionHistory.find(
+    (h) => h.qIndex === 12 && h.kind === "SPECIAL_QUESTION" && (h.specialQuestionType === "TITLE_CHAR_TYPE" || h.specialQuestionType === "TITLE_LENGTH_STYLE")
+  );
+  if (!q5 || !q12) return false;
+  if (q5.answer !== "UNKNOWN" || q12.answer !== "UNKNOWN") return false;
+  return nextQIndex === 13;
+}
+function tryNewTagQuestion(qIndex, questionHistory, config) {
+  const nt = config.newTagQuestions;
+  if (!nt || nt.enabled === false || !nt.variants?.length || !nt.slotIndices?.length) return null;
+  const slots = nt.slotIndices;
+  const variants = nt.variants;
+  for (let i = 0; i < variants.length && i < slots.length; i++) {
+    const variant = variants[i];
+    const slot = slots[i];
+    if (questionHistory.some((h) => h.kind === "NEW_TAG_QUESTION" && h.tagKey === variant.tagKey)) {
+      continue;
+    }
+    let wantIndex = slot;
+    if (slot === 13 && questionHistory.some((h) => h.qIndex === 13 && h.kind === "NOISE_GUIDE_RECOMMEND")) {
+      wantIndex = 14;
+    }
+    if (qIndex === wantIndex) {
+      return {
+        kind: "NEW_TAG_QUESTION",
+        displayText: variant.displayText,
+        tagKey: variant.tagKey,
+        newTagVariantId: variant.id
+      };
+    }
+  }
+  return null;
+}
 async function selectNextQuestion(weights, probabilities, questionCount, questionHistory, config, options) {
   const t = perfStart("selectNextQuestion");
   try {
@@ -2134,7 +2215,18 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         return hardAfterReveal;
       }
     }
-    const baseSpecialSlots = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 16];
+    if (shouldOfferNoiseGuideRecommend(questionHistory, qIndex, config)) {
+      const ngr = config.noiseGuideRecommend;
+      return {
+        kind: "NOISE_GUIDE_RECOMMEND",
+        displayText: ngr?.questionText ?? "\u3082\u3057\u304B\u3057\u3066\u2026\u7279\u5B9A\u306E\u4F5C\u54C1\u3084\u30BF\u30A4\u30C8\u30EB\u306B\u3053\u3060\u308F\u308A\u304C\u306A\u3044\uFF1F"
+      };
+    }
+    const newTagQ = tryNewTagQuestion(qIndex, questionHistory, config);
+    if (newTagQ) {
+      return newTagQ;
+    }
+    const baseSpecialSlots = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 12];
     const hasSpecialAnsweredUnknown = questionHistory.some(
       (q) => q.kind === "SPECIAL_QUESTION" && q.answer === "UNKNOWN"
     );
@@ -2182,7 +2274,9 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
           authorCharType: specialResult.authorCharType,
           titleSyllableRangeId: specialResult.titleSyllableRangeId,
           titleSyllable2RangeId: specialResult.titleSyllable2RangeId,
-          titleSyllable2Branch: specialResult.titleSyllable2Branch
+          titleSyllable2Branch: specialResult.titleSyllable2Branch,
+          titleLengthYesMin: specialResult.titleLengthYesMin,
+          titleLengthNoMax: specialResult.titleLengthNoMax
         };
       }
     }
@@ -3116,10 +3210,13 @@ async function processAnswer(weights, question, answerChoice, config, options) {
     if (isSummaryQuestion) {
       const scale = config.algo.summaryQuestionStrengthScale ?? 0.6;
       strength = (strength > 0 ? 1 : strength < 0 ? -1 : 0) * scale;
-    } else if (question.kind === "EXPLORE_TAG") {
+    } else if (question.kind === "EXPLORE_TAG" || question.kind === "NEW_TAG_QUESTION") {
       strength *= config.algo.exploreTagStrengthScale ?? 1;
     } else if (question.kind === "SOFT_CONFIRM") {
       strength *= config.algo.softConfirmStrengthScale ?? 1;
+    }
+    if (question.kind === "NOISE_GUIDE_RECOMMEND") {
+      return weights.map((w) => ({ workId: w.workId, weight: w.weight }));
     }
     if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "SERIES") {
       const seriesTagKeys = question.seriesTagKeys ?? ["off_e1f6b6c9ce", "off_ad42c1ba79"];
@@ -3278,7 +3375,42 @@ async function processAnswer(weights, question, answerChoice, config, options) {
         config.algo.beta
       );
     }
-    if (question.kind === "EXPLORE_TAG" || question.kind === "SOFT_CONFIRM") {
+    if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "TITLE_LENGTH_STYLE") {
+      const yesMin = question.titleLengthYesMin ?? 10;
+      const noMax = question.titleLengthNoMax ?? 20;
+      const workIds = weights.map((w) => w.workId);
+      let workMap;
+      if (options?.workInfoMap) {
+        workMap = options.workInfoMap;
+      } else {
+        const works = await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true, title: true, authorName: true }
+        });
+        workMap = new Map(works.map((w) => [w.workId, w]));
+      }
+      const workHasFeature = (workId) => {
+        const len = (workMap.get(workId)?.title ?? "").length;
+        if (answerChoice === "UNKNOWN") {
+          return len >= yesMin;
+        }
+        if (answerChoice === "NO" || answerChoice === "PROBABLY_NO") {
+          return len > noMax;
+        }
+        return len >= yesMin;
+      };
+      const useBayesian = config.algo.useBayesianUpdate !== false;
+      if (useBayesian) {
+        return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+      }
+      return updateWeightsForTagQuestion(
+        weights,
+        workHasFeature,
+        strength,
+        config.algo.beta
+      );
+    }
+    if (question.kind === "EXPLORE_TAG" || question.kind === "NEW_TAG_QUESTION" || question.kind === "SOFT_CONFIRM") {
       const tagKey = question.tagKey;
       const workIds = weights.map((w) => w.workId);
       const summaryDisplayNames = question.summaryDisplayNames;
@@ -7532,6 +7664,21 @@ var FlowSchema = external_exports.object({
     confidenceMax: external_exports.number().min(0).max(1)
   }).strict().optional()
 }).strict();
+var NewTagQuestionsSchema = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  slotIndices: external_exports.array(external_exports.number().int().positive()),
+  variants: external_exports.array(
+    external_exports.object({
+      id: external_exports.string(),
+      tagKey: external_exports.string(),
+      displayText: external_exports.string()
+    }).strict()
+  )
+}).strict();
+var NoiseGuideRecommendSchema = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  questionText: external_exports.string()
+}).strict();
 var DataQualitySchema = external_exports.object({
   minCoverageMode: external_exports.enum(["RATIO", "WORKS", "AUTO"]),
   minCoverageRatio: external_exports.number().min(0).max(1).nullable(),
@@ -7696,7 +7843,9 @@ var MvpConfigSchema = external_exports.object({
   algo: AlgoSchema,
   flow: FlowSchema,
   dataQuality: DataQualitySchema,
-  popularity: PopularitySchema
+  popularity: PopularitySchema,
+  newTagQuestions: NewTagQuestionsSchema.optional(),
+  noiseGuideRecommend: NoiseGuideRecommendSchema.optional()
 }).strict();
 
 // src/server/config/loader.ts
@@ -7732,6 +7881,13 @@ function getMvpConfig() {
 }
 
 // src/server/simulation/simulationRunner.ts
+function isNewTagQuestionForSimulation(question, qIndex, config) {
+  if (question.kind === "NEW_TAG_QUESTION") return true;
+  const ext = config;
+  const keys = ext.newTagQuestions?.tagKeys;
+  const slots = ext.newTagQuestions?.slotIndices ?? [2, 7, 13];
+  return !!(keys?.length && question.tagKey && keys.includes(question.tagKey) && slots.includes(qIndex));
+}
 function getCorrectAnswer(question, targetWork, targetTags, targetWorkTags) {
   if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "SERIES") {
     const seriesTagKeys = question.seriesTagKeys ?? ["off_e1f6b6c9ce", "off_ad42c1ba79"];
@@ -7771,6 +7927,20 @@ function getCorrectAnswer(question, targetWork, targetTags, targetWorkTags) {
       return ct === "HIRAGANA" || ct === "KATAKANA" ? "YES" : "NO";
     }
     return ct === "KANJI" || ct === "ALPHA" ? "YES" : "NO";
+  }
+  if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "TITLE_LENGTH_STYLE") {
+    const len = (targetWork.title ?? "").length;
+    const yesMin = question.titleLengthYesMin ?? 10;
+    return len >= yesMin ? "YES" : "NO";
+  }
+  if (question.kind === "NOISE_GUIDE_RECOMMEND") {
+    return "NO";
+  }
+  if (question.kind === "NEW_TAG_QUESTION" && question.tagKey) {
+    return targetTags.has(question.tagKey) ? "YES" : "NO";
+  }
+  if (question.kind === "NEW_TAG_QUESTION") {
+    return "NO";
   }
   if (question.kind === "EXPLORE_TAG" || question.kind === "SOFT_CONFIRM") {
     const summaryDisplayNames = question.summaryDisplayNames;
@@ -7934,7 +8104,11 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
           targetWorkTagsForAnswer
         );
         const baseAnswer = correctAnswer;
-        const actualAnswer = question.kind === "HARD_CONFIRM" ? baseAnswer : pickAnswerFromAmbiguity(baseAnswer, ambiguityLevel, question.kind);
+        const actualAnswer = isNewTagQuestionForSimulation(
+          question,
+          qIndex,
+          config
+        ) ? "UNKNOWN" : question.kind === "HARD_CONFIRM" ? baseAnswer : pickAnswerFromAmbiguity(baseAnswer, ambiguityLevel, question.kind);
         const wasNoisy = actualAnswer !== baseAnswer;
         let consecutiveNoCountBatch = 0;
         for (let i = questionHistory.length - 1; i >= 0; i--) {
@@ -7959,7 +8133,9 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
           titleCharType: question.titleCharType,
           popularityThreshold: question.popularityThreshold,
           syllableChars: question.syllableChars,
-          authorCharType: question.authorCharType
+          authorCharType: question.authorCharType,
+          titleLengthYesMin: question.titleLengthYesMin,
+          titleLengthNoMax: question.titleLengthNoMax
         });
         let tagCoverage;
         if (question.tagKey) {

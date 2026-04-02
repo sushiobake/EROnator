@@ -123,6 +123,8 @@ interface StageProps {
   mobileBelowCanvas?: React.ReactNode;
   /** スマホのみ：キャラ列を出さず白板を全幅（推薦モード等）。未指定時 false */
   mobileHideCharacter?: boolean;
+  /** PC/スマホ共通: キャラ自体を非表示にする（失敗画面など） */
+  hideCharacter?: boolean;
   /** スマホのみ：白板の縦スクロール。未指定時は extendWhiteboard / zoom から推論 */
   mobileWhiteboardOverflowY?: 'auto' | 'hidden';
   /**
@@ -538,7 +540,7 @@ function MobileStageInner({
   );
 }
 
-function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, whiteboardWide }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number; whiteboardWide?: boolean }) {
+function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, whiteboardWide, hideCharacter }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number; whiteboardWide?: boolean; hideCharacter?: boolean }) {
   // 白背景はフレーム内側に収める（フレームの外に白が出ない）
   const insetTop = PC_FRAME_WIDTH;
   const insetBottom = PC_FRAME_TRAY_HEIGHT + PC_FRAME_WIDTH;
@@ -585,32 +587,34 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, 
           }}
         />
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: CHARACTER_LEFT_PX,
-          bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.8)) : 0,
-          width: CHARACTER_WIDTH_PX,
-          height: CHARACTER_HEIGHT_PX,
-          zIndex: 3,
-          pointerEvents: 'none',
-        }}
-      >
-        <CharacterImage
-          src={characterUrl}
+      {!hideCharacter && (
+        <div
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            objectPosition: 'left bottom',
-            filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.35))',
+            position: 'absolute',
+            left: CHARACTER_LEFT_PX,
+            bottom: scale ? -Math.ceil(PC_CANVAS_FOOTER_GAP / (scale * 0.8)) : 0,
+            width: CHARACTER_WIDTH_PX,
+            height: CHARACTER_HEIGHT_PX,
+            zIndex: 3,
+            pointerEvents: 'none',
           }}
-        />
-      </div>
+        >
+          <CharacterImage
+            src={characterUrl}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              objectPosition: 'left bottom',
+              filter: 'drop-shadow(2px 4px 8px rgba(0,0,0,0.35))',
+            }}
+          />
+        </div>
+      )}
       <div
         style={{
           position: 'absolute',
-          left: CONTENT_OFFSET_LEFT_PX,
+          left: hideCharacter ? 80 : CONTENT_OFFSET_LEFT_PX,
           top: 100,
           right: 0,
           bottom: 0,
@@ -652,6 +656,7 @@ export function Stage({
   mobileExtendWhiteboard,
   mobileBelowCanvas,
   mobileHideCharacter,
+  hideCharacter,
   mobileWhiteboardOverflowY,
   mobileWhiteboardZoom,
   mobileWhiteboardPadding,
@@ -794,7 +799,7 @@ export function Stage({
                   extendWhiteboard={mobileExtendWhiteboard ?? !!mobileBelowCanvas}
                   whiteboardZoom={mobileWhiteboardZoom}
                   whiteboardPadding={mobileWhiteboardPadding}
-                  hideCharacter={mobileHideCharacter}
+                  hideCharacter={hideCharacter || mobileHideCharacter}
                   whiteboardOverflowY={mobileWhiteboardOverflowY}
                 >
                   {children}
@@ -888,7 +893,7 @@ export function Stage({
           }}
         >
           <WhiteboardFrameSvg />
-          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale} whiteboardWide={whiteboardWide}>{children}</StageInner>
+          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale} whiteboardWide={whiteboardWide} hideCharacter={hideCharacter}>{children}</StageInner>
         </div>
       </div>
       <footer

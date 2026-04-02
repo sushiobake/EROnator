@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
     const workId = searchParams.get('workId');
+    const selectedFrom = (searchParams.get('selectedFrom') as 'topCandidates' | 'search' | null) ?? 'topCandidates';
+    const searchQuery = searchParams.get('searchQuery') ?? undefined;
 
     if (!sessionId || !workId) {
       return NextResponse.json(
@@ -96,7 +98,10 @@ export async function GET(request: NextRequest) {
 
     // プレイ履歴を ALMOST_SUCCESS に更新（候補から選択）
     try {
-      await updatePlayHistoryAlmostSuccess(sessionId, workId);
+      await updatePlayHistoryAlmostSuccess(sessionId, workId, {
+        selectedFrom,
+        searchQuery,
+      });
     } catch (e) {
       console.error('[PlayHistory] update ALMOST_SUCCESS failed:', e);
     }

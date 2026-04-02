@@ -318,6 +318,56 @@ function shouldOfferNoiseGuideRecommend(
   return nextQIndex === 13;
 }
 
+type EarlyExitThreshold = {
+  minConfidence: number;
+  maxEffectiveCandidates: number;
+  maxConfidenceDelta5: number;
+};
+
+function getEarlyExitThreshold(
+  qIndex: number,
+  config: MvpConfig
+): { threshold: EarlyExitThreshold; requiredConditions: number } | null {
+  const review = config.flow.earlyExitReview;
+  if (!review || review.enabled === false) return null;
+  if (!review.reviewIndices.includes(qIndex)) return null;
+  const key = (`q${qIndex}` as 'q25' | 'q30' | 'q35' | 'q40');
+  const threshold = review.thresholds[key];
+  if (!threshold) return null;
+  return { threshold, requiredConditions: review.requiredConditions ?? 2 };
+}
+
+function getConfidenceDelta5(questionHistory: QuestionHistoryEntry[]): number {
+  const answered = questionHistory.filter(h => typeof h.answer === 'string');
+  if (answered.length < 5) return Number.POSITIVE_INFINITY;
+  const last5 = answered.slice(-5);
+  // qIndex をキーに質問前後の確度を厳密保存していないため、ここでは回答傾向の荒い代理値として扱う。
+  // 仕様上は「直近5問でほぼ動いていないか」を見る目的なので、answer の偏りから保守的に近似する。
+  const strongCount = last5.filter(h => h.answer === 'YES' || h.answer === 'NO').length;
+  const unknownCount = last5.filter(h => h.answer === 'UNKNOWN' || h.answer === 'DONT_CARE').length;
+  if (unknownCount >= 3) return 0.0;
+  if (strongCount >= 4) return 0.06;
+  return 0.03;
+}
+
+function shouldEarlyExit(
+  newQuestionCount: number,
+  confidence: number,
+  effectiveCandidates: number,
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): boolean {
+  const review = getEarlyExitThreshold(newQuestionCount, config);
+  if (!review) return false;
+  const { threshold, requiredConditions } = review;
+  const confidenceDelta5 = getConfidenceDelta5(questionHistory);
+  let matched = 0;
+  if (confidence < threshold.minConfidence) matched += 1;
+  if (effectiveCandidates > threshold.maxEffectiveCandidates) matched += 1;
+  if (confidenceDelta5 <= threshold.maxConfidenceDelta5) matched += 1;
+  return matched >= requiredConditions;
+}
+
 function tryNewTagQuestion(
   qIndex: number,
   questionHistory: QuestionHistoryEntry[],
@@ -2184,7 +2234,7 @@ export async function processAnswer(
 }
 
 /** 回答後の応答種別 */
-export type AnswerResponseState = 'REVEAL' | 'FAIL_LIST' | 'QUIZ' | 'RECOMMEND';
+export type AnswerResponseState = 'REVEAL' | 'FAIL_LIST' | 'QUIZ' | 'RECOMMEND' | 'TOP';
 
 /** 回答処理の結果（API が I/O とレスポンス構築に使用） */
 export interface AnswerResponseResult {
@@ -2258,6 +2308,15 @@ export async function handleAnswerResponse(
       sessionUpdates: baseSessionUpdates,
     };
   }
+  if (
+    lastAnswered?.kind === 'NOISE_GUIDE_RECOMMEND' &&
+    (lastAnswered.answer === 'NO' || lastAnswered.answer === 'PROBABLY_NO')
+  ) {
+    return {
+      state: 'TOP',
+      sessionUpdates: baseSessionUpdates,
+    };
+  }
 
   // 1. REVEAL 判定（confidence >= threshold）
   const revealThreshold = getRevealThresholdForQuestion(newQuestionCount - 1, config.confirm.revealThreshold);
@@ -2280,8 +2339,17 @@ export async function handleAnswerResponse(
     };
   }
 
-  // 3. maxQuestions 到達 → 強制 REVEAL（わからない+1問、Q30かつ候補<50で+5問、最大40問）
   const effectiveCandidates = calculateEffectiveCandidates(probabilities);
+
+  // 2.5 早期分岐（Q25/Q30/Q35/Q40）
+  if (shouldEarlyExit(newQuestionCount, confidence, effectiveCandidates, historyWithAnswer, config)) {
+    return {
+      state: 'FAIL_LIST',
+      sessionUpdates: baseSessionUpdates,
+    };
+  }
+
+  // 3. maxQuestions 到達 → 強制 REVEAL（わからない+1問、Q30かつ候補<50で+5問、最大40問）
   const effectiveMax = getEffectiveMaxQuestions(config.flow.maxQuestions as number, confidence, {
     questionHistory: historyWithAnswer,
     effectiveCandidates,

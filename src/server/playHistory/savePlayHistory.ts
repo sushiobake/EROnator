@@ -71,13 +71,31 @@ export async function updatePlayHistoryNotInList(
  */
 export async function updatePlayHistoryAlmostSuccess(
   sessionId: string,
-  resultWorkId: string
+  resultWorkId: string,
+  meta?: { selectedFrom?: 'topCandidates' | 'search'; searchQuery?: string }
 ): Promise<void> {
+  const current = await prisma.playHistory.findUnique({
+    where: { sessionId },
+    select: { failListContextJson: true },
+  });
+  let context: Record<string, unknown> = {};
+  try {
+    context = current?.failListContextJson ? JSON.parse(current.failListContextJson) : {};
+  } catch {
+    context = {};
+  }
+  const nextContext = {
+    ...context,
+    selectedFrom: meta?.selectedFrom ?? 'topCandidates',
+    searchQuery: meta?.searchQuery ?? null,
+    selectedAt: new Date().toISOString(),
+  };
   await prisma.playHistory.update({
     where: { sessionId },
     data: {
       outcome: 'ALMOST_SUCCESS',
       resultWorkId,
+      failListContextJson: JSON.stringify(nextContext),
     },
   });
 }
