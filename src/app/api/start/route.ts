@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
       qIndex: 1,
       kind: firstQuestion.kind,
       tagKey: firstQuestion.tagKey,
+      newTagVariantId: (firstQuestion as { newTagVariantId?: string }).newTagVariantId,
       hardConfirmType: firstQuestion.hardConfirmType,
       hardConfirmValue: firstQuestion.hardConfirmValue,
       displayText: firstQuestion.displayText,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
       summaryQuestionId: firstQuestion.summaryQuestionId,
       summaryDisplayNames: firstQuestion.summaryDisplayNames,
       exploreTagKind: (firstQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-      specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+      specialQuestionType: (firstQuestion as { specialQuestionType?: QuestionResponse['specialQuestionType'] }).specialQuestionType,
       seriesTagKeys: (firstQuestion as { seriesTagKeys?: string[] }).seriesTagKeys,
       titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
     };
@@ -196,10 +197,11 @@ export async function POST(request: NextRequest) {
       kind: firstQuestion.kind,
       displayText: firstQuestion.displayText,
       tagKey: firstQuestion.tagKey,
+      newTagVariantId: (firstQuestion as { newTagVariantId?: string }).newTagVariantId,
       hardConfirmType: firstQuestion.hardConfirmType,
       hardConfirmValue: firstQuestion.hardConfirmValue,
       exploreTagKind: (firstQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-      specialQuestionType: (firstQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+      specialQuestionType: (firstQuestion as { specialQuestionType?: QuestionResponse['specialQuestionType'] }).specialQuestionType,
     };
 
     // Confidence計算（デバッグ用）

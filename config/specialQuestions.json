@@ -250,5 +250,10 @@
   "AUTHOR_CHAR_TYPE": {
     "HIRAGANA_OR_KATAKANA": "サークル名が【ひらがな or カタカナ】で始まる？",
     "KANJI_OR_ALPHA": "サークル名が【漢字 or アルファベット】で始まる？"
+  },
+  "TITLE_LENGTH_STYLE": {
+    "questionText": "なろう系みたいに長いタイトル？",
+    "yesMinLength": 10,
+    "noMaxLength": 20
   }
 }

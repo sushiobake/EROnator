@@ -22,10 +22,6 @@ import {
   toPerfSummary,
 } from '@/server/simulationPerf';
 import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
-import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
-import { getTitleCharType, getTitleReadingInitialFromTitle } from '@/server/utils/titleCharType';
-import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
-import { getAuthorCharType } from '@/server/utils/authorCharType';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import { Worker } from 'worker_threads';
@@ -33,6 +29,11 @@ import path from 'path';
 import fs from 'fs';
 import { cpus } from 'os';
 import { setSimProgress, clearSimProgress } from '@/server/bulk/progressStore';
+import {
+  getCorrectAnswer,
+  pickAnswerFromAmbiguity,
+  isNewTagQuestionForSimulation,
+} from '@/server/simulation/simulationRunner';
 
 interface SimulationStep {
   qIndex: number;
@@ -143,127 +144,6 @@ interface SharedBatchContext {
   }>;
   /** workId→タグ配列（行列から構築） */
   workTagMap: Map<string, Array<{ tagKey: string; displayName: string; tagType: string; derivedConfidence: number | null }>>;
-}
-
-/** シミュ用: 正解作品に基づく正答を1か所で判定（まとめ質問・頭文字正規化対応）。両ループで共通利用。 */
-function getCorrectAnswer(
-  question: {
-    kind: string;
-    tagKey?: string;
-    hardConfirmType?: string;
-    hardConfirmValue?: string;
-    isSummaryQuestion?: boolean;
-    summaryDisplayNames?: string[];
-    specialQuestionType?: string;
-    seriesTagKeys?: string[];
-    titleCharType?: 'KANJI' | 'KATAKANA' | 'HIRAGANA';
-    authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
-    popularityThreshold?: number;
-    syllableChars?: string[];
-  },
-  targetWork: {
-    title: string | null;
-    authorName: string | null;
-    popularityBase?: number | null;
-    popularityPlayBonus?: number | null;
-    titleReadingInitial?: string | null;
-  },
-  targetTags: Set<string>,
-  targetWorkTags: { displayName: string }[]
-): string {
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'SERIES') {
-    const seriesTagKeys = question.seriesTagKeys ?? ['off_e1f6b6c9ce', 'off_ad42c1ba79'];
-    const hasSeries = seriesTagKeys.some(tk => targetTags.has(tk));
-    return hasSeries ? 'YES' : 'NO';
-  }
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_CHAR_TYPE') {
-    const targetCharType = getTitleCharType(targetWork.title ?? '');
-    const expectedCharType = (question as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType ?? 'KANJI';
-    if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
-      return (targetCharType === 'HIRAGANA' || targetCharType === 'KATAKANA') ? 'YES' : 'NO';
-    }
-    return targetCharType === expectedCharType ? 'YES' : 'NO';
-  }
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'POPULARITY') {
-    const threshold = (question as { popularityThreshold?: number }).popularityThreshold ?? 30;
-    const pop = (targetWork.popularityBase ?? 0) + (targetWork.popularityPlayBonus ?? 0);
-    return pop >= threshold ? 'YES' : 'NO';
-  }
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE') {
-    const syllableChars = (question as { syllableChars?: string[] }).syllableChars ?? [];
-    const initials = getTitleReadingInitials(targetWork.titleReadingInitial);
-    const fallback = getTitleReadingInitialFromTitle(targetWork.title ?? '');
-    const toCheck: string[] = initials.length > 0 ? initials : fallback ? [fallback] : [];
-    return toCheck.some((c) => syllableChars.includes(c)) ? 'YES' : 'NO';
-  }
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE_2') {
-    const syllableChars = (question as { syllableChars?: string[] }).syllableChars ?? [];
-    const initials = getTitleReadingInitials(targetWork.titleReadingInitial);
-    const fallback = getTitleReadingInitialFromTitle(targetWork.title ?? '');
-    const toCheck: string[] = initials.length > 0 ? initials : fallback ? [fallback] : [];
-    return toCheck.some((c) => syllableChars.includes(c)) ? 'YES' : 'NO';
-  }
-  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'AUTHOR_CHAR_TYPE') {
-    const ct = getAuthorCharType(targetWork.authorName ?? '');
-    const expectedCharType = (question as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType ?? 'HIRAGANA_OR_KATAKANA';
-    if (expectedCharType === 'HIRAGANA_OR_KATAKANA') {
-      return (ct === 'HIRAGANA' || ct === 'KATAKANA') ? 'YES' : 'NO';
-    }
-    return (ct === 'KANJI' || ct === 'ALPHA') ? 'YES' : 'NO';
-  }
-  if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
-    const summaryDisplayNames = question.summaryDisplayNames;
-    const isSummaryQuestion = !!question.isSummaryQuestion || (summaryDisplayNames?.length ?? 0) > 0;
-    let hasTag: boolean;
-    if (isSummaryQuestion && summaryDisplayNames?.length) {
-      const targetDisplayNames = new Set(targetWorkTags.map(t => t.displayName));
-      hasTag = summaryDisplayNames.some(d => targetDisplayNames.has(d));
-    } else {
-      hasTag = targetTags.has(question.tagKey!);
-    }
-    return hasTag ? 'YES' : 'NO';
-  }
-  if (question.kind === 'HARD_CONFIRM') {
-    if (question.hardConfirmType === 'TITLE_INITIAL') {
-      const targetInitial = normalizeTitleForInitial(targetWork.title ?? '');
-      const questionInitial = question.hardConfirmValue ?? '';
-      return targetInitial === questionInitial ? 'YES' : 'NO';
-    }
-    if (question.hardConfirmType === 'CHARACTER') {
-      const tagKey = question.hardConfirmValue ?? '';
-      return targetTags.has(tagKey) ? 'YES' : 'NO';
-    }
-    return (targetWork.authorName ?? '') === question.hardConfirmValue ? 'YES' : 'NO';
-  }
-  return 'DONT_CARE';
-}
-
-/** 曖昧さレベル 1-10 に基づき回答を決定。L=1: 常に正解、L=10: かなり曖昧 */
-function pickAnswerFromAmbiguity(
-  correctAnswer: 'YES' | 'NO',
-  ambiguityLevel: number,
-  questionKind: string
-): 'YES' | 'NO' | 'PROBABLY_YES' | 'PROBABLY_NO' | 'UNKNOWN' {
-  const L = Math.max(1, Math.min(10, Math.round(ambiguityLevel)));
-  if (L === 1) return correctAnswer;
-
-  const wrongRate = 0.0133 * (L - 1);
-  const correctRate = L <= 9 ? 1 - 0.1 * (L - 1) : 0.08;
-  const vagueRate = 1 - correctRate - wrongRate;
-
-  const isSoft = questionKind === 'SOFT_CONFIRM';
-  const w = isSoft ? 0.5 : 1;
-  const wrong = wrongRate * w;
-  const vague = vagueRate * w;
-  const correct = 1 - wrong - vague;
-
-  const r = Math.random();
-  if (r < correct) return correctAnswer;
-  if (r < correct + wrong) return correctAnswer === 'YES' ? 'NO' : 'YES';
-  const v = r - correct - wrong;
-  if (v < vague * 0.75) return correctAnswer === 'YES' ? 'PROBABLY_YES' : 'PROBABLY_NO';
-  if (v < vague * 0.9) return correctAnswer === 'YES' ? 'PROBABLY_NO' : 'PROBABLY_YES';
-  return 'UNKNOWN';
 }
 
 export async function POST(request: NextRequest) {
@@ -471,8 +351,13 @@ export async function POST(request: NextRequest) {
 
       // 曖昧さレベルに基づき回答を決定（HARD は常に正解）
       const baseAnswer = correctAnswer as 'YES' | 'NO';
-      const actualAnswer =
-        question.kind === 'HARD_CONFIRM'
+      const actualAnswer = isNewTagQuestionForSimulation(
+        question as { kind: string; tagKey?: string },
+        qIndex,
+        config
+      )
+        ? 'UNKNOWN'
+        : question.kind === 'HARD_CONFIRM'
           ? baseAnswer
           : pickAnswerFromAmbiguity(baseAnswer, level, question.kind);
       const wasNoisy = actualAnswer !== baseAnswer;
@@ -1375,8 +1260,13 @@ async function runSimulation(
       );
 
       const baseAnswer = correctAnswer as 'YES' | 'NO';
-      const actualAnswer =
-        question.kind === 'HARD_CONFIRM'
+      const actualAnswer = isNewTagQuestionForSimulation(
+        question as { kind: string; tagKey?: string },
+        qIndex,
+        config
+      )
+        ? 'UNKNOWN'
+        : question.kind === 'HARD_CONFIRM'
           ? baseAnswer
           : pickAnswerFromAmbiguity(baseAnswer, ambiguityLevel, question.kind);
       const wasNoisy = actualAnswer !== baseAnswer;

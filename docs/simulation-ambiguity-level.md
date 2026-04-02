@@ -9,10 +9,16 @@
 
 ---
 
+## 例外: 新タグ質問は常に UNKNOWN
+
+`docs/DESIGN-new-tag-special-noise-v1.md` のとおり、**新タグ質問**（`kind === 'NEW_TAG_QUESTION'` または `mvpConfig.newTagQuestions` とスロット **2 / 7 / 13**（既定）の組み合わせ）では、曖昧さレベルに関係なく **`UNKNOWN` 固定**。実装は `src/server/simulation/simulationRunner.ts` の `isNewTagQuestionForSimulation` を参照。
+
+---
+
 ## 計算式（`pickAnswerFromAmbiguity`）
 
 ```typescript
-// route.ts 161-186行
+// simulationRunner.ts（旧 route.ts 複製箇所と同一ロジック）
 const L = Math.max(1, Math.min(10, Math.round(ambiguityLevel)));
 if (L === 1) return correctAnswer;
 

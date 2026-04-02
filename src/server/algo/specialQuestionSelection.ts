@@ -24,7 +24,8 @@ export type SpecialQuestionType =
   | 'POPULARITY'
   | 'TITLE_SYLLABLE'
   | 'TITLE_SYLLABLE_2'
-  | 'AUTHOR_CHAR_TYPE';
+  | 'AUTHOR_CHAR_TYPE'
+  | 'TITLE_LENGTH_STYLE';
 
 export interface SpecialQuestionResult {
   specialQuestionType: SpecialQuestionType;
@@ -44,6 +45,10 @@ export interface SpecialQuestionResult {
   titleSyllable2Branch?: 'yesBranch' | 'noBranch';
   /** Type AUTHOR_CHAR_TYPE: 聞く文字種 */
   authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
+  /** Type TITLE_LENGTH_STYLE: 「長い」判定の最小文字数（YES 側） */
+  titleLengthYesMin?: number;
+  /** Type TITLE_LENGTH_STYLE: 「短い」寄せの上限文字数（NO 側） */
+  titleLengthNoMax?: number;
 }
 
 /** 質問履歴エントリ（救済スロット用） */
@@ -72,12 +77,6 @@ function workHasSeriesTag(
   return SERIES_TAG_KEYS.some(tk => tags.has(tk));
 }
 
-/** Special A の候補（Q3用） */
-const SLOT_A_POOL: SpecialQuestionType[] = ['SERIES', 'POPULARITY'];
-
-/** Special B の候補に使うタイプ（Q5用: Q3で使わなかった方 + 文字種） */
-const SLOT_B_EXTRA: SpecialQuestionType = 'TITLE_CHAR_TYPE';
-
 /**
  * TITLE_SYLLABLE の syllableChars から rangeId を特定
  */
@@ -96,10 +95,12 @@ function getRangeIdFromSyllableChars(chars: string[]): string | null {
 /**
  * Special Question を1つ選択
  * slotIndex に応じてスロット別ロジックを適用:
- * - Q3: SERIES or POPULARITY から情報量上位2〜3からランダム
- * - Q5: Q3で使わなかった方 or TITLE_CHAR_TYPE から同様
- * - Q9, Q16, Q11(わからない時): 残った未使用タイプから同様
- * - Q20, Q24(救済): TITLE_SYLLABLE_2 or AUTHOR_CHAR_TYPE（条件満たす場合のみ）
+ * - Q3: SERIES / POPULARITY（2枠で両方出す片方）
+ * - Q5: TITLE_SYLLABLE 固定
+ * - Q9: SERIES / POPULARITY の残り
+ * - Q12: TITLE_LENGTH_STYLE or TITLE_CHAR_TYPE をランダム
+ * - Q11(UNKNOWN補填): 未使用タイプから
+ * - Q16, Q20, Q24(救済): AUTHOR_CHAR_TYPE, TITLE_SYLLABLE_2, TITLE_LENGTH_STYLE 等
  */
 export async function selectSpecialQuestion(
   probabilities: WorkProbability[],
@@ -111,22 +112,22 @@ export async function selectSpecialQuestion(
 ): Promise<SpecialQuestionResult | null> {
   const config = loadSpecialQuestionsConfig();
 
-  // スロット別の候補プールを決定
+  // スロット別の候補プールを決定（設計書 v1.5）
   let allowedTypes: SpecialQuestionType[] | null = null;
   if (slotIndex === 3) {
-    allowedTypes = SLOT_A_POOL.filter(t => !usedSpecialTypes.has(t));
+    allowedTypes = (['SERIES', 'POPULARITY'] as const).filter(t => !usedSpecialTypes.has(t));
   } else if (slotIndex === 5) {
-    const fromA = SLOT_A_POOL.filter(t => !usedSpecialTypes.has(t));
-    const hasChar = !usedSpecialTypes.has(SLOT_B_EXTRA);
-    allowedTypes = [...fromA, ...(hasChar ? [SLOT_B_EXTRA] : [])];
-  } else if (slotIndex === 9 || slotIndex === 16 || slotIndex === 11) {
+    allowedTypes = !usedSpecialTypes.has('TITLE_SYLLABLE') ? (['TITLE_SYLLABLE'] as const) : null;
+  } else if (slotIndex === 9) {
+    allowedTypes = (['SERIES', 'POPULARITY'] as const).filter(t => !usedSpecialTypes.has(t));
+  } else if (slotIndex === 12) {
+    allowedTypes = (['TITLE_LENGTH_STYLE', 'TITLE_CHAR_TYPE'] as const).filter(t => !usedSpecialTypes.has(t));
+  } else if (slotIndex === 11) {
     const all: SpecialQuestionType[] = ['SERIES', 'TITLE_CHAR_TYPE', 'POPULARITY', 'TITLE_SYLLABLE'];
     allowedTypes = all.filter(t => !usedSpecialTypes.has(t));
-  } else if (slotIndex === 20 || slotIndex === 24) {
-    // 救済スロット: TITLE_SYLLABLE_2 と AUTHOR_CHAR_TYPE のうち利用可能なもの
+  } else if (slotIndex === 16 || slotIndex === 20 || slotIndex === 24) {
     const rescueCandidates: SpecialQuestionType[] = [];
     if (!usedSpecialTypes.has('AUTHOR_CHAR_TYPE')) rescueCandidates.push('AUTHOR_CHAR_TYPE');
-    // TITLE_SYLLABLE_2: TITLE_SYLLABLE が YES/NO で回答済みの場合のみ
     const lastSyllable = (questionHistory ?? [])
       .filter(q => q.kind === 'SPECIAL_QUESTION' && q.specialQuestionType === 'TITLE_SYLLABLE')
       .pop();
@@ -138,6 +139,7 @@ export async function selectSpecialQuestion(
     if (!usedSpecialTypes.has('TITLE_SYLLABLE_2') && syllableAnsweredOk) {
       rescueCandidates.push('TITLE_SYLLABLE_2');
     }
+    if (!usedSpecialTypes.has('TITLE_LENGTH_STYLE')) rescueCandidates.push('TITLE_LENGTH_STYLE');
     allowedTypes = rescueCandidates.length > 0 ? rescueCandidates : null;
   }
 
@@ -222,6 +224,40 @@ export async function selectSpecialQuestion(
         specialQuestionType: 'TITLE_CHAR_TYPE',
         displayText: questionText,
         titleCharType: chosen,
+      },
+    });
+  }
+
+  // タイトル長（なろう系っぽさ）。YES 側 = 文字数 >= yesMinLength
+  if ((!allowedTypes || allowedTypes.includes('TITLE_LENGTH_STYLE')) && !usedSpecialTypes.has('TITLE_LENGTH_STYLE')) {
+    const tls = config.TITLE_LENGTH_STYLE;
+    const yesMin = tls?.yesMinLength ?? 10;
+    const noMax = tls?.noMaxLength ?? 20;
+    const _swdTls = getSimWorkDataMap();
+    const worksTls = _swdTls
+      ? workIds.map(id => _swdTls.get(id)).filter((w): w is SimWorkData => w != null)
+      : await prisma.work.findMany({
+          where: { workId: { in: workIds } },
+          select: { workId: true, title: true },
+        });
+    const workLenMap = new Map<string, number>();
+    for (const w of worksTls) {
+      workLenMap.set(w.workId, (w.title ?? '').length);
+    }
+    let pYesTls = 0;
+    for (const p of probabilities) {
+      const len = workLenMap.get(p.workId) ?? 0;
+      if (len >= yesMin) pYesTls += p.probability;
+    }
+    const questionTextTls = tls?.questionText ?? 'なろう系みたいに長いタイトル？';
+    candidates.push({
+      type: 'TITLE_LENGTH_STYLE',
+      pYes: pYesTls,
+      result: {
+        specialQuestionType: 'TITLE_LENGTH_STYLE',
+        displayText: questionTextTls,
+        titleLengthYesMin: yesMin,
+        titleLengthNoMax: noMax,
       },
     });
   }
@@ -392,6 +428,18 @@ export async function selectSpecialQuestion(
   }
 
   if (candidates.length === 0) return null;
+
+  // Q12: タイトル長 vs 文字種を 50% で（設計書）
+  if (slotIndex === 12) {
+    const only = candidates.filter(
+      c => c.type === 'TITLE_LENGTH_STYLE' || c.type === 'TITLE_CHAR_TYPE'
+    );
+    if (only.length >= 2) {
+      const picked = only[Math.floor(Math.random() * only.length)]!;
+      return picked.result;
+    }
+    if (only.length === 1) return only[0]!.result;
+  }
 
   // スロット3,5,9,11,16,20,24: 情報量上位2〜3件からランダム選択（救済は候補1〜2件なのでそのまま）
   if (

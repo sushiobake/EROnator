@@ -44,6 +44,12 @@ function getCorrectAnswerForEntry(
   targetTagKeys: Set<string>,
   targetWorkTagDisplayNames: { displayName: string }[]
 ): 'YES' | 'NO' | null {
+  if (entry.kind === 'NEW_TAG_QUESTION' && entry.tagKey) {
+    return targetTagKeys.has(entry.tagKey) ? 'YES' : 'NO';
+  }
+  if (entry.kind === 'NOISE_GUIDE_RECOMMEND') {
+    return null;
+  }
   if (entry.kind === 'EXPLORE_TAG' || entry.kind === 'SOFT_CONFIRM') {
     const summaryDisplayNames = entry.summaryDisplayNames;
     const isSummary = !!(summaryDisplayNames?.length);
@@ -79,6 +85,11 @@ function getCorrectAnswerForEntry(
       : targetCharType === expectedCharType;
     return matches ? 'YES' : 'NO';
   }
+  if (entry.kind === 'SPECIAL_QUESTION' && entry.specialQuestionType === 'TITLE_LENGTH_STYLE') {
+    const len = (targetWork.title ?? '').length;
+    const yesMin = entry.titleLengthYesMin ?? 10;
+    return len >= yesMin ? 'YES' : 'NO';
+  }
   return null;
 }
 
@@ -104,6 +115,7 @@ function historyEntryToQuestionData(entry: QuestionHistoryEntry): QuestionData {
     kind: entry.kind,
     displayText: entry.displayText ?? '',
     tagKey: entry.tagKey,
+    newTagVariantId: entry.newTagVariantId,
     hardConfirmType: entry.hardConfirmType,
     hardConfirmValue: entry.hardConfirmValue,
     isSummaryQuestion: entry.isSummaryQuestion,
@@ -113,6 +125,11 @@ function historyEntryToQuestionData(entry: QuestionHistoryEntry): QuestionData {
     specialQuestionType: entry.specialQuestionType,
     seriesTagKeys: entry.seriesTagKeys,
     titleCharType: entry.titleCharType,
+    popularityThreshold: entry.popularityThreshold,
+    syllableChars: entry.syllableChars,
+    authorCharType: entry.authorCharType,
+    titleLengthYesMin: entry.titleLengthYesMin,
+    titleLengthNoMax: entry.titleLengthNoMax,
     revealWorkId: entry.revealWorkId,
     revealWorkTitle: entry.revealWorkTitle,
     revealResult: entry.revealResult,

@@ -49,10 +49,25 @@ function getQuestionCharacterVariant(question: { exploreTagKind?: string; kind?:
 }
 
 interface Question {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
+  kind:
+    | 'EXPLORE_TAG'
+    | 'SOFT_CONFIRM'
+    | 'HARD_CONFIRM'
+    | 'SPECIAL_QUESTION'
+    | 'NEW_TAG_QUESTION'
+    | 'NOISE_GUIDE_RECOMMEND';
   displayText: string;
+  tagKey?: string;
+  newTagVariantId?: string;
   exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal';
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+  specialQuestionType?:
+    | 'SERIES'
+    | 'TITLE_CHAR_TYPE'
+    | 'POPULARITY'
+    | 'TITLE_SYLLABLE'
+    | 'TITLE_SYLLABLE_2'
+    | 'AUTHOR_CHAR_TYPE'
+    | 'TITLE_LENGTH_STYLE';
 }
 
 interface Work {
@@ -504,6 +519,8 @@ export default function Home() {
         setState('REVEAL');
       } else if (data.state === 'FAIL_LIST') {
         await loadFailList();
+      } else if (data.state === 'RECOMMEND') {
+        setState('RECOMMEND');
       } else if (data.state === 'QUIZ') {
         questionShownAtRef.current = Date.now();
         setQuestion(data.question);
@@ -620,6 +637,10 @@ export default function Home() {
       setAlmostSuccessRecommendedWorks(candidates.slice(2, 7).map(x => ({ ...toWork(x), matchRate: 80 })));
       setQuestionCount(debugData?.session?.questionCount ?? 12);
       setState('ALMOST_SUCCESS');
+      return;
+    }
+    if (screen === 'RECOMMEND') {
+      setState('RECOMMEND');
       return;
     }
   };

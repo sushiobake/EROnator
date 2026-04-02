@@ -13,9 +13,22 @@ import { useClickGuard } from './useClickGuard';
 
 interface QuizProps {
   question: {
-    kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION';
+    kind:
+      | 'EXPLORE_TAG'
+      | 'SOFT_CONFIRM'
+      | 'HARD_CONFIRM'
+      | 'SPECIAL_QUESTION'
+      | 'NEW_TAG_QUESTION'
+      | 'NOISE_GUIDE_RECOMMEND';
     displayText: string;
-    specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE';
+    specialQuestionType?:
+      | 'SERIES'
+      | 'TITLE_CHAR_TYPE'
+      | 'POPULARITY'
+      | 'TITLE_SYLLABLE'
+      | 'TITLE_SYLLABLE_2'
+      | 'AUTHOR_CHAR_TYPE'
+      | 'TITLE_LENGTH_STYLE';
   };
   questionCount: number;
   onAnswer: (choice: string) => void;
@@ -39,7 +52,7 @@ const DONT_CARE_FROM_QUESTION = 12;
 const SPECIAL_QUESTION_BLOCKED_VALUES = ['PROBABLY_YES', 'PROBABLY_NO', 'DONT_CARE'] as const;
 
 /** 曖昧回答をブロックする特別質問タイプ（POPULARITY は除外） */
-const NO_AMBIGUOUS_SPECIAL_TYPES = ['SERIES', 'TITLE_CHAR_TYPE', 'TITLE_SYLLABLE'] as const;
+const NO_AMBIGUOUS_SPECIAL_TYPES = ['SERIES', 'TITLE_CHAR_TYPE', 'TITLE_SYLLABLE', 'TITLE_LENGTH_STYLE'] as const;
 
 export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: QuizProps) {
   const [hoveredChoice, setHoveredChoice] = useState<string | null>(null);

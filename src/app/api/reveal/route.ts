@@ -280,10 +280,11 @@ export async function POST(request: NextRequest) {
         kind: nextQuestion.kind,
         displayText: nextQuestion.displayText,
         tagKey: nextQuestion.tagKey,
+        newTagVariantId: (nextQuestion as { newTagVariantId?: string }).newTagVariantId,
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
         exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        specialQuestionType: (nextQuestion as { specialQuestionType?: QuestionResponse['specialQuestionType'] }).specialQuestionType,
       };
       const updatedSession = await SessionManager.getSession(sessionId);
       const confidence = result.confidence ?? (updatedSession ? calculateConfidence(normalizeWeights(Object.entries(updatedSession.weights).map(([workId, weight]) => ({ workId, weight })))) : 0);

@@ -27,6 +27,8 @@ const FLOW_COLORS = {
   confirm: { bg: RANK_BG.B, color: RANK_TEXT.B },
   reveal: { bg: '#c8e6c9', color: '#2e7d32' },
   rescue: { bg: '#ffe0b2', color: '#e65100' },
+  newtag: { bg: '#0d9488', color: '#fff' },
+  noise: { bg: '#7c3aed', color: '#fff' },
 } as const;
 
 function FlowRow({ q, chips }: { q: string; chips: Array<{ bg: string; color: string; label: string }> }) {
@@ -42,6 +44,13 @@ function FlowRow({ q, chips }: { q: string; chips: Array<{ bg: string; color: st
 
 function FlowDivider() {
   return <hr style={{ border: 'none', borderTop: '1px solid #ddd', margin: '0.5rem 0' }} />;
+}
+
+function parseCommaSeparatedInts(s: string): number[] {
+  return s
+    .split(/[,，\s]+/)
+    .map((x) => parseInt(x.trim(), 10))
+    .filter((n) => !Number.isNaN(n));
 }
 
 function CollapsibleSection({
@@ -138,34 +147,56 @@ export default function ConfigTab({
             </label>
           </section>
 
-          {/* 現在の質問の流れ（開閉・参照用） */}
-          <CollapsibleSection id="config-question-flow" title="現在の質問の流れ" defaultOpen={false}>
+          {/* 現在の質問の流れ（開閉・参照用）v1.5 */}
+          <CollapsibleSection id="config-question-flow" title="現在の質問の流れ（v1.5）" defaultOpen={false}>
+            <p style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.85rem', color: '#555' }}>
+              実装は{' '}
+              <code style={{ background: '#eee', padding: '0.1rem 0.35rem', borderRadius: '3px' }}>selectNextQuestion</code> /{' '}
+              <code style={{ background: '#eee', padding: '0.1rem 0.35rem', borderRadius: '3px' }}>specialQuestionSelection</code>
+              。特別枠・救済・新タグ・ノイズは下の「特別質問スロット・救済・新タグ・ノイズ誘導」から変更できます。
+            </p>
+            <p style={{ marginBottom: '0.5rem', fontSize: '0.85rem', color: '#333' }}>
+              <strong>現在の config 値</strong>：特別枠 Q
+              {(config.flow?.specialQuestionSlotIndices ?? [3, 5, 9, 12]).join('・')}／救済 Q
+              {(config.flow?.rescueSpecialCondition?.slotIndices ?? [16, 20, 24]).join('・')}／新タグ Q
+              {(config.newTagQuestions?.slotIndices ?? [2, 7, 13]).join('・')}
+              {config.noiseGuideRecommend?.enabled === false ? '／ノイズ誘導オフ' : '／ノイズ誘導オン'}
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.9rem' }}>
-              <FlowRow q="Q1-2" chips={[{ ...FLOW_COLORS.normal, label: '通常（まとめ or タグ）' }]} />
+              <FlowRow q="Q1" chips={[{ ...FLOW_COLORS.normal, label: '通常（まとめ or タグ）' }]} />
+              <FlowRow q="Q2" chips={[{ ...FLOW_COLORS.newtag, label: '新タグ（有効時・最優先）' }, { ...FLOW_COLORS.normal, label: 'または通常' }]} />
               <FlowRow q="Q3" chips={[{ ...FLOW_COLORS.special, label: '特別（シリーズ or 有名度）' }]} />
               <FlowRow q="Q4" chips={[{ ...FLOW_COLORS.normal, label: '通常' }]} />
-              <FlowRow q="Q5" chips={[{ ...FLOW_COLORS.special, label: '特別（文字種 or Q3で使わなかった方）' }]} />
-              <FlowRow q="Q6-8" chips={[{ ...FLOW_COLORS.normal, label: '通常' }]} />
-              <FlowRow q="Q9" chips={[{ ...FLOW_COLORS.special, label: '特別（50音 or 残り）' }]} />
+              <FlowRow q="Q5" chips={[{ ...FLOW_COLORS.special, label: '特別（50音・行）' }]} />
+              <FlowRow q="Q6" chips={[{ ...FLOW_COLORS.normal, label: '通常' }]} />
+              <FlowRow q="Q7" chips={[{ ...FLOW_COLORS.newtag, label: '新タグ' }, { ...FLOW_COLORS.normal, label: 'または通常' }]} />
+              <FlowRow q="Q8" chips={[{ ...FLOW_COLORS.normal, label: '通常' }]} />
+              <FlowRow q="Q9" chips={[{ ...FLOW_COLORS.special, label: '特別（Q3の残り：シリーズ or 有名度）' }]} />
               <FlowDivider />
-              <FlowRow q="Q10-15" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認（〇〇あるかしら？）' }]} />
-              <FlowRow q="Q16" chips={[{ ...FLOW_COLORS.special, label: '特別（残り。わからない時はQ11に補填）' }]} />
+              <FlowRow q="Q10" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }]} />
+              <FlowRow q="Q11" chips={[{ ...FLOW_COLORS.normal, label: '通常＋確認' }, { ...FLOW_COLORS.special, label: 'UNKNOWN補填で特別が乗る場合あり' }]} />
+              <FlowRow q="Q12" chips={[{ ...FLOW_COLORS.special, label: '特別（タイトル長 or 先頭文字種）' }]} />
+              <FlowRow q="Q13" chips={[{ ...FLOW_COLORS.noise, label: 'ノイズ（条件時・最優先）' }, { ...FLOW_COLORS.newtag, label: '新タグ3本目' }, { ...FLOW_COLORS.normal, label: '通常' }]} />
               <FlowDivider />
-              <FlowRow q="Q17-19" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }, { ...FLOW_COLORS.reveal, label: 'REVEAL（この作品で合ってる？）' }]} />
-              <FlowRow q="Q20" chips={[{ ...FLOW_COLORS.rescue, label: '救済（条件満たすときのみ）' }]} />
+              <FlowRow q="Q14-15" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }]} />
+              <FlowRow q="Q16" chips={[{ ...FLOW_COLORS.rescue, label: '救済・特別（条件付き）' }]} />
+              <FlowRow q="Q17-19" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }, { ...FLOW_COLORS.reveal, label: 'REVEAL' }]} />
+              <FlowRow q="Q20" chips={[{ ...FLOW_COLORS.rescue, label: '救済（条件付き）' }]} />
               <FlowRow q="Q21-23" chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }, { ...FLOW_COLORS.reveal, label: 'REVEAL' }]} />
-              <FlowRow q="Q24" chips={[{ ...FLOW_COLORS.rescue, label: '救済（条件満たすときのみ）' }]} />
+              <FlowRow q="Q24" chips={[{ ...FLOW_COLORS.rescue, label: '救済（条件付き）' }]} />
               <FlowRow q={`Q25-${config?.flow?.maxQuestions ?? 35}`} chips={[{ ...FLOW_COLORS.normal, label: '通常' }, { ...FLOW_COLORS.confirm, label: '確認' }, { ...FLOW_COLORS.reveal, label: 'REVEAL' }]} />
             </div>
             <p style={{ marginTop: '0.5rem', marginBottom: 0, fontSize: '0.85rem', color: '#555' }}>
               確認（黄）の補足: 20問目まで＝タイトル頭文字を優先。21問目以降＝タイトル頭文字・作者・キャラクターの3種類をランダムに選択（キャラがなければ2種類）。
             </p>
             <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <span style={{ background: FLOW_COLORS.normal.bg, color: FLOW_COLORS.normal.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>紫: 通常</span>
+              <span style={{ background: FLOW_COLORS.normal.bg, color: FLOW_COLORS.normal.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>水色〜紫: 通常</span>
               <span style={{ background: FLOW_COLORS.special.bg, color: FLOW_COLORS.special.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>濃紫: 特別</span>
               <span style={{ background: FLOW_COLORS.confirm.bg, color: FLOW_COLORS.confirm.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>黄: 確認</span>
               <span style={{ background: FLOW_COLORS.reveal.bg, color: FLOW_COLORS.reveal.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>緑: REVEAL</span>
               <span style={{ background: FLOW_COLORS.rescue.bg, color: FLOW_COLORS.rescue.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>オレンジ: 救済</span>
+              <span style={{ background: FLOW_COLORS.newtag.bg, color: FLOW_COLORS.newtag.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>ティール: 新タグ</span>
+              <span style={{ background: FLOW_COLORS.noise.bg, color: FLOW_COLORS.noise.color, padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.8rem' }}>紫系: ノイズ誘導</span>
             </div>
           </CollapsibleSection>
 
@@ -939,6 +970,149 @@ export default function ConfigTab({
                   onChange={(e) => updateConfig(['flow', 'titleInitialTopN'], e.target.value === '' ? undefined : parseInt(e.target.value) || 1)}
                   placeholder="1"
                   style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                />
+              </label>
+            </div>
+          </CollapsibleSection>
+
+          {/* 特別質問・救済・新タグ・ノイズ（mvpConfig v1.5） */}
+          <CollapsibleSection id="config-special-slots-v15" title="特別質問スロット・救済・新タグ・ノイズ誘導" defaultOpen={false}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+              数値はカンマ区切り（例: 3,5,9,12）。保存時に Zod で検証されます。新タグの <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>variants</code>（質問文・tagKey）は項目が多いため{' '}
+              <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>config/mvpConfig.json</code> を直接編集するか、読み込んだ JSON をマージして保存してください。
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label>
+                <strong>特別質問スロット（Q番号）</strong>
+                <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.85rem', color: '#555' }}>既定 [3,5,9,12]＝Q3 シリーズ/有名度、Q5 50音、Q9 残り、Q12 タイトル長/文字種</span>
+                <input
+                  type="text"
+                  value={(config.flow?.specialQuestionSlotIndices ?? [3, 5, 9, 12]).join(',')}
+                  onChange={(e) => updateConfig(['flow', 'specialQuestionSlotIndices'], parseCommaSeparatedInts(e.target.value))}
+                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                />
+              </label>
+            </div>
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff8e1', borderRadius: '6px', border: '1px solid #ffe082' }}>
+              <strong style={{ fontSize: '0.9rem' }}>救済条件・スロット</strong>
+              <div style={{ marginTop: '0.5rem' }}>
+                <label>
+                  救済を出す Q 番号（カンマ区切り）
+                  <input
+                    type="text"
+                    value={(config.flow?.rescueSpecialCondition?.slotIndices ?? [16, 20, 24]).join(',')}
+                    onChange={(e) =>
+                      updateConfig(['flow', 'rescueSpecialCondition'], {
+                        ...config.flow.rescueSpecialCondition,
+                        slotIndices: parseCommaSeparatedInts(e.target.value),
+                        effectiveCandidatesMin: config.flow.rescueSpecialCondition?.effectiveCandidatesMin ?? 25,
+                        confidenceMax: config.flow.rescueSpecialCondition?.confidenceMax ?? 0.35,
+                      })
+                    }
+                    style={{ width: '100%', padding: '0.5rem', marginTop: '0.35rem' }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                <label style={{ flex: '1 1 140px' }}>
+                  effectiveCandidates 最小
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.flow?.rescueSpecialCondition?.effectiveCandidatesMin ?? 25}
+                    onChange={(e) =>
+                      updateConfig(['flow', 'rescueSpecialCondition'], {
+                        ...config.flow.rescueSpecialCondition,
+                        slotIndices: config.flow.rescueSpecialCondition?.slotIndices ?? [16, 20, 24],
+                        effectiveCandidatesMin: parseInt(e.target.value, 10) || 25,
+                        confidenceMax: config.flow.rescueSpecialCondition?.confidenceMax ?? 0.35,
+                      })
+                    }
+                    style={{ width: '100%', padding: '0.5rem', marginTop: '0.35rem' }}
+                  />
+                </label>
+                <label style={{ flex: '1 1 140px' }}>
+                  confidence 最大
+                  <input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="1"
+                    value={config.flow?.rescueSpecialCondition?.confidenceMax ?? 0.35}
+                    onChange={(e) =>
+                      updateConfig(['flow', 'rescueSpecialCondition'], {
+                        ...config.flow.rescueSpecialCondition,
+                        slotIndices: config.flow.rescueSpecialCondition?.slotIndices ?? [16, 20, 24],
+                        effectiveCandidatesMin: config.flow.rescueSpecialCondition?.effectiveCandidatesMin ?? 25,
+                        confidenceMax: parseFloat(e.target.value) || 0.35,
+                      })
+                    }
+                    style={{ width: '100%', padding: '0.5rem', marginTop: '0.35rem' }}
+                  />
+                </label>
+              </div>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={config.newTagQuestions?.enabled !== false}
+                  onChange={(e) =>
+                    updateConfig(['newTagQuestions'], {
+                      ...config.newTagQuestions,
+                      enabled: e.target.checked,
+                      slotIndices: config.newTagQuestions?.slotIndices ?? [2, 7, 13],
+                      variants: config.newTagQuestions?.variants ?? [],
+                    })
+                  }
+                />
+                <span>新タグ質問を有効にする</span>
+              </label>
+              <label>
+                新タグを出す Q 番号（カンマ区切り）
+                <input
+                  type="text"
+                  value={(config.newTagQuestions?.slotIndices ?? [2, 7, 13]).join(',')}
+                  onChange={(e) =>
+                    updateConfig(['newTagQuestions'], {
+                      ...config.newTagQuestions,
+                      enabled: config.newTagQuestions?.enabled !== false,
+                      slotIndices: parseCommaSeparatedInts(e.target.value),
+                      variants: config.newTagQuestions?.variants ?? [],
+                    })
+                  }
+                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.35rem' }}
+                />
+              </label>
+            </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={config.noiseGuideRecommend?.enabled !== false}
+                  onChange={(e) =>
+                    updateConfig(['noiseGuideRecommend'], {
+                      ...config.noiseGuideRecommend,
+                      enabled: e.target.checked,
+                      questionText: config.noiseGuideRecommend?.questionText ?? 'もしかして…特定の作品やタイトルにこだわりがない？',
+                    })
+                  }
+                />
+                <span>ノイズ誘導（推薦へ）を有効にする</span>
+              </label>
+              <label>
+                ノイズ質問文
+                <input
+                  type="text"
+                  value={config.noiseGuideRecommend?.questionText ?? ''}
+                  onChange={(e) =>
+                    updateConfig(['noiseGuideRecommend'], {
+                      ...config.noiseGuideRecommend,
+                      enabled: config.noiseGuideRecommend?.enabled !== false,
+                      questionText: e.target.value,
+                    })
+                  }
+                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.35rem' }}
                 />
               </label>
             </div>

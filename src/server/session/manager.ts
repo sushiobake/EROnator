@@ -67,12 +67,14 @@ export interface WeightsHistoryEntry {
 
 export interface QuestionHistoryEntry {
   qIndex: number;
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL' | 'NEW_TAG_QUESTION' | 'NOISE_GUIDE_RECOMMEND';
   tagKey?: string;
+  /** NEW_TAG_QUESTION: newTagQuestions.variants[].id */
+  newTagVariantId?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER';
   hardConfirmValue?: string;
   /** SPECIAL_QUESTION の種別 */
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' | 'TITLE_LENGTH_STYLE';
   /** SPECIAL_QUESTION SERIES の判定用タグキー */
   seriesTagKeys?: string[];
   /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
@@ -83,6 +85,9 @@ export interface QuestionHistoryEntry {
   syllableChars?: string[];
   /** SPECIAL_QUESTION AUTHOR_CHAR_TYPE の聞く文字種 */
   authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
+  /** SPECIAL_QUESTION TITLE_LENGTH_STYLE */
+  titleLengthYesMin?: number;
+  titleLengthNoMax?: number;
   /** 表示用文言（修正するで戻ったときに同じ文言を出すため） */
   displayText?: string;
   /** まとめ質問のとき true。回答時の strength を ±0.6 に固定する */

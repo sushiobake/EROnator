@@ -249,9 +249,11 @@ export function initializeWeightsFromWorks(
 export type ExploreTagKind = 'summary' | 'erotic' | 'abstract' | 'normal';
 
 export interface QuestionData {
-  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL';
+  kind: 'EXPLORE_TAG' | 'SOFT_CONFIRM' | 'HARD_CONFIRM' | 'SPECIAL_QUESTION' | 'REVEAL' | 'NEW_TAG_QUESTION' | 'NOISE_GUIDE_RECOMMEND';
   displayText: string;
   tagKey?: string;
+  /** NEW_TAG_QUESTION: newTagQuestions.variants[].id */
+  newTagVariantId?: string;
   hardConfirmType?: 'TITLE_INITIAL' | 'AUTHOR' | 'CHARACTER';
   hardConfirmValue?: string;
   isSummaryQuestion?: boolean;
@@ -260,7 +262,7 @@ export interface QuestionData {
   /** まとめ/エロ/抽象/通常の判別用（EXPLORE_TAG のみ。表示には使わずタグ・バッジ用） */
   exploreTagKind?: ExploreTagKind;
   /** SPECIAL_QUESTION の種別 */
-  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE';
+  specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' | 'TITLE_LENGTH_STYLE';
   /** SPECIAL_QUESTION SERIES の判定用タグキー */
   seriesTagKeys?: string[];
   /** SPECIAL_QUESTION TITLE_CHAR_TYPE の聞く文字種 */
@@ -276,6 +278,10 @@ export interface QuestionData {
   titleSyllable2Branch?: 'yesBranch' | 'noBranch';
   /** SPECIAL_QUESTION AUTHOR_CHAR_TYPE の聞く文字種 */
   authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA';
+  /** SPECIAL_QUESTION TITLE_LENGTH_STYLE: YES 判定の最小文字数 */
+  titleLengthYesMin?: number;
+  /** SPECIAL_QUESTION TITLE_LENGTH_STYLE: NO 側で「短め」に寄せる上限文字数 */
+  titleLengthNoMax?: number;
   /** REVEAL 断定（履歴からの再構築用） */
   revealWorkId?: string;
   revealWorkTitle?: string;
@@ -288,6 +294,59 @@ export interface SelectNextQuestionOptions {
   afterRevealWrong?: boolean;
   /** 断定で「いいえ」にした作品の workId 一覧。これらは候補から除外し、頭文字・REVEAL に使わない */
   revealRejectedWorkIds?: string[];
+}
+
+/** Q5・Q12 がともに UNKNOWN のとき、次の qIndex 13 でノイズ（設計書 v1.5） */
+function shouldOfferNoiseGuideRecommend(
+  questionHistory: QuestionHistoryEntry[],
+  nextQIndex: number,
+  config: MvpConfig
+): boolean {
+  if (config.noiseGuideRecommend?.enabled === false) return false;
+  if (questionHistory.some(q => q.kind === 'NOISE_GUIDE_RECOMMEND')) return false;
+  const q5 = questionHistory.find(
+    h => h.qIndex === 5 && h.kind === 'SPECIAL_QUESTION' && h.specialQuestionType === 'TITLE_SYLLABLE'
+  );
+  const q12 = questionHistory.find(
+    h =>
+      h.qIndex === 12 &&
+      h.kind === 'SPECIAL_QUESTION' &&
+      (h.specialQuestionType === 'TITLE_CHAR_TYPE' || h.specialQuestionType === 'TITLE_LENGTH_STYLE')
+  );
+  if (!q5 || !q12) return false;
+  if (q5.answer !== 'UNKNOWN' || q12.answer !== 'UNKNOWN') return false;
+  return nextQIndex === 13;
+}
+
+function tryNewTagQuestion(
+  qIndex: number,
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): QuestionData | null {
+  const nt = config.newTagQuestions;
+  if (!nt || nt.enabled === false || !nt.variants?.length || !nt.slotIndices?.length) return null;
+  const slots = nt.slotIndices;
+  const variants = nt.variants;
+  for (let i = 0; i < variants.length && i < slots.length; i++) {
+    const variant = variants[i]!;
+    const slot = slots[i]!;
+    if (questionHistory.some(h => h.kind === 'NEW_TAG_QUESTION' && h.tagKey === variant.tagKey)) {
+      continue;
+    }
+    let wantIndex = slot;
+    if (slot === 13 && questionHistory.some(h => h.qIndex === 13 && h.kind === 'NOISE_GUIDE_RECOMMEND')) {
+      wantIndex = 14;
+    }
+    if (qIndex === wantIndex) {
+      return {
+        kind: 'NEW_TAG_QUESTION',
+        displayText: variant.displayText,
+        tagKey: variant.tagKey,
+        newTagVariantId: variant.id,
+      };
+    }
+  }
+  return null;
 }
 
 /**
@@ -417,8 +476,21 @@ export async function selectNextQuestion(
     }
   }
 
-  // Special Question 枠（Q3, Q5, Q9, Q16）: Confirm より優先（特別質問で効率よく絞る）
-  const baseSpecialSlots = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 16];
+  if (shouldOfferNoiseGuideRecommend(questionHistory, qIndex, config)) {
+    const ngr = config.noiseGuideRecommend;
+    return {
+      kind: 'NOISE_GUIDE_RECOMMEND',
+      displayText: ngr?.questionText ?? 'もしかして…特定の作品やタイトルにこだわりがない？',
+    };
+  }
+
+  const newTagQ = tryNewTagQuestion(qIndex, questionHistory, config);
+  if (newTagQ) {
+    return newTagQ;
+  }
+
+  // Special Question 枠（Q3, Q5, Q9, Q12）: Confirm より優先（特別質問で効率よく絞る）
+  const baseSpecialSlots = config.flow.specialQuestionSlotIndices ?? [3, 5, 9, 12];
   const hasSpecialAnsweredUnknown = questionHistory.some(
     q => q.kind === 'SPECIAL_QUESTION' && q.answer === 'UNKNOWN'
   );
@@ -475,6 +547,8 @@ export async function selectNextQuestion(
         titleSyllableRangeId: specialResult.titleSyllableRangeId,
         titleSyllable2RangeId: specialResult.titleSyllable2RangeId,
         titleSyllable2Branch: specialResult.titleSyllable2Branch,
+        titleLengthYesMin: specialResult.titleLengthYesMin,
+        titleLengthNoMax: specialResult.titleLengthNoMax,
       };
     }
   }
@@ -1752,10 +1826,14 @@ export async function processAnswer(
   if (isSummaryQuestion) {
     const scale = config.algo.summaryQuestionStrengthScale ?? 0.6;
     strength = (strength > 0 ? 1 : strength < 0 ? -1 : 0) * scale;
-  } else if (question.kind === 'EXPLORE_TAG') {
+  } else if (question.kind === 'EXPLORE_TAG' || question.kind === 'NEW_TAG_QUESTION') {
     strength *= config.algo.exploreTagStrengthScale ?? 1.0;
   } else if (question.kind === 'SOFT_CONFIRM') {
     strength *= config.algo.softConfirmStrengthScale ?? 1.0;
+  }
+
+  if (question.kind === 'NOISE_GUIDE_RECOMMEND') {
+    return weights.map(w => ({ workId: w.workId, weight: w.weight }));
   }
 
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'SERIES') {
@@ -1936,7 +2014,43 @@ export async function processAnswer(
     );
   }
 
-  if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_LENGTH_STYLE') {
+    const yesMin = question.titleLengthYesMin ?? 10;
+    const noMax = question.titleLengthNoMax ?? 20;
+    const workIds = weights.map(w => w.workId);
+    let workMap: Map<string, WorkInfoForConfirm>;
+    if (options?.workInfoMap) {
+      workMap = options.workInfoMap;
+    } else {
+      const works = await prisma.work.findMany({
+        where: { workId: { in: workIds } },
+        select: { workId: true, title: true, authorName: true },
+      });
+      workMap = new Map(works.map(w => [w.workId, w]));
+    }
+    const workHasFeature = (workId: string): boolean => {
+      const len = (workMap.get(workId)?.title ?? '').length;
+      if (answerChoice === 'UNKNOWN') {
+        return len >= yesMin;
+      }
+      if (answerChoice === 'NO' || answerChoice === 'PROBABLY_NO') {
+        return len > noMax;
+      }
+      return len >= yesMin;
+    };
+    const useBayesian = config.algo.useBayesianUpdate !== false;
+    if (useBayesian) {
+      return updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoice, epsilon);
+    }
+    return updateWeightsForTagQuestion(
+      weights,
+      workHasFeature,
+      strength as -1.0 | -0.6 | 0 | 0.6 | 1.0,
+      config.algo.beta
+    );
+  }
+
+  if (question.kind === 'EXPLORE_TAG' || question.kind === 'NEW_TAG_QUESTION' || question.kind === 'SOFT_CONFIRM') {
     // Tag-based質問（包括・統合: 同一グループのタグをまとめて判定）
     const tagKey = question.tagKey!;
     const workIds = weights.map(w => w.workId);
@@ -2070,7 +2184,7 @@ export async function processAnswer(
 }
 
 /** 回答後の応答種別 */
-export type AnswerResponseState = 'REVEAL' | 'FAIL_LIST' | 'QUIZ';
+export type AnswerResponseState = 'REVEAL' | 'FAIL_LIST' | 'QUIZ' | 'RECOMMEND';
 
 /** 回答処理の結果（API が I/O とレスポンス構築に使用） */
 export interface AnswerResponseResult {
@@ -2133,6 +2247,17 @@ export async function handleAnswerResponse(
     questionCount: session.questionCount,
     questionHistory: historyWithAnswer,
   };
+
+  const lastAnswered = historyWithAnswer[historyWithAnswer.length - 1];
+  if (
+    lastAnswered?.kind === 'NOISE_GUIDE_RECOMMEND' &&
+    (lastAnswered.answer === 'YES' || lastAnswered.answer === 'PROBABLY_YES')
+  ) {
+    return {
+      state: 'RECOMMEND',
+      sessionUpdates: baseSessionUpdates,
+    };
+  }
 
   // 1. REVEAL 判定（confidence >= threshold）
   const revealThreshold = getRevealThresholdForQuestion(newQuestionCount - 1, config.confirm.revealThreshold);
@@ -2220,6 +2345,9 @@ export async function handleAnswerResponse(
     popularityThreshold: (nextQuestion as { popularityThreshold?: number }).popularityThreshold,
     syllableChars: (nextQuestion as { syllableChars?: string[] }).syllableChars,
     authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+    titleLengthYesMin: (nextQuestion as QuestionData).titleLengthYesMin,
+    titleLengthNoMax: (nextQuestion as QuestionData).titleLengthNoMax,
+    newTagVariantId: (nextQuestion as QuestionData).newTagVariantId,
   }];
   return {
     state: 'QUIZ',
@@ -2267,18 +2395,18 @@ export async function handleRevealResponse(
   probabilities: WorkProbability[],
   config: MvpConfig
 ): Promise<RevealResponseResult> {
-  const sorted = [...probabilities].sort((a, b) => {
-    if (a.probability !== b.probability) return b.probability - a.probability;
-    return a.workId.localeCompare(b.workId);
-  });
-  const topWorkId = sorted[0]?.workId ?? null;
+  // 出題時（handleAnswerResponse）と同じ: 拒否済みを除いた確率先頭＝ユーザーに表示している断定対象
+  const revealedWorkId = getTopWorkIdFromProbabilities(
+    probabilities,
+    session.revealRejectedWorkIds ?? []
+  );
 
-  if (!topWorkId) {
-    throw new Error('No top work found');
+  if (!revealedWorkId) {
+    throw new Error('No reveal target work found');
   }
 
   if (answer === 'YES') {
-    return { state: 'SUCCESS', topWorkId };
+    return { state: 'SUCCESS', topWorkId: revealedWorkId };
   }
 
   // NO: ペナルティ適用（同シリーズの作品にも軽めのペナルティ）
@@ -2286,7 +2414,7 @@ export async function handleRevealResponse(
   try {
     if (!_simWorkDataMap) {
       const topWork = await prisma.work.findUnique({
-        where: { workId: topWorkId },
+        where: { workId: revealedWorkId },
         select: { seriesInfo: true },
       });
       if (topWork?.seriesInfo) {
@@ -2295,7 +2423,7 @@ export async function handleRevealResponse(
           const seriesWorks = await prisma.$queryRawUnsafe<Array<{ workId: string }>>(
             `SELECT "workId" FROM "Work" WHERE "seriesInfo" LIKE $1 AND "workId" != $2`,
             `%"id":"${parsed.id}"%`,
-            topWorkId
+            revealedWorkId
           );
           sameSeriesWorkIds = seriesWorks.map(w => w.workId);
         }
@@ -2306,7 +2434,7 @@ export async function handleRevealResponse(
   }
   const penalizedWeights = applyRevealPenalty(
     weights,
-    topWorkId,
+    revealedWorkId,
     config.algo.revealPenalty,
     sameSeriesWorkIds
   );
@@ -2315,7 +2443,10 @@ export async function handleRevealResponse(
     penalizedMap[w.workId] = w.weight;
   }
 
-  const newRejected = [...(session.revealRejectedWorkIds ?? []), topWorkId];
+  const prevRejected = session.revealRejectedWorkIds ?? [];
+  const newRejected = prevRejected.includes(revealedWorkId)
+    ? prevRejected
+    : [...prevRejected, revealedWorkId];
   const newMissCount = session.revealMissCount + 1;
 
   const baseSessionUpdates = {
@@ -2367,6 +2498,9 @@ export async function handleRevealResponse(
       popularityThreshold: (nextQuestion as { popularityThreshold?: number }).popularityThreshold,
       syllableChars: (nextQuestion as { syllableChars?: string[] }).syllableChars,
       authorCharType: (nextQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+      titleLengthYesMin: (nextQuestion as QuestionData).titleLengthYesMin,
+      titleLengthNoMax: (nextQuestion as QuestionData).titleLengthNoMax,
+      newTagVariantId: (nextQuestion as QuestionData).newTagVariantId,
     },
   ];
   const confidence = calculateConfidence(penalizedProbabilities);

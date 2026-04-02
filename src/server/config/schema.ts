@@ -111,6 +111,31 @@ const FlowSchema = z.object({
     .optional(),
 }).strict();
 
+/** 新タグ質問（Q2/Q7/Q13 等）。未設定時は無効 */
+const NewTagQuestionsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    slotIndices: z.array(z.number().int().positive()),
+    variants: z.array(
+      z
+        .object({
+          id: z.string(),
+          tagKey: z.string(),
+          displayText: z.string(),
+        })
+        .strict()
+    ),
+  })
+  .strict();
+
+/** ノイズ→推薦誘導（TITLE_SYLLABLE とタイトル第2枠がともに UNKNOWN の直後） */
+const NoiseGuideRecommendSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    questionText: z.string(),
+  })
+  .strict();
+
 const DataQualitySchema = z.object({
   minCoverageMode: z.enum(['RATIO', 'WORKS', 'AUTO']),
   minCoverageRatio: z.number().min(0).max(1).nullable(),
@@ -427,6 +452,8 @@ export const MvpConfigSchema = z.object({
   flow: FlowSchema,
   dataQuality: DataQualitySchema,
   popularity: PopularitySchema,
+  newTagQuestions: NewTagQuestionsSchema.optional(),
+  noiseGuideRecommend: NoiseGuideRecommendSchema.optional(),
 }).strict();
 
 export type MvpConfig = z.infer<typeof MvpConfigSchema>;

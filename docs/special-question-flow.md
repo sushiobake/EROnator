@@ -1,92 +1,100 @@
 # 特別質問の流れ（Special Question Flow）
 
-最終更新: 2026-02-27
+最終更新: 2026-04-02（設計 v1.5・実装整合）
 
 ## 概要
 
-特別質問は **Q3, Q5, Q9, Q16** の4スロットで出題される。  
-特別質問のいずれかで「わからない」と答えた場合、**Q11** が追加され、最大5回まで特別質問が出る。
-
-**救済スロット（Q20, Q24）**: 絞り込めていない場合のみ、TITLE_SYLLABLE_2 または AUTHOR_CHAR_TYPE を出題。条件: `effectiveCandidates > 25` または `confidence < 0.35`。
-
----
-
-## スロットと候補プール
-
-| スロット | 候補 | 選択方法 |
-|----------|------|----------|
-| **Q3** | SERIES または POPULARITY | 情報量上位2〜3件からランダム |
-| **Q5** | Q3で使わなかった方 + TITLE_CHAR_TYPE | 同上 |
-| **Q9** | 残りの未使用タイプ（SERIES, TITLE_CHAR_TYPE, POPULARITY, TITLE_SYLLABLE） | 同上 |
-| **Q16** | 残りの未使用タイプ | 同上（2回目の50音スロット） |
-| **Q11** | 残りの未使用タイプ | 同上（わからない回答時の補填） |
-| **Q20, Q24** | TITLE_SYLLABLE_2（TITLE_SYLLABLE が YES/NO のときのみ）, AUTHOR_CHAR_TYPE | 条件満たす場合のみ、ランダムで1つ |
+- **ベースの特別枠**は `mvpConfig.flow.specialQuestionSlotIndices` で指定（既定: **Q3, Q5, Q9, Q12**）。
+- 特別質問のいずれかで「わからない」と答えた場合、**Q11** が UNKNOWN 補填として特別枠に乗ることがある（動的）。Q11 固定コンテンツは置かない。
+- **救済スロット**は `mvpConfig.flow.rescueSpecialCondition.slotIndices`（既定: **Q16, Q20, Q24**）。`effectiveCandidates` と `confidence` の条件を満たすときのみ、AUTHOR_CHAR_TYPE / TITLE_SYLLABLE_2（前提あり）/ TITLE_LENGTH_STYLE などから選ぶ。
+- **新タグ質問**は `newTagQuestions.slotIndices`（既定 **Q2, Q7, Q13**）。有効時はその番号で **通常探索より優先**。
+- **ノイズ誘導**（`NOISE_GUIDE_RECOMMEND`）: **Q5（TITLE_SYLLABLE）と Q12（TITLE_LENGTH_STYLE または TITLE_CHAR_TYPE）の両方が UNKNOWN** のあと、**次の1問**で出す。新タグ・補填より **最優先**。YES で推薦モードへ。
+- 文言・閾値の多くは **`config/specialQuestions.json`** と **`config/mvpConfig.json`**。
 
 ---
 
-## 特別質問の6タイプ
+## スロットと候補プール（実装準拠）
 
-| タイプ | 質問例 | 判定基準 |
-|--------|--------|----------|
-| **SERIES** | その作品は、シリーズものや総集編？ | シリーズタグの有無 |
-| **TITLE_CHAR_TYPE** | タイトルは【漢字】で始まる？ / タイトルは【ひらがな or カタカナ】で始まる？ | タイトル先頭文字の文字種 |
-| **POPULARITY** | その作品は、かなり有名？ | popularityBase + playBonus ≥ 30（config で変更可） |
-| **TITLE_SYLLABLE** | タイトルは【さ行～わ行】で始まる？ など | titleReadingInitial が範囲に含まれるか（DB登録が必要） |
-| **TITLE_SYLLABLE_2** | タイトルは【な行～わ行】で始まる？ など | TITLE_SYLLABLE の YES/NO に応じた2次範囲（救済のみ） |
-| **AUTHOR_CHAR_TYPE** | 作者名は【ひらがな or カタカナ】で始まる？ | 作者名先頭文字の文字種（救済のみ） |
+| 質問番号 | 内容 |
+|----------|------|
+| **Q3** | **SERIES** または **POPULARITY**（Q9 と合わせて両方1回ずつ出る想定） |
+| **Q5** | **TITLE_SYLLABLE**（50音・行）固定 |
+| **Q9** | **SERIES / POPULARITY** のうち Q3 で出なかった方 |
+| **Q11** | 固定枠なし。特別質問で UNKNOWN が出た場合の **補填**としてこの番号に特別が乗ることがある |
+| **Q12** | **TITLE_LENGTH_STYLE** または **TITLE_CHAR_TYPE** をランダムに1つ |
+| **Q16, Q20, Q24** | **救済**（条件付き）。AUTHOR_CHAR_TYPE、TITLE_SYLLABLE_2（Q5 が YES/NO で終わっていること）、TITLE_LENGTH_STYLE などから `mvpConfig` に応じて選ぶ |
 
----
-
-## 典型的な質問の流れ（例）
-
-### パターンA: 通常（4回の特別質問）
-
-```
-Q1:  まとめ質問（恋愛とか、ラブコメの話、ある？）
-Q2:  まとめ or 通常タグ
-Q3:  【特別】シリーズもの？ or 有名？
-Q4:  通常タグ
-Q5:  【特別】Q3で使わなかった方 or 漢字/ひらがなorカタカナ
-Q6:  通常タグ
-...
-Q9:  【特別】残り（例: 50音）
-...
-Q16: 【特別】残り（例: まだ使っていないタイプ）
-```
-
-### パターンB: わからない回答時（5回の特別質問）
-
-```
-Q3:  【特別】シリーズもの？ → わからない
-...
-Q5:  【特別】漢字/ひらがなorカタカナ
-...
-Q9:  【特別】有名？ or 50音
-...
-Q11: 【特別】残り（わからない補填スロット）
-...
-Q16: 【特別】残り
-```
+`flow.specialQuestionSlotIndices` を変えれば、上記の「番号」とエンジンの対応を変えられる（既定は 3,5,9,12）。
 
 ---
 
-## 選択ロジックの詳細
+## 特別質問タイプ一覧
 
-1. **候補の構築**: スロットごとの `allowedTypes` に基づき、未使用タイプの候補を生成
-2. **情報量計算**: 各候補の pYes（YES と答える確率）から情報量 `min(p, 1-p)` を算出
-3. **選択**: 情報量上位2〜3件からランダムに1つ選ぶ（低情報量の質問が選ばれにくい）
+| タイプ | 概要 |
+|--------|------|
+| **SERIES** | シリーズ／総集編系タグ |
+| **POPULARITY** | 有名度しきい値（`specialQuestions.json` 等） |
+| **TITLE_SYLLABLE** | 50音・行（`titleReadingInitial` 利用） |
+| **TITLE_CHAR_TYPE** | タイトル先頭の文字種 |
+| **TITLE_LENGTH_STYLE** | タイトル長（長め／短め。YES 最小文字数・NO 最大文字数は設定可） |
+| **TITLE_SYLLABLE_2** | 救済。TITLE_SYLLABLE の続き（枝） |
+| **AUTHOR_CHAR_TYPE** | 作者名の文字種（救済中心） |
+
+---
+
+## ゲーム内の出題優先（`selectNextQuestion`）
+
+同一 `qIndex` で競合する場合の **確定順**（抜粋）:
+
+1. **ノイズ誘導**（条件を満たすとき）
+2. **新タグ質問**（スロットに該当し、未出の variant があるとき）
+3. 既存の **特別質問枠**（`specialQuestionSlotIndices` + UNKNOWN 補填の Q11）
+4. 通常の探索・確認・REVEAL 判定など
+
+※ 新タグ3本目が Q13 かつノイズも Q13 の条件がある場合は、ノイズ優先。ノイズ後に新タグをずらすロジックあり（実装参照）。
 
 ---
 
 ## 設定ファイル
 
-- **config/specialQuestions.json**: 質問文、popularityThreshold（デフォルト30）、50音の範囲、TITLE_SYLLABLE_2 の branches、AUTHOR_CHAR_TYPE
-- **config/mvpConfig.json**: `flow.specialQuestionSlotIndices` = [3, 5, 9, 16]、`flow.rescueSpecialCondition` = { slotIndices: [20, 24], effectiveCandidatesMin: 25, confidenceMax: 0.35 }
+| ファイル | 内容 |
+|----------|------|
+| **config/mvpConfig.json** | `flow.specialQuestionSlotIndices`、`flow.rescueSpecialCondition`、`newTagQuestions`、`noiseGuideRecommend`、最大質問数など |
+| **config/specialQuestions.json** | 各特別タイプの文言、50音レンジ、POPULARITY 閾値、`TITLE_LENGTH_STYLE` の yesMinLength / noMaxLength など |
+
+---
+
+## 典型的な流れ（例）
+
+```
+Q1:  通常（まとめ or タグ）
+Q2:  新タグ（有効時はここが最優先）／通常
+Q3:  【特別】SERIES or 有名度
+Q4:  通常
+Q5:  【特別】50音（TITLE_SYLLABLE）
+Q6:  通常
+Q7:  新タグ／通常
+Q8:  通常
+Q9:  【特別】SERIES/有名度の残り
+Q10: 通常（＋確認帯）
+Q11: 通常＋確認。UNKNOWN 補填で【特別】が乗る場合あり
+Q12: 【特別】タイトル長 or 先頭文字種
+Q13: 【ノイズ】（Q5・Q12 がともに UNKNOWN の直後のみ・最優先）／新タグ3本目／通常
+...
+Q16・Q20・Q24: 【救済・特別】条件付き
+```
 
 ---
 
 ## 注意事項
 
-- **TITLE_SYLLABLE** は `titleReadingInitial` が DB に登録されている作品でのみ有効。未登録が多いと候補に含まれにくい
-- **Q11** は特別質問で「わからない」と答えた場合のみ追加される
-- 動的延長（B）により、最大質問数は 30 + わからない数 + (Q30かつ候補<50で+5)、上限40問
+- **TITLE_SYLLABLE** は `titleReadingInitial` が未登録の作品では効きにくい。
+- **TITLE_SYLLABLE_2** は **Q5 が YES/NO で終わっていること**が前提。
+- **新タグ**は DB にタグが未付与でも動作するが、重み更新の効果は限定的になりうる（設計上許容）。
+- 動的延長により最大質問数は `flow.maxQuestions` 周りのロジックで伸びる（`getEffectiveMaxQuestions` 等）。
+
+---
+
+## 関連ドキュメント
+
+- `docs/DESIGN-new-tag-special-noise-v1.md`（v1.5 設計の全体）

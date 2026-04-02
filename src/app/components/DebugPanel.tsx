@@ -90,7 +90,7 @@ interface RevealAnalysis {
   };
 }
 
-export type ForceNavigateScreen = 'FAIL_LIST' | 'SUCCESS' | 'ALMOST_SUCCESS';
+export type ForceNavigateScreen = 'FAIL_LIST' | 'SUCCESS' | 'ALMOST_SUCCESS' | 'RECOMMEND';
 
 interface DebugPanelProps {
   debug: DebugPayload | null;
@@ -157,6 +157,7 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle, onForceNavig
                 <button type="button" onClick={() => onForceNavigate('FAIL_LIST')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6c757d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>失敗</button>
                 <button type="button" onClick={() => onForceNavigate('SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>成功</button>
                 <button type="button" onClick={() => onForceNavigate('ALMOST_SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#ffc107', color: '#000', border: 'none', borderRadius: 6, cursor: 'pointer' }}>惜しかった</button>
+                <button type="button" onClick={() => onForceNavigate('RECOMMEND')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6f42c1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>推薦</button>
               </div>
             )}
           </div>
@@ -210,6 +211,7 @@ export function DebugPanel({ debug, revealAnalysis, open, onToggle, onForceNavig
                 <button type="button" onClick={() => onForceNavigate('FAIL_LIST')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6c757d', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>失敗</button>
                 <button type="button" onClick={() => onForceNavigate('SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#28a745', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>成功</button>
                 <button type="button" onClick={() => onForceNavigate('ALMOST_SUCCESS')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#ffc107', color: '#000', border: 'none', borderRadius: 6, cursor: 'pointer' }}>惜しかった</button>
+                <button type="button" onClick={() => onForceNavigate('RECOMMEND')} style={{ padding: '6px 10px', fontSize: '11px', fontWeight: 600, backgroundColor: '#6f42c1', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>推薦</button>
               </div>
             </div>
           )}

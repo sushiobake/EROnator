@@ -150,10 +150,11 @@
       3,
       5,
       9,
-      16
+      12
     ],
     "rescueSpecialCondition": {
       "slotIndices": [
+        16,
         20,
         24
       ],
@@ -169,5 +170,34 @@
   },
   "popularity": {
     "playBonusOnSuccess": 0
+  },
+  "newTagQuestions": {
+    "enabled": true,
+    "slotIndices": [
+      2,
+      7,
+      13
+    ],
+    "variants": [
+      {
+        "id": "nt1",
+        "tagKey": "newtag_modern_japan",
+        "displayText": "舞台は現代日本？"
+      },
+      {
+        "id": "nt2",
+        "tagKey": "newtag_male_protagonist",
+        "displayText": "主人公は男性？"
+      },
+      {
+        "id": "nt3",
+        "tagKey": "newtag_has_source",
+        "displayText": "原作がある？"
+      }
+    ]
+  },
+  "noiseGuideRecommend": {
+    "enabled": true,
+    "questionText": "もしかして…特定の作品やタイトルにこだわりがない？"
   }
 }

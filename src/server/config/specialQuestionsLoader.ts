@@ -37,6 +37,12 @@ export interface SpecialQuestionsConfig {
     HIRAGANA_OR_KATAKANA?: string;
     KANJI_OR_ALPHA?: string;
   };
+  /** タイトル長（なろう系っぽさ）。YES=長めに重み */
+  TITLE_LENGTH_STYLE?: {
+    questionText?: string;
+    yesMinLength?: number;
+    noMaxLength?: number;
+  };
 }
 
 let cache: SpecialQuestionsConfig | null = null;
@@ -64,6 +70,7 @@ function normalizeConfig(raw: Record<string, unknown>): SpecialQuestionsConfig {
     TITLE_SYLLABLE: { ranges },
     TITLE_SYLLABLE_2: base.TITLE_SYLLABLE_2 as SpecialQuestionsConfig['TITLE_SYLLABLE_2'],
     AUTHOR_CHAR_TYPE: base.AUTHOR_CHAR_TYPE as SpecialQuestionsConfig['AUTHOR_CHAR_TYPE'],
+    TITLE_LENGTH_STYLE: base.TITLE_LENGTH_STYLE as SpecialQuestionsConfig['TITLE_LENGTH_STYLE'],
   };
 }
 

@@ -118,6 +118,7 @@ export async function POST(request: NextRequest) {
       kind: currentQuestion.kind,
       displayText: currentQuestion.displayText ?? '',
       tagKey: currentQuestion.tagKey,
+      newTagVariantId: (currentQuestion as { newTagVariantId?: string }).newTagVariantId,
       hardConfirmType: currentQuestion.hardConfirmType,
       hardConfirmValue: currentQuestion.hardConfirmValue,
       isSummaryQuestion: currentQuestion.isSummaryQuestion,
@@ -128,6 +129,8 @@ export async function POST(request: NextRequest) {
       popularityThreshold: (currentQuestion as { popularityThreshold?: number }).popularityThreshold,
       syllableChars: (currentQuestion as { syllableChars?: string[] }).syllableChars,
       authorCharType: (currentQuestion as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+      titleLengthYesMin: (currentQuestion as { titleLengthYesMin?: number }).titleLengthYesMin,
+      titleLengthNoMax: (currentQuestion as { titleLengthNoMax?: number }).titleLengthNoMax,
     };
 
     const updatedWeights = await processAnswer(
@@ -186,6 +189,19 @@ export async function POST(request: NextRequest) {
       newWeightsHistory,
       config
     );
+
+    if (result.state === 'RECOMMEND') {
+      await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
+      const snapshotWeightsArrayRec = Object.entries(snapshotWeights).map(([workId, weight]) => ({ workId, weight }));
+      await SessionManager.saveWeightsSnapshot(sessionId, currentQuestion.qIndex, snapshotWeightsArrayRec);
+      return NextResponse.json({
+        state: 'RECOMMEND',
+        sessionState: {
+          questionCount: newQuestionCount,
+          confidence,
+        },
+      });
+    }
 
     // セッション更新（全パターン共通）。weightsHistory は渡さず、スナップショットは 1 行だけ INSERT。
     await SessionManager.updateSession(sessionId, result.sessionUpdates, session);
@@ -257,10 +273,11 @@ export async function POST(request: NextRequest) {
         kind: nextQuestion.kind,
         displayText: nextQuestion.displayText,
         tagKey: nextQuestion.tagKey,
+        newTagVariantId: (nextQuestion as { newTagVariantId?: string }).newTagVariantId,
         hardConfirmType: nextQuestion.hardConfirmType,
         hardConfirmValue: nextQuestion.hardConfirmValue,
         exploreTagKind: (nextQuestion as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (nextQuestion as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' }).specialQuestionType,
+        specialQuestionType: (nextQuestion as { specialQuestionType?: QuestionResponse['specialQuestionType'] }).specialQuestionType,
       };
       const sessionState: SessionStateResponse = {
         questionCount: session.questionCount + 1,

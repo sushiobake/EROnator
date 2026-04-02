@@ -22,6 +22,21 @@ import { getAuthorCharType } from '../utils/authorCharType';
 import type { WorkWeight, AiGateChoice } from '../algo/types';
 import type { QuestionHistoryEntry } from '../session/manager';
 
+/** 新タグ質問はシミュでは常に UNKNOWN（設計: DESIGN-new-tag-special-noise-v1 §シミュレーション） */
+export function isNewTagQuestionForSimulation(
+  question: { kind: string; tagKey?: string },
+  qIndex: number,
+  config: ReturnType<typeof getMvpConfig>
+): boolean {
+  if (question.kind === 'NEW_TAG_QUESTION') return true;
+  const ext = config as ReturnType<typeof getMvpConfig> & {
+    newTagQuestions?: { tagKeys?: string[]; slotIndices?: number[] };
+  };
+  const keys = ext.newTagQuestions?.tagKeys;
+  const slots = ext.newTagQuestions?.slotIndices ?? [2, 7, 13];
+  return !!(keys?.length && question.tagKey && keys.includes(question.tagKey) && slots.includes(qIndex));
+}
+
 // ─── Interfaces ───
 
 export interface SimulationStep {
@@ -194,6 +209,20 @@ export function getCorrectAnswer(
       return (ct === 'HIRAGANA' || ct === 'KATAKANA') ? 'YES' : 'NO';
     }
     return (ct === 'KANJI' || ct === 'ALPHA') ? 'YES' : 'NO';
+  }
+  if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_LENGTH_STYLE') {
+    const len = (targetWork.title ?? '').length;
+    const yesMin = (question as { titleLengthYesMin?: number }).titleLengthYesMin ?? 10;
+    return len >= yesMin ? 'YES' : 'NO';
+  }
+  if (question.kind === 'NOISE_GUIDE_RECOMMEND') {
+    return 'NO';
+  }
+  if (question.kind === 'NEW_TAG_QUESTION' && question.tagKey) {
+    return targetTags.has(question.tagKey) ? 'YES' : 'NO';
+  }
+  if (question.kind === 'NEW_TAG_QUESTION') {
+    return 'NO';
   }
   if (question.kind === 'EXPLORE_TAG' || question.kind === 'SOFT_CONFIRM') {
     const summaryDisplayNames = question.summaryDisplayNames;
@@ -390,8 +419,13 @@ export async function runSimulation(
       );
 
       const baseAnswer = correctAnswer as 'YES' | 'NO';
-      const actualAnswer =
-        question.kind === 'HARD_CONFIRM'
+      const actualAnswer = isNewTagQuestionForSimulation(
+        question as { kind: string; tagKey?: string },
+        qIndex,
+        config
+      )
+        ? 'UNKNOWN'
+        : question.kind === 'HARD_CONFIRM'
           ? baseAnswer
           : pickAnswerFromAmbiguity(baseAnswer, ambiguityLevel, question.kind);
       const wasNoisy = actualAnswer !== baseAnswer;
@@ -415,12 +449,14 @@ export async function runSimulation(
         summaryDisplayNames: (question as { summaryDisplayNames?: string[] }).summaryDisplayNames,
         answer: actualAnswer,
         exploreTagKind: (question as { exploreTagKind?: 'summary' | 'erotic' | 'abstract' | 'normal' }).exploreTagKind,
-        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' }).specialQuestionType,
+        specialQuestionType: (question as { specialQuestionType?: 'SERIES' | 'TITLE_CHAR_TYPE' | 'POPULARITY' | 'TITLE_SYLLABLE' | 'TITLE_SYLLABLE_2' | 'AUTHOR_CHAR_TYPE' | 'TITLE_LENGTH_STYLE' }).specialQuestionType,
         seriesTagKeys: (question as { seriesTagKeys?: string[] }).seriesTagKeys,
         titleCharType: (question as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
         popularityThreshold: (question as { popularityThreshold?: number }).popularityThreshold,
         syllableChars: (question as { syllableChars?: string[] }).syllableChars,
         authorCharType: (question as { authorCharType?: 'HIRAGANA_OR_KATAKANA' | 'KANJI_OR_ALPHA' }).authorCharType,
+        titleLengthYesMin: (question as { titleLengthYesMin?: number }).titleLengthYesMin,
+        titleLengthNoMax: (question as { titleLengthNoMax?: number }).titleLengthNoMax,
       });
 
       let tagCoverage: number | undefined;
