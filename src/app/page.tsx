@@ -190,6 +190,8 @@ export default function Home() {
     topLines?: string[]; questionPreamble?: string; revealPreamble?: string; revealMain?: string;
     successSpeech?: string; successTitle?: string; recommendTitle?: string;
     failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string; failListNotInListPrompt?: string;
+    failListBtnNotInList?: string; failListBtnRecommend?: string; failListBtnTop?: string;
+    failListSearchIntro?: string; failListSearchPlaceholder?: string;
     almostSuccessSpeech?: string; aiGatePreamble?: string; aiGateMain?: string;
     /** 推薦結果見出しと同じ。保存画像に埋め込む（/api/config/game-ui・/api/start で付与） */
     recommendResultsHeading?: string;
@@ -1120,6 +1122,11 @@ export default function Home() {
             onBackToTopWithReset={handleBackToTopWithReset}
             onWhiteboardVerticalFillChange={setFailListWhiteboardFill}
             notInListPrompt={gc?.failListNotInListPrompt ?? 'ない？ならここに作品名書いてよ！お願いだから！'}
+            failListBtnNotInList={gc?.failListBtnNotInList}
+            failListBtnRecommend={gc?.failListBtnRecommend}
+            failListBtnTop={gc?.failListBtnTop}
+            failListSearchIntro={gc?.failListSearchIntro}
+            failListSearchPlaceholder={gc?.failListSearchPlaceholder}
             mobileListBelow={isMobile}
             hideCandidateGrid={isMobile}
             streamerMode={streamerMode}

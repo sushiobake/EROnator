@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     const raw = JSON.parse(fileContent);
     const config = {
       ...raw,
-      gameCopy: raw.gameCopy ?? DEFAULT_GAME_COPY,
+      gameCopy: { ...DEFAULT_GAME_COPY, ...(raw.gameCopy ?? {}) },
       recommendCopy: raw.recommendCopy ? { ...DEFAULT_RECOMMEND_COPY, ...raw.recommendCopy } : undefined,
       thinking: migrateThinking(raw.thinking ?? DEFAULT_THINKING),
     };

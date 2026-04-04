@@ -5,7 +5,7 @@
 import { getMvpConfig } from '../config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '../config/flowUtils';
 import { getTitleSyllableRanges } from '../config/specialQuestionsLoader';
-import { selectNextQuestion, processAnswer, filterWorksByAiGate, type WorkInfoForConfirm } from '../game/engine';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, getEarlyExitStepSnapshot, type WorkInfoForConfirm } from '../game/engine';
 import { getWorkTagsFromMatrix } from '../game/workTagMatrixLoader';
 import {
   perfStart,
@@ -19,8 +19,9 @@ import { normalizeTitleForInitial } from '../utils/normalizeTitle';
 import { getTitleCharType, getTitleReadingInitialFromTitle } from '../utils/titleCharType';
 import { getTitleReadingInitials } from '../utils/titleReadingInitial';
 import { getAuthorCharType } from '../utils/authorCharType';
-import type { WorkWeight, AiGateChoice } from '../algo/types';
+import type { WorkWeight, WorkProbability, AiGateChoice } from '../algo/types';
 import type { QuestionHistoryEntry } from '../session/manager';
+import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
 
 /** 新タグ質問はシミュでは常に UNKNOWN（設計: DESIGN-new-tag-special-noise-v1 §シミュレーション） */
 export function isNewTagQuestionForSimulation(
@@ -38,6 +39,48 @@ export function isNewTagQuestionForSimulation(
 }
 
 // ─── Interfaces ───
+
+
+/** 断定閾値未満のクイズ1手の直後: 本番 answer API の「断定ミス上限→早期失敗一覧」と同順。 */
+export function evaluateSimulationEarlyExitAfterQuizAnswer(args: {
+  newConfidence: number;
+  revealThreshold: number;
+  revealMissCount: number;
+  maxRevealMisses: number;
+  questionCountAfterThisAnswer: number;
+  effectiveCandidatesAfter: number;
+  questionHistory: QuestionHistoryEntry[];
+  config: ReturnType<typeof getMvpConfig>;
+  newSorted: WorkProbability[];
+  revealedWrongWorkIds: Set<string>;
+}): { stop: true; endedBy: SimulationDiagnostic['endedBy']; finalWorkId: string | null } | { stop: false } {
+  if (args.newConfidence >= args.revealThreshold) {
+    return { stop: false };
+  }
+  if (args.revealMissCount >= args.maxRevealMisses) {
+    const finalWorkId =
+      args.newSorted.find(p => !args.revealedWrongWorkIds.has(p.workId))?.workId ??
+      args.newSorted[0]?.workId ??
+      null;
+    return { stop: true, endedBy: 'REVEAL', finalWorkId };
+  }
+  if (
+    getEarlyExitStepSnapshot(
+      args.questionCountAfterThisAnswer,
+      args.newConfidence,
+      args.effectiveCandidatesAfter,
+      args.questionHistory,
+      args.config
+    ).wouldEarlyExit
+  ) {
+    const finalWorkId =
+      args.newSorted.find(p => !args.revealedWrongWorkIds.has(p.workId))?.workId ??
+      args.newSorted[0]?.workId ??
+      null;
+    return { stop: true, endedBy: 'EARLY_FAIL_REVIEW', finalWorkId };
+  }
+  return { stop: false };
+}
 
 export interface SimulationStep {
   qIndex: number;
@@ -67,6 +110,8 @@ export interface SimulationStep {
   revealResult?: 'SUCCESS' | 'MISS';
   effectiveCandidates?: number;
   preferHighP?: boolean;
+  /** 回答直後の早期失敗審査スナップショット（クイズ行のみ） */
+  earlyExit?: EarlyExitStepSnapshot;
 }
 
 export interface WorkDetails {
@@ -87,7 +132,7 @@ export interface WorkDetails {
 }
 
 export interface SimulationDiagnostic {
-  endedBy: 'REVEAL' | 'MAX_QUESTIONS' | 'NO_MORE_QUESTIONS' | 'OTHER';
+  endedBy: 'REVEAL' | 'MAX_QUESTIONS' | 'NO_MORE_QUESTIONS' | 'EARLY_FAIL_REVIEW' | 'OTHER';
   correctRank: number;
   correctStillInCandidates: boolean;
   top1Confidence: number;
@@ -521,6 +566,13 @@ export async function runSimulation(
         tagCoverage,
         effectiveCandidates: calculateEffectiveCandidates(probabilities),
         preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighPBatch : undefined,
+        earlyExit: getEarlyExitStepSnapshot(
+          questionCount,
+          newConfidence,
+          calculateEffectiveCandidates(newProbabilities),
+          questionHistory,
+          config
+        ),
       });
 
       const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
@@ -568,6 +620,24 @@ export async function runSimulation(
             }));
           }
         }
+      }
+      const earlyFailSim = evaluateSimulationEarlyExitAfterQuizAnswer({
+        newConfidence,
+        revealThreshold,
+        revealMissCount,
+        maxRevealMisses: config.flow.maxRevealMisses as number,
+        questionCountAfterThisAnswer: questionCount,
+        effectiveCandidatesAfter: calculateEffectiveCandidates(newProbabilities),
+        questionHistory,
+        config,
+        newSorted,
+        revealedWrongWorkIds,
+      });
+      if (earlyFailSim.stop) {
+        endedBy = earlyFailSim.endedBy;
+        outcome = 'FAIL_LIST';
+        finalWorkId = earlyFailSim.finalWorkId;
+        break;
       }
     }
 

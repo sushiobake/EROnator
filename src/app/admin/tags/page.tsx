@@ -16,6 +16,9 @@ import SummaryQuestionEditor from '../components/SummaryQuestionEditor';
 import TagManager from '../components/TagManager';
 import ChangelogTab from './tabs/ChangelogTab';
 import ConfigTab from './tabs/ConfigTab';
+import { SimEarlyExitJudgmentColumnCell, EARLY_EXIT_OK_COLOR } from '../components/SimEarlyExitColumnCell';
+import { SimEarlyExitThresholdsSummary } from '../components/SimEarlyExitThresholdsSummary';
+import { buildSimEarlyExitColumnOkList } from '../utils/earlyExitReviewMerged';
 import RecommendFamousTagsTab from './tabs/RecommendFamousTagsTab';
 import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
@@ -293,6 +296,15 @@ export default function AdminTagsPage() {
     diagnostic?: unknown;
     analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
   } | null>(null);
+
+  const simEarlyExitOkInline = useMemo(
+    () => (simResult?.steps ? buildSimEarlyExitColumnOkList(simResult.steps as never[], config?.flow) : []),
+    [simResult?.steps, config?.flow]
+  );
+  const simEarlyExitOkModal = useMemo(
+    () => (simResultModal?.steps ? buildSimEarlyExitColumnOkList(simResultModal.steps as never[], config?.flow) : []),
+    [simResultModal?.steps, config?.flow]
+  );
 
   // シミュ結果の質問文言編集（'simResult-0' | 'simResultModal-2' など）
   const [editingQuestionKey, setEditingQuestionKey] = useState<string | null>(null);
@@ -3817,6 +3829,8 @@ export default function AdminTagsPage() {
                 </div>
               )}
 
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-start', gap: '0.65rem', marginTop: '0.5rem', flexWrap: 'wrap', width: '100%' }}>
+                <div style={{ flex: '0 0 auto' }}>
               {/* 計測結果（開こうとしたら開ける・デフォルト閉じ） */}
               {simResult.perfSummary && (
                 <div style={{ marginBottom: '0.5rem' }}>
@@ -3885,6 +3899,9 @@ export default function AdminTagsPage() {
                 >
                   {simShowWorkDetails ? '作品詳細を閉じる' : '作品詳細を表示'}
                 </button>
+              </div>
+                </div>
+                <SimEarlyExitThresholdsSummary flow={config?.flow} />
               </div>
 
               {/* 作品詳細表示 */}
@@ -3987,21 +4004,23 @@ export default function AdminTagsPage() {
                     marginTop: '1rem',
                     maxHeight: '400px',
                     overflowY: 'auto',
+                    overflowX: 'auto',
                     background: '#fff',
                     padding: '1rem',
                     borderRadius: '4px',
                     fontSize: '0.9rem'
                   }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
                       <thead>
                         <tr style={{ background: '#f0f0f0' }}>
-                          <th style={{ padding: '0.5rem', textAlign: 'left' }}>Q#</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'left' }}>質問</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'center' }}>回答</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'center' }}>ノイズ</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'right' }}>p値</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'right' }}>候補</th>
-                          <th style={{ padding: '0.5rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', width: '2.25rem' }}>Q#</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', minWidth: '280px' }}>質問</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', width: '3.2rem' }}>回答</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>ノイズ</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right', width: '3.5rem' }}>p値</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right', width: '8.5rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>確度（①）</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'right', width: '7.75rem', minWidth: '7.75rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>候補（②）</th>
+                          <th style={{ padding: '0.5rem', textAlign: 'left', width: '10%', minWidth: '5.5rem', maxWidth: '7.5rem', boxSizing: 'border-box' }}>早期失敗判定</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -4009,6 +4028,8 @@ export default function AdminTagsPage() {
                           const isReveal = step.question.kind === 'REVEAL';
                           const revealSuccess = (step as any).revealResult === 'SUCCESS';
                           const revealMiss = (step as any).revealResult === 'MISS';
+                          const ex = (step as { earlyExit?: import('@/types/earlyExitStepSnapshot').EarlyExitStepSnapshot }).earlyExit;
+                          const eeOk = simEarlyExitOkInline[i] ?? { conf: false, cand: false };
                           return (
                             <tr 
                               key={i} 
@@ -4020,7 +4041,7 @@ export default function AdminTagsPage() {
                               }}
                             >
                               <td style={{ padding: '0.5rem' }}>{step.qIndex}</td>
-                              <td style={{ padding: '0.5rem' }}>
+                              <td style={{ padding: '0.5rem', minWidth: '280px' }}>
                                 <span style={{ 
                                   display: 'inline-block',
                                   padding: '0.2rem 0.5rem',
@@ -4099,16 +4120,11 @@ export default function AdminTagsPage() {
                                 )}
                               </td>
                               <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                <span style={{
-                                  color: step.answer === 'YES' || step.answer === 'CORRECT' ? '#2e7d32' 
-                                    : step.answer === 'NO' || step.answer === 'WRONG' ? '#c62828'
-                                    : '#666',
-                                  fontWeight: 'bold'
-                                }}>
+                                <span style={{ color: '#37474f', fontWeight: 600 }}>
                                   {step.answer}
                                 </span>
                               </td>
-                              <td style={{ padding: '0.5rem', textAlign: 'center' }}>
+                              <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>
                                 {step.wasNoisy && <span style={{ color: '#ff6600' }}>!</span>}
                               </td>
                               <td style={{ 
@@ -4125,12 +4141,37 @@ export default function AdminTagsPage() {
                                   ? `${((step as any).tagCoverage * 100).toFixed(0)}%`
                                   : '-'}
                               </td>
-                              <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                                {(step as any).effectiveCandidates ?? '-'}
+                              <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <span style={{ color: '#37474f' }}>{(step.confidenceBefore * 100).toFixed(1)}%</span>
+                                {!isReveal && (
+                                  <>
+                                    {' → '}
+                                    <span
+                                      style={{
+                                        color: eeOk.conf ? EARLY_EXIT_OK_COLOR : '#37474f',
+                                        fontWeight: eeOk.conf ? 600 : 400,
+                                      }}
+                                    >
+                                      {(step.confidenceAfter * 100).toFixed(1)}%
+                                    </span>
+                                  </>
+                                )}
                               </td>
-                              <td style={{ padding: '0.5rem', textAlign: 'right', whiteSpace: 'nowrap', minWidth: '300px' }}>
-                                {(step.confidenceBefore * 100).toFixed(1)}%
-                                {!isReveal && ` → ${(step.confidenceAfter * 100).toFixed(1)}%`}
+                              <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'normal' }}>
+                                <span style={{
+                                  color: eeOk.cand ? EARLY_EXIT_OK_COLOR : '#37474f',
+                                  fontWeight: eeOk.cand ? 600 : 400,
+                                }}>
+                                  {(() => {
+                                    const _c = ex?.effectiveCandidates ?? (step as any).effectiveCandidates;
+                                    if (_c == null) return '-';
+                                    const _n = typeof _c === 'number' ? _c : Number(_c);
+                                    return Number.isFinite(_n) ? Math.floor(_n) : '-';
+                                  })()}
+                                </span>
+                              </td>
+                              <td style={{ padding: '0.5rem', textAlign: 'left', verticalAlign: 'top' }}>
+                                <SimEarlyExitJudgmentColumnCell ex={ex} isReveal={isReveal} />
                               </td>
                             </tr>
                           );
@@ -4611,43 +4652,49 @@ export default function AdminTagsPage() {
                         <strong>エラー:</strong> {simResultModal.errorMessage}
                       </div>
                     )}
-                    {simResultModal.perfSummary && (
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => setSimModalPerfExpanded(!simModalPerfExpanded)}
-                          style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer' }}
-                        >
-                          {simModalPerfExpanded ? '▼ 計測を閉じる' : '▶ 計測 (ms) を開く'}
-                        </button>
-                        {simModalPerfExpanded && (
-                          <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f5f5f5', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                            runSimulation: {simResultModal.perfSummary.runSimulation}ms | selectNextQuestion: {simResultModal.perfSummary.selectNextQuestion}ms
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '0.65rem', width: '100%', marginTop: '0.5rem' }}>
+                      <div style={{ flex: '0 0 auto' }}>
+                        {simResultModal.perfSummary && (
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => setSimModalPerfExpanded(!simModalPerfExpanded)}
+                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem', background: '#f5f5f5', border: '1px solid #ddd', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              {simModalPerfExpanded ? '▼ 計測を閉じる' : '▶ 計測 (ms) を開く'}
+                            </button>
+                            {simModalPerfExpanded && (
+                              <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#f5f5f5', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                runSimulation: {simResultModal.perfSummary.runSimulation}ms | selectNextQuestion: {simResultModal.perfSummary.selectNextQuestion}ms
+                              </div>
+                            )}
                           </div>
                         )}
+                        <strong style={{ display: 'block', marginTop: simResultModal.perfSummary ? '0.25rem' : 0 }}>過程</strong>
                       </div>
-                    )}
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <strong>過程</strong>
-                      <div style={{ 
+                      <SimEarlyExitThresholdsSummary flow={config?.flow} />
+                    </div>
+                    <div style={{ 
                         marginTop: '0.35rem',
                         maxHeight: '3200px',
                         overflowY: 'auto',
+                        overflowX: 'auto',
                         background: '#fff',
                         padding: '1rem',
                         borderRadius: '4px',
                         fontSize: '0.9rem'
                       }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
                           <thead>
                             <tr style={{ background: '#f0f0f0' }}>
-                              <th style={{ padding: '0.5rem', textAlign: 'left' }}>Q#</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'left' }}>質問</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'center' }}>回答</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'center' }}>ノイズ</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'right' }}>p値</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'right' }}>候補</th>
-                              <th style={{ padding: '0.5rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'left', width: '2.25rem' }}>Q#</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'left', minWidth: '280px' }}>質問</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center', width: '3.2rem' }}>回答</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>ノイズ</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right', width: '3.5rem' }}>p値</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right', width: '8.5rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>確度（①）</th>
+                              <th style={{ padding: '0.5rem', textAlign: 'right', width: '7.75rem', minWidth: '7.75rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>候補（②）</th>
+                                  <th style={{ padding: '0.5rem', textAlign: 'left', width: '10%', minWidth: '5.5rem', maxWidth: '7.5rem', boxSizing: 'border-box' }}>早期失敗判定</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -4655,6 +4702,8 @@ export default function AdminTagsPage() {
                               const isReveal = step.question.kind === 'REVEAL';
                               const revealSuccess = (step as { revealResult?: string }).revealResult === 'SUCCESS';
                               const revealMiss = (step as { revealResult?: string }).revealResult === 'MISS';
+                              const ex = (step as { earlyExit?: import('@/types/earlyExitStepSnapshot').EarlyExitStepSnapshot }).earlyExit;
+                              const eeOk = simEarlyExitOkModal[idx] ?? { conf: false, cand: false };
                               const stepExt = step as { tagCoverage?: number; effectiveCandidates?: number; preferHighP?: boolean; revealWorkTitle?: string };
                               const tagCoverage = stepExt.tagCoverage;
                               const pColor = tagCoverage !== undefined
@@ -4664,7 +4713,7 @@ export default function AdminTagsPage() {
                               return (
                                 <tr key={idx} style={{ borderBottom: '1px solid #eee', background: isReveal ? (revealSuccess ? '#c8e6c9' : '#ffcdd2') : 'transparent' }}>
                                   <td style={{ padding: '0.5rem' }}>{step.qIndex}</td>
-                                  <td style={{ padding: '0.5rem' }}>
+                                  <td style={{ padding: '0.5rem', minWidth: '280px' }}>
                                     <span style={{ 
                                       display: 'inline-block',
                                       padding: '0.2rem 0.5rem',
@@ -4728,20 +4777,45 @@ export default function AdminTagsPage() {
                                     )}
                                   </td>
                                   <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                    <span style={{ color: step.answer === 'YES' || step.answer === 'CORRECT' ? '#2e7d32' : step.answer === 'NO' || step.answer === 'WRONG' ? '#c62828' : '#666', fontWeight: 'bold' }}>
+                                    <span style={{ color: '#37474f', fontWeight: 600 }}>
                                       {step.answer}
                                     </span>
                                   </td>
-                                  <td style={{ padding: '0.5rem', textAlign: 'center' }}>{step.wasNoisy && <span style={{ color: '#ff6600' }}>!</span>}</td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>{step.wasNoisy && <span style={{ color: '#ff6600' }}>!</span>}</td>
                                   <td style={{ padding: '0.5rem', textAlign: 'right', color: pColor, fontWeight: pBold ? 'bold' : 'normal' }}>
                                     {tagCoverage !== undefined ? `${(tagCoverage * 100).toFixed(0)}%` : '-'}
                                   </td>
-                                  <td style={{ padding: '0.5rem', textAlign: 'right' }}>
-                                    {stepExt.effectiveCandidates ?? '-'}
+                                  <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <span style={{ color: '#37474f' }}>{(step.confidenceBefore * 100).toFixed(1)}%</span>
+                                    {!isReveal && (
+                                      <>
+                                        {' → '}
+                                        <span
+                                          style={{
+                                            color: eeOk.conf ? EARLY_EXIT_OK_COLOR : '#37474f',
+                                            fontWeight: eeOk.conf ? 600 : 400,
+                                          }}
+                                        >
+                                          {(step.confidenceAfter * 100).toFixed(1)}%
+                                        </span>
+                                      </>
+                                    )}
                                   </td>
-                                  <td style={{ padding: '0.5rem', textAlign: 'right', whiteSpace: 'nowrap', minWidth: '300px' }}>
-                                    {(step.confidenceBefore * 100).toFixed(1)}%
-                                    {!isReveal && ` → ${(step.confidenceAfter * 100).toFixed(1)}%`}
+                                  <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'normal' }}>
+                                    <span style={{
+                                      color: eeOk.cand ? EARLY_EXIT_OK_COLOR : '#37474f',
+                                      fontWeight: eeOk.cand ? 600 : 400,
+                                    }}>
+                                      {(() => {
+                                      const _c = ex?.effectiveCandidates ?? stepExt.effectiveCandidates;
+                                      if (_c == null) return '-';
+                                      const _n = typeof _c === 'number' ? _c : Number(_c);
+                                      return Number.isFinite(_n) ? Math.floor(_n) : '-';
+                                    })()}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '0.5rem', textAlign: 'left', verticalAlign: 'top' }}>
+                                    <SimEarlyExitJudgmentColumnCell ex={ex} isReveal={isReveal} />
                                   </td>
                                 </tr>
                               );
@@ -4749,8 +4823,7 @@ export default function AdminTagsPage() {
                           </tbody>
                         </table>
                       </div>
-                    </div>
-                  </div>
+                </div>
                 </div>
               )}
             </div>

@@ -32,6 +32,7 @@ import { getMvpConfig } from '@/server/config/loader';
 import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry, SessionState } from '@/server/session/manager';
+import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import { isTagBanned } from '@/server/admin/bannedTags';
 import { SERIES_TAG_KEYS } from '@/server/algo/types';
@@ -320,8 +321,8 @@ function shouldOfferNoiseGuideRecommend(
 
 type EarlyExitThreshold = {
   minConfidence: number;
+  /** 実質候補がこの値以下なら「狭すぎて詰み」側（早期失敗の②） */
   maxEffectiveCandidates: number;
-  maxConfidenceDelta5: number;
 };
 
 function getEarlyExitThreshold(
@@ -332,22 +333,62 @@ function getEarlyExitThreshold(
   if (!review || review.enabled === false) return null;
   if (!review.reviewIndices.includes(qIndex)) return null;
   const key = (`q${qIndex}` as 'q25' | 'q30' | 'q35' | 'q40');
-  const threshold = review.thresholds[key];
-  if (!threshold) return null;
-  return { threshold, requiredConditions: review.requiredConditions ?? 2 };
+  const raw = review.thresholds[key];
+  if (!raw) return null;
+  return {
+    threshold: {
+      minConfidence: raw.minConfidence,
+      maxEffectiveCandidates: raw.maxEffectiveCandidates,
+    },
+    requiredConditions: 2,
+  };
 }
 
-function getConfidenceDelta5(questionHistory: QuestionHistoryEntry[]): number {
-  const answered = questionHistory.filter(h => typeof h.answer === 'string');
-  if (answered.length < 5) return Number.POSITIVE_INFINITY;
-  const last5 = answered.slice(-5);
-  // qIndex をキーに質問前後の確度を厳密保存していないため、ここでは回答傾向の荒い代理値として扱う。
-  // 仕様上は「直近5問でほぼ動いていないか」を見る目的なので、answer の偏りから保守的に近似する。
-  const strongCount = last5.filter(h => h.answer === 'YES' || h.answer === 'NO').length;
-  const unknownCount = last5.filter(h => h.answer === 'UNKNOWN' || h.answer === 'DONT_CARE').length;
-  if (unknownCount >= 3) return 0.0;
-  if (strongCount >= 4) return 0.06;
-  return 0.03;
+export function getEarlyExitStepSnapshot(
+  newQuestionCount: number,
+  confidence: number,
+  effectiveCandidates: number,
+  _questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): EarlyExitStepSnapshot {
+  const review = getEarlyExitThreshold(newQuestionCount, config);
+  if (!review) {
+    return {
+      questionCountAfterAnswer: newQuestionCount,
+      confidence,
+      effectiveCandidates,
+      isReviewPoint: false,
+      reviewKey: null,
+      thresholds: null,
+      requiredConditions: null,
+      matchLowConfidence: false,
+      matchNarrowCandidates: false,
+      matchedCount: 0,
+      wouldEarlyExit: false,
+    };
+  }
+  const { threshold, requiredConditions } = review;
+  const reviewKey = `q${newQuestionCount}`;
+  const matchLowConfidence = confidence < threshold.minConfidence;
+  const matchNarrowCandidates = effectiveCandidates <= threshold.maxEffectiveCandidates;
+  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchNarrowCandidates ? 1 : 0);
+  const wouldEarlyExit = matchLowConfidence && matchNarrowCandidates;
+  return {
+    questionCountAfterAnswer: newQuestionCount,
+    confidence,
+    effectiveCandidates,
+    isReviewPoint: true,
+    reviewKey,
+    thresholds: {
+      minConfidence: threshold.minConfidence,
+      maxEffectiveCandidates: threshold.maxEffectiveCandidates,
+    },
+    requiredConditions,
+    matchLowConfidence,
+    matchNarrowCandidates,
+    matchedCount,
+    wouldEarlyExit,
+  };
 }
 
 function shouldEarlyExit(
@@ -357,15 +398,30 @@ function shouldEarlyExit(
   questionHistory: QuestionHistoryEntry[],
   config: MvpConfig
 ): boolean {
-  const review = getEarlyExitThreshold(newQuestionCount, config);
-  if (!review) return false;
-  const { threshold, requiredConditions } = review;
-  const confidenceDelta5 = getConfidenceDelta5(questionHistory);
-  let matched = 0;
-  if (confidence < threshold.minConfidence) matched += 1;
-  if (effectiveCandidates > threshold.maxEffectiveCandidates) matched += 1;
-  if (confidenceDelta5 <= threshold.maxConfidenceDelta5) matched += 1;
-  return matched >= requiredConditions;
+  return getEarlyExitStepSnapshot(
+    newQuestionCount,
+    confidence,
+    effectiveCandidates,
+    questionHistory,
+    config
+  ).wouldEarlyExit;
+}
+
+/** 管理画面シミュレーション用。本番の回答APIが使う早期失敗一覧判定と同一式。 */
+export function shouldEarlyExitToFailList(
+  newQuestionCount: number,
+  confidence: number,
+  effectiveCandidates: number,
+  questionHistory: QuestionHistoryEntry[],
+  config: MvpConfig
+): boolean {
+  return getEarlyExitStepSnapshot(
+    newQuestionCount,
+    confidence,
+    effectiveCandidates,
+    questionHistory,
+    config
+  ).wouldEarlyExit;
 }
 
 function tryNewTagQuestion(

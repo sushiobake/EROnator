@@ -40,6 +40,11 @@ interface FailListProps {
   onWhiteboardVerticalFillChange?: (fill: boolean) => void;
   /** 「リストにない」押下後に表示する一文（コンフィグで変更可） */
   notInListPrompt?: string;
+  failListBtnNotInList?: string;
+  failListBtnRecommend?: string;
+  failListBtnTop?: string;
+  failListSearchIntro?: string;
+  failListSearchPlaceholder?: string;
   /** @deprecated レイアウト用。mobileBelowCanvas で FailListVerticalList を使用 */
   mobileListBelow?: boolean;
   /** true のとき候補グリッドを出さない（スマホでキャンバス下リストと重複させない） */
@@ -165,6 +170,11 @@ export function FailList({
   onBackToTopWithReset,
   onWhiteboardVerticalFillChange,
   notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT,
+  failListBtnNotInList = 'リストにない',
+  failListBtnRecommend = '推薦で探す',
+  failListBtnTop = 'トップに戻る',
+  failListSearchIntro = 'タイトルの一部を入力して。私の頭脳に照らし合わせるから',
+  failListSearchPlaceholder = '例: 鬼、学園、寝取られ など',
   mobileListBelow: _,
   hideCandidateGrid = false,
   streamerMode,
@@ -269,15 +279,15 @@ export function FailList({
           }}
         >
           <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
-            リストにない
+            {failListBtnNotInList}
           </button>
           {onGoRecommend && (
             <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
-              推薦で探す
+              {failListBtnRecommend}
             </button>
           )}
           <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
-            トップに戻る
+            {failListBtnTop}
           </button>
         </div>
       )}
@@ -345,7 +355,7 @@ export function FailList({
                 送信
               </button>
               <button type="button" onClick={onBackToTop} style={chrome.btnPrimaryInline}>
-                トップに戻る
+                {failListBtnTop}
               </button>
             </div>
           </div>
@@ -366,14 +376,14 @@ export function FailList({
         }}
       >
         <p style={{ margin: '0 0 8px 0', fontSize: chrome.fontBody, fontWeight: 600, color: 'var(--color-text)' }}>
-          タイトルの一部を入力して。私の頭脳に照らし合わせるから
+          {failListSearchIntro}
         </p>
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ ...inputStyle, width: '100%' }}
-          placeholder="例: 鬼、学園、寝取られ など"
+          placeholder={failListSearchPlaceholder}
         />
         {searchLoading && (
           <p style={{ margin: '8px 0 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>検索中...</p>
@@ -421,7 +431,7 @@ export function FailList({
       </div>
       {submittedNotInList && onBackToTopWithReset && (
         <button type="button" onClick={onBackToTopWithReset} style={failFlowBackToTopButtonStyle(isMobile)}>
-          トップに戻る
+          {failListBtnTop}
         </button>
       )}
     </div>

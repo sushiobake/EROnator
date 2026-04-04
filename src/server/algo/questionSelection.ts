@@ -253,21 +253,21 @@ export function selectConfirmType(
   confidence: number,
   hasSoftConfirmData: boolean,
   config: {
+    /** 将来の微調整用。現ロジックでは未使用（SOFT は hasSoftConfirmData で優先）。 */
     softConfidenceMin: number;
     hardConfidenceMin: number;
   }
 ): 'SOFT_CONFIRM' | 'HARD_CONFIRM' {
-  // 確度が高い場合はHARD_CONFIRMを優先（ズルい質問で一気に絞る）
+  // 確度が高い場合はHARD_CONFIRMを優先（一気に絞る）
   if (confidence >= config.hardConfidenceMin) {
     return 'HARD_CONFIRM';
   }
-  
-  // 確度が中程度でSOFT_CONFIRMのデータがあればSOFT_CONFIRM
-  if (confidence >= config.softConfidenceMin && hasSoftConfirmData) {
+
+  // DERIVED で SOFT が組めるなら低〜中確度でも SOFT を優先（後半の「みだれうち」感を抑える）
+  if (hasSoftConfirmData) {
     return 'SOFT_CONFIRM';
   }
-  
-  // Fallback: confidence < softConfidenceMin 時は HARD固定（低信頼時のSOFT無駄打ち防止）
+
   return 'HARD_CONFIRM';
 }
 

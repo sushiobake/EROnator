@@ -11,7 +11,7 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { isSqlite } from '@/server/db/is-sqlite';
 import { getMvpConfig } from '@/server/config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
-import { selectNextQuestion, processAnswer, filterWorksByAiGate, setSimWorkDataMap, type WorkInfoForConfirm, type SimWorkData } from '@/server/game/engine';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, setSimWorkDataMap, getEarlyExitStepSnapshot, type WorkInfoForConfirm, type SimWorkData } from '@/server/game/engine';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 import { ensureTagCacheLoaded, getAllCachedTags } from '@/server/game/tagCacheLoader';
 import {
@@ -24,6 +24,7 @@ import {
 import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
+import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
 import { Worker } from 'worker_threads';
 import path from 'path';
 import fs from 'fs';
@@ -33,6 +34,7 @@ import {
   getCorrectAnswer,
   pickAnswerFromAmbiguity,
   isNewTagQuestionForSimulation,
+  evaluateSimulationEarlyExitAfterQuizAnswer,
 } from '@/server/simulation/simulationRunner';
 
 interface SimulationStep {
@@ -61,6 +63,7 @@ interface SimulationStep {
   // デバッグ・分析用
   effectiveCandidates?: number;
   preferHighP?: boolean; // 当たり狙いで選ばれたか
+  earlyExit?: EarlyExitStepSnapshot;
 }
 
 interface WorkDetails {
@@ -82,7 +85,7 @@ interface WorkDetails {
 
 /** Task A: 失敗型の切り分け用（(1)終了条件 (2)誤排除 (3)収束しない） */
 export interface SimulationDiagnostic {
-  endedBy: 'REVEAL' | 'MAX_QUESTIONS' | 'NO_MORE_QUESTIONS' | 'OTHER';
+  endedBy: 'REVEAL' | 'MAX_QUESTIONS' | 'NO_MORE_QUESTIONS' | 'EARLY_FAIL_REVIEW' | 'OTHER';
   correctRank: number; // 正解の順位（1-based、候補にいなければ -1）
   correctStillInCandidates: boolean;
   top1Confidence: number;
@@ -452,6 +455,13 @@ export async function POST(request: NextRequest) {
         tagCoverage,
         effectiveCandidates: stepEffectiveCandidates,
         preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighP : undefined,
+        earlyExit: getEarlyExitStepSnapshot(
+          questionCount,
+          newConfidence,
+          calculateEffectiveCandidates(newProbabilities),
+          questionHistory,
+          config
+        ),
       });
 
       // REVEAL判定（既出＝一度不正解だった作品は候補から外す）
@@ -512,6 +522,24 @@ export async function POST(request: NextRequest) {
           }
         }
         // revealWorkId が null（上位がすべて既出）の場合は REVEAL せず次の質問へ
+      }
+      const earlyFailSim = evaluateSimulationEarlyExitAfterQuizAnswer({
+        newConfidence,
+        revealThreshold,
+        revealMissCount,
+        maxRevealMisses: config.flow.maxRevealMisses as number,
+        questionCountAfterThisAnswer: questionCount,
+        effectiveCandidatesAfter: calculateEffectiveCandidates(newProbabilities),
+        questionHistory,
+        config,
+        newSorted,
+        revealedWrongWorkIds,
+      });
+      if (earlyFailSim.stop) {
+        endedBy = earlyFailSim.endedBy;
+        outcome = 'FAIL_LIST';
+        finalWorkId = earlyFailSim.finalWorkId;
+        break;
       }
     }
 
@@ -1341,6 +1369,13 @@ async function runSimulation(
         tagCoverage,
         effectiveCandidates: calculateEffectiveCandidates(probabilities),
         preferHighP: question.kind === 'EXPLORE_TAG' ? preferHighPBatch : undefined,
+        earlyExit: getEarlyExitStepSnapshot(
+          questionCount,
+          newConfidence,
+          calculateEffectiveCandidates(newProbabilities),
+          questionHistory,
+          config
+        ),
       });
 
       const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
@@ -1389,6 +1424,24 @@ async function runSimulation(
             }));
           }
         }
+      }
+      const earlyFailSimLocal = evaluateSimulationEarlyExitAfterQuizAnswer({
+        newConfidence,
+        revealThreshold,
+        revealMissCount,
+        maxRevealMisses: config.flow.maxRevealMisses as number,
+        questionCountAfterThisAnswer: questionCount,
+        effectiveCandidatesAfter: calculateEffectiveCandidates(newProbabilities),
+        questionHistory,
+        config,
+        newSorted,
+        revealedWrongWorkIds,
+      });
+      if (earlyFailSimLocal.stop) {
+        endedBy = earlyFailSimLocal.endedBy;
+        outcome = 'FAIL_LIST';
+        finalWorkId = earlyFailSimLocal.finalWorkId;
+        break;
       }
     }
 

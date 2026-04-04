@@ -1125,7 +1125,7 @@ function selectConfirmType(confidence, hasSoftConfirmData, config) {
   if (confidence >= config.hardConfidenceMin) {
     return "HARD_CONFIRM";
   }
-  if (confidence >= config.softConfidenceMin && hasSoftConfirmData) {
+  if (hasSoftConfirmData) {
     return "SOFT_CONFIRM";
   }
   return "HARD_CONFIRM";
@@ -2091,6 +2091,61 @@ function shouldOfferNoiseGuideRecommend(questionHistory, nextQIndex, config) {
   if (!q5 || !q12) return false;
   if (q5.answer !== "UNKNOWN" || q12.answer !== "UNKNOWN") return false;
   return nextQIndex === 13;
+}
+function getEarlyExitThreshold(qIndex, config) {
+  const review = config.flow.earlyExitReview;
+  if (!review || review.enabled === false) return null;
+  if (!review.reviewIndices.includes(qIndex)) return null;
+  const key = `q${qIndex}`;
+  const raw = review.thresholds[key];
+  if (!raw) return null;
+  return {
+    threshold: {
+      minConfidence: raw.minConfidence,
+      maxEffectiveCandidates: raw.maxEffectiveCandidates
+    },
+    requiredConditions: 2
+  };
+}
+function getEarlyExitStepSnapshot(newQuestionCount, confidence, effectiveCandidates, _questionHistory, config) {
+  const review = getEarlyExitThreshold(newQuestionCount, config);
+  if (!review) {
+    return {
+      questionCountAfterAnswer: newQuestionCount,
+      confidence,
+      effectiveCandidates,
+      isReviewPoint: false,
+      reviewKey: null,
+      thresholds: null,
+      requiredConditions: null,
+      matchLowConfidence: false,
+      matchNarrowCandidates: false,
+      matchedCount: 0,
+      wouldEarlyExit: false
+    };
+  }
+  const { threshold, requiredConditions } = review;
+  const reviewKey = `q${newQuestionCount}`;
+  const matchLowConfidence = confidence < threshold.minConfidence;
+  const matchNarrowCandidates = effectiveCandidates <= threshold.maxEffectiveCandidates;
+  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchNarrowCandidates ? 1 : 0);
+  const wouldEarlyExit = matchLowConfidence && matchNarrowCandidates;
+  return {
+    questionCountAfterAnswer: newQuestionCount,
+    confidence,
+    effectiveCandidates,
+    isReviewPoint: true,
+    reviewKey,
+    thresholds: {
+      minConfidence: threshold.minConfidence,
+      maxEffectiveCandidates: threshold.maxEffectiveCandidates
+    },
+    requiredConditions,
+    matchLowConfidence,
+    matchNarrowCandidates,
+    matchedCount,
+    wouldEarlyExit
+  };
 }
 function tryNewTagQuestion(qIndex, questionHistory, config) {
   const nt = config.newTagQuestions;
@@ -7662,6 +7717,38 @@ var FlowSchema = external_exports.object({
     slotIndices: external_exports.array(external_exports.number().int().positive()),
     effectiveCandidatesMin: external_exports.number().positive(),
     confidenceMax: external_exports.number().min(0).max(1)
+  }).strict().optional(),
+  /**
+   * 早期分岐レビュー（Q25/Q30/Q35/Q40 など）。
+   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 以下（狭すぎ）のとき早期失敗。
+   * maxConfidenceDelta5 は後方互換のためパースのみ（無視）。
+   */
+  earlyExitReview: external_exports.object({
+    enabled: external_exports.boolean().optional(),
+    reviewIndices: external_exports.array(external_exports.number().int().positive()),
+    requiredConditions: external_exports.number().int().min(2).max(2).optional(),
+    thresholds: external_exports.object({
+      q25: external_exports.object({
+        minConfidence: external_exports.number().min(0).max(1),
+        maxEffectiveCandidates: external_exports.number().positive(),
+        maxConfidenceDelta5: external_exports.number().min(0).max(1).optional()
+      }).strict(),
+      q30: external_exports.object({
+        minConfidence: external_exports.number().min(0).max(1),
+        maxEffectiveCandidates: external_exports.number().positive(),
+        maxConfidenceDelta5: external_exports.number().min(0).max(1).optional()
+      }).strict(),
+      q35: external_exports.object({
+        minConfidence: external_exports.number().min(0).max(1),
+        maxEffectiveCandidates: external_exports.number().positive(),
+        maxConfidenceDelta5: external_exports.number().min(0).max(1).optional()
+      }).strict(),
+      q40: external_exports.object({
+        minConfidence: external_exports.number().min(0).max(1),
+        maxEffectiveCandidates: external_exports.number().positive(),
+        maxConfidenceDelta5: external_exports.number().min(0).max(1).optional()
+      }).strict()
+    }).strict()
   }).strict().optional()
 }).strict();
 var NewTagQuestionsSchema = external_exports.object({
@@ -7678,6 +7765,14 @@ var NewTagQuestionsSchema = external_exports.object({
 var NoiseGuideRecommendSchema = external_exports.object({
   enabled: external_exports.boolean().optional(),
   questionText: external_exports.string()
+}).strict();
+var FailHubSchema = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  candidateCount: external_exports.number().int().positive().optional(),
+  searchDebounceMs: external_exports.number().int().min(0).optional(),
+  searchLimitDefault: external_exports.number().int().positive().optional(),
+  searchLimitMax: external_exports.number().int().positive().optional(),
+  showRecommendEntry: external_exports.boolean().optional()
 }).strict();
 var DataQualitySchema = external_exports.object({
   minCoverageMode: external_exports.enum(["RATIO", "WORKS", "AUTO"]),
@@ -7707,6 +7802,11 @@ var GameCopySchema = external_exports.object({
   failListSubPc: external_exports.string(),
   /** 外れ①「リストにない」押下後（作品名入力の上の一文） */
   failListNotInListPrompt: external_exports.string(),
+  failListBtnNotInList: external_exports.string(),
+  failListBtnRecommend: external_exports.string(),
+  failListBtnTop: external_exports.string(),
+  failListSearchIntro: external_exports.string(),
+  failListSearchPlaceholder: external_exports.string(),
   /** 外れ② ALMOST_SUCCESS（惜しかった） */
   almostSuccessSpeech: external_exports.string(),
   /** AI_GATE（最初のゲート）前段＋メイン */
@@ -7845,7 +7945,8 @@ var MvpConfigSchema = external_exports.object({
   dataQuality: DataQualitySchema,
   popularity: PopularitySchema,
   newTagQuestions: NewTagQuestionsSchema.optional(),
-  noiseGuideRecommend: NoiseGuideRecommendSchema.optional()
+  noiseGuideRecommend: NoiseGuideRecommendSchema.optional(),
+  failHub: FailHubSchema.optional()
 }).strict();
 
 // src/server/config/loader.ts
@@ -7887,6 +7988,26 @@ function isNewTagQuestionForSimulation(question, qIndex, config) {
   const keys = ext.newTagQuestions?.tagKeys;
   const slots = ext.newTagQuestions?.slotIndices ?? [2, 7, 13];
   return !!(keys?.length && question.tagKey && keys.includes(question.tagKey) && slots.includes(qIndex));
+}
+function evaluateSimulationEarlyExitAfterQuizAnswer(args) {
+  if (args.newConfidence >= args.revealThreshold) {
+    return { stop: false };
+  }
+  if (args.revealMissCount >= args.maxRevealMisses) {
+    const finalWorkId = args.newSorted.find((p) => !args.revealedWrongWorkIds.has(p.workId))?.workId ?? args.newSorted[0]?.workId ?? null;
+    return { stop: true, endedBy: "REVEAL", finalWorkId };
+  }
+  if (getEarlyExitStepSnapshot(
+    args.questionCountAfterThisAnswer,
+    args.newConfidence,
+    args.effectiveCandidatesAfter,
+    args.questionHistory,
+    args.config
+  ).wouldEarlyExit) {
+    const finalWorkId = args.newSorted.find((p) => !args.revealedWrongWorkIds.has(p.workId))?.workId ?? args.newSorted[0]?.workId ?? null;
+    return { stop: true, endedBy: "EARLY_FAIL_REVIEW", finalWorkId };
+  }
+  return { stop: false };
 }
 function getCorrectAnswer(question, targetWork, targetTags, targetWorkTags) {
   if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "SERIES") {
@@ -8189,7 +8310,14 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
           top1Probability: confidence,
           tagCoverage,
           effectiveCandidates: calculateEffectiveCandidates(probabilities),
-          preferHighP: question.kind === "EXPLORE_TAG" ? preferHighPBatch : void 0
+          preferHighP: question.kind === "EXPLORE_TAG" ? preferHighPBatch : void 0,
+          earlyExit: getEarlyExitStepSnapshot(
+            questionCount,
+            newConfidence,
+            calculateEffectiveCandidates(newProbabilities),
+            questionHistory,
+            config
+          )
         });
         const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
         if (newConfidence >= revealThreshold) {
@@ -8236,6 +8364,24 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
               }));
             }
           }
+        }
+        const earlyFailSim = evaluateSimulationEarlyExitAfterQuizAnswer({
+          newConfidence,
+          revealThreshold,
+          revealMissCount,
+          maxRevealMisses: config.flow.maxRevealMisses,
+          questionCountAfterThisAnswer: questionCount,
+          effectiveCandidatesAfter: calculateEffectiveCandidates(newProbabilities),
+          questionHistory,
+          config,
+          newSorted,
+          revealedWrongWorkIds
+        });
+        if (earlyFailSim.stop) {
+          endedBy = earlyFailSim.endedBy;
+          outcome = "FAIL_LIST";
+          finalWorkId = earlyFailSim.finalWorkId;
+          break;
         }
       }
       perfEnd("runSimulation", simT);

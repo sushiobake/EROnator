@@ -111,41 +111,42 @@ const FlowSchema = z.object({
     .optional(),
   /**
    * 早期分岐レビュー（Q25/Q30/Q35/Q40 など）。
-   * 3条件中 requiredConditions 個以上を満たしたら「詰み」と判定。
+   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 以下（狭すぎ）のとき早期失敗。
+   * maxConfidenceDelta5 は後方互換のためパースのみ（無視）。
    */
   earlyExitReview: z
     .object({
       enabled: z.boolean().optional(),
       reviewIndices: z.array(z.number().int().positive()),
-      requiredConditions: z.number().int().min(1).max(3).optional(),
+      requiredConditions: z.number().int().min(2).max(2).optional(),
       thresholds: z
         .object({
           q25: z
             .object({
               minConfidence: z.number().min(0).max(1),
               maxEffectiveCandidates: z.number().positive(),
-              maxConfidenceDelta5: z.number().min(0).max(1),
+              maxConfidenceDelta5: z.number().min(0).max(1).optional(),
             })
             .strict(),
           q30: z
             .object({
               minConfidence: z.number().min(0).max(1),
               maxEffectiveCandidates: z.number().positive(),
-              maxConfidenceDelta5: z.number().min(0).max(1),
+              maxConfidenceDelta5: z.number().min(0).max(1).optional(),
             })
             .strict(),
           q35: z
             .object({
               minConfidence: z.number().min(0).max(1),
               maxEffectiveCandidates: z.number().positive(),
-              maxConfidenceDelta5: z.number().min(0).max(1),
+              maxConfidenceDelta5: z.number().min(0).max(1).optional(),
             })
             .strict(),
           q40: z
             .object({
               minConfidence: z.number().min(0).max(1),
               maxEffectiveCandidates: z.number().positive(),
-              maxConfidenceDelta5: z.number().min(0).max(1),
+              maxConfidenceDelta5: z.number().min(0).max(1).optional(),
             })
             .strict(),
         })
@@ -222,6 +223,11 @@ const GameCopySchema = z.object({
   failListSubPc: z.string(),
   /** 外れ①「リストにない」押下後（作品名入力の上の一文） */
   failListNotInListPrompt: z.string(),
+  failListBtnNotInList: z.string(),
+  failListBtnRecommend: z.string(),
+  failListBtnTop: z.string(),
+  failListSearchIntro: z.string(),
+  failListSearchPlaceholder: z.string(),
   /** 外れ② ALMOST_SUCCESS（惜しかった） */
   almostSuccessSpeech: z.string(),
   /** AI_GATE（最初のゲート）前段＋メイン */
@@ -245,6 +251,11 @@ export const DEFAULT_GAME_COPY = {
   failListSubMobile: '下のリストにある？',
   failListSubPc: 'ちなみにこの中にはある？',
   failListNotInListPrompt: 'ない？ならここに作品名書いてよ！お願いだから！',
+  failListBtnNotInList: 'リストにない',
+  failListBtnRecommend: '推薦で探す',
+  failListBtnTop: 'トップに戻る',
+  failListSearchIntro: 'タイトルの一部を入力して。私の頭脳に照らし合わせるから',
+  failListSearchPlaceholder: '例: 鬼、学園、寝取られ など',
   almostSuccessSpeech: 'それか～～～！次回は当てるからね！',
   aiGatePreamble: 'あなたが妄想した作品は……',
   aiGateMain: 'AI生成作品ではない？',

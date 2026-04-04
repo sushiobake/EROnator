@@ -5,6 +5,7 @@
 import {
   shouldInsertConfirm,
   getNextHardConfirmType,
+  selectConfirmType,
 } from '../questionSelection';
 
 describe('questionSelection', () => {
@@ -77,6 +78,22 @@ describe('questionSelection', () => {
         }
       );
       expect(result).toBe(true);
+    });
+  });
+
+  describe('selectConfirmType', () => {
+    const cfg = { softConfidenceMin: 0.25, hardConfidenceMin: 0.45 };
+
+    it('returns HARD when confidence >= hardConfidenceMin', () => {
+      expect(selectConfirmType(0.5, true, cfg)).toBe('HARD_CONFIRM');
+    });
+
+    it('returns SOFT when below hard min but has soft data', () => {
+      expect(selectConfirmType(0.3, true, cfg)).toBe('SOFT_CONFIRM');
+    });
+
+    it('returns HARD when below hard min and no soft data', () => {
+      expect(selectConfirmType(0.3, false, cfg)).toBe('HARD_CONFIRM');
     });
   });
 

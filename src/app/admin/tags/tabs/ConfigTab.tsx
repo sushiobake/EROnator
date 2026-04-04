@@ -4,7 +4,7 @@
 
 'use client';
 
-import { JSX, useState, type ReactNode } from 'react';
+import { JSX, useState, useMemo, type ReactNode } from 'react';
 import { RANK_BG, RANK_TEXT } from '@/app/admin/constants/rankColors';
 import { DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY } from '@/server/config/schema';
 
@@ -53,6 +53,55 @@ function parseCommaSeparatedInts(s: string): number[] {
     .filter((n) => !Number.isNaN(n));
 }
 
+
+const DEFAULT_EARLY_EXIT_REVIEW = {
+  enabled: true,
+  reviewIndices: [25, 30, 35, 40],
+  requiredConditions: 2,
+  thresholds: {
+    q25: { minConfidence: 0.22, maxEffectiveCandidates: 15 },
+    q30: { minConfidence: 0.18, maxEffectiveCandidates: 20 },
+    q35: { minConfidence: 0.15, maxEffectiveCandidates: 25 },
+    q40: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+  },
+} as const;
+
+type EarlyExitQ = 'q25' | 'q30' | 'q35' | 'q40';
+
+function mergeEarlyExitReview(raw: unknown) {
+  const r = raw as {
+    enabled?: boolean;
+    reviewIndices?: number[];
+    requiredConditions?: number;
+    thresholds?: Partial<
+      Record<EarlyExitQ, { minConfidence?: number; maxEffectiveCandidates?: number; maxConfidenceDelta5?: number }>
+    >;
+  } | null | undefined;
+  const t0 = DEFAULT_EARLY_EXIT_REVIEW.thresholds;
+  const pick = (q: EarlyExitQ) => {
+    const o = r?.thresholds?.[q];
+    return {
+      minConfidence: typeof o?.minConfidence === 'number' ? o.minConfidence : t0[q].minConfidence,
+      maxEffectiveCandidates:
+        typeof o?.maxEffectiveCandidates === 'number' ? o.maxEffectiveCandidates : t0[q].maxEffectiveCandidates,
+    };
+  };
+  return {
+    enabled: r?.enabled !== false,
+    reviewIndices:
+      Array.isArray(r?.reviewIndices) && r.reviewIndices.length > 0
+        ? r.reviewIndices
+        : [...DEFAULT_EARLY_EXIT_REVIEW.reviewIndices],
+    requiredConditions: 2,
+    thresholds: {
+      q25: pick('q25'),
+      q30: pick('q30'),
+      q35: pick('q35'),
+      q40: pick('q40'),
+    },
+  };
+}
+
 function CollapsibleSection({
   id,
   title,
@@ -99,6 +148,10 @@ export default function ConfigTab({
   updateConfig,
   fieldDesc,
 }: ConfigTabProps) {
+  const eeMerged = useMemo(
+    () => mergeEarlyExitReview(config?.flow?.earlyExitReview),
+    [config?.flow?.earlyExitReview]
+  );
   return (
     <section style={{ marginBottom: '2rem', fontSize: '1rem', lineHeight: 1.6 }}>
       <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>コンフィグ</h2>
@@ -265,6 +318,11 @@ export default function ConfigTab({
                 { key: 'failListSubMobile', label: '外れ①サブ・スマホ（リスト画面でスマホ時の2行目）' },
                 { key: 'failListSubPc', label: '外れ①サブ・PC（リスト画面でPC時の2行目）' },
                 { key: 'failListNotInListPrompt', label: '外れ①「リストにない」押下後（作品名入力の上の一文）' },
+                { key: 'failListBtnNotInList', label: '外れ①ボタン「リストにない」' },
+                { key: 'failListBtnRecommend', label: '外れ①ボタン「推薦で探す」' },
+                { key: 'failListBtnTop', label: '外れ①ボタン「トップに戻る」' },
+                { key: 'failListSearchIntro', label: '外れ①検索の説明文（入力欄の上）' },
+                { key: 'failListSearchPlaceholder', label: '外れ①検索プレースホルダ' },
                 { key: 'almostSuccessSpeech', label: '外れ②惜しかった（{questionCount}で質問数に置換）' },
                 { key: 'aiGatePreamble', label: 'AIゲートの前段（最初の「AI生成？」の上の淡い文）' },
                 { key: 'aiGateMain', label: 'AIゲートのメイン（最初の「AI生成作品ではない？」）' },
@@ -974,6 +1032,112 @@ export default function ConfigTab({
               </label>
             </div>
           </CollapsibleSection>
+
+
+          <CollapsibleSection id="config-early-exit-review" title="早期失敗の閾値" defaultOpen={false}>
+            <p style={{ color: '#666', marginTop: 0, marginBottom: '0.75rem', fontSize: '0.9rem' }}>
+              ここで設定した<strong>問数に答えた直後</strong>だけ審査します（例: 25 なら 25 問目に答えたあと）。
+              <strong>① 1位の確率がまだ低い</strong>（閾値未満）かつ<strong>② 実質候補がすでに狭い</strong>（閾値以下）の<strong>両方</strong>のとき、失敗一覧へ切り替えます。
+            </p>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={eeMerged.enabled}
+                  onChange={(e) =>
+                    updateConfig(['flow', 'earlyExitReview'], {
+                      ...mergeEarlyExitReview(config.flow.earlyExitReview),
+                      enabled: e.target.checked,
+                    })
+                  }
+                />
+                <strong>早期失敗の審査を有効にする</strong>
+              </label>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label>
+                <strong>審査する問数（カンマ区切り）</strong>
+                <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.85rem', color: '#555' }}>
+                  この番号の質問に答えた直後に、下記の閾値セットで判定します。既定は 25,30,35,40。
+                </span>
+                <input
+                  type="text"
+                  value={eeMerged.reviewIndices.join(',')}
+                  onChange={(e) =>
+                    updateConfig(['flow', 'earlyExitReview'], {
+                      ...mergeEarlyExitReview(config.flow.earlyExitReview),
+                      reviewIndices: parseCommaSeparatedInts(e.target.value),
+                    })
+                  }
+                  style={{ width: '100%', padding: '0.5rem', marginTop: '0.5rem' }}
+                />
+              </label>
+            </div>
+            <p style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#555' }}>
+              発動条件は<strong>①と②の両方</strong>（固定）。JSON の <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>requiredConditions</code> は 2 のまま保存されます。
+            </p>
+            {(['q25', 'q30', 'q35', 'q40'] as const).map((qk) => {
+              const label = qk === 'q25' ? '25問目の直後' : qk === 'q30' ? '30問目の直後' : qk === 'q35' ? '35問目の直後' : '40問目の直後';
+              const th = eeMerged.thresholds[qk];
+              return (
+                <div
+                  key={qk}
+                  style={{
+                    marginBottom: '1rem',
+                    padding: '0.75rem',
+                    background: '#f5f5f5',
+                    borderRadius: '6px',
+                    border: '1px solid #e0e0e0',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.95rem' }}>{label}（{qk}）</strong>
+                  <p style={{ margin: '0.35rem 0 0.5rem', fontSize: '0.82rem', color: '#555' }}>
+                    ① 1位の確率がこの値<strong>未満</strong>　② 実質候補がこの値<strong>以下</strong>（狭すぎ）のとき②側が揃う
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <label style={{ flex: '1 1 120px' }}>
+                      ① 確度 未満（0〜1）
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        max={1}
+                        value={th.minConfidence}
+                        onChange={(e) => {
+                          const base = mergeEarlyExitReview(config.flow.earlyExitReview);
+                          updateConfig(['flow', 'earlyExitReview'], {
+                            ...base,
+                            thresholds: { ...base.thresholds, [qk]: { ...base.thresholds[qk], minConfidence: parseFloat(e.target.value) || 0 } },
+                          });
+                        }}
+                        style={{ width: '100%', padding: '0.4rem', marginTop: '0.25rem' }}
+                      />
+                    </label>
+                    <label style={{ flex: '1 1 120px' }}>
+                      ② 実質候補「狭さ」上限（件数）
+                      <input
+                        type="number"
+                        min={1}
+                        value={th.maxEffectiveCandidates}
+                        onChange={(e) => {
+                          const base = mergeEarlyExitReview(config.flow.earlyExitReview);
+                          updateConfig(['flow', 'earlyExitReview'], {
+                            ...base,
+                            thresholds: {
+                              ...base.thresholds,
+                              [qk]: { ...base.thresholds[qk], maxEffectiveCandidates: parseInt(e.target.value, 10) || 1 },
+                            },
+                          });
+                        }}
+                        style={{ width: '100%', padding: '0.4rem', marginTop: '0.25rem' }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </CollapsibleSection>
+
 
           {/* 特別質問・救済・新タグ・ノイズ（mvpConfig v1.5） */}
           <CollapsibleSection id="config-special-slots-v15" title="特別質問スロット・救済・新タグ・ノイズ誘導" defaultOpen={false}>
