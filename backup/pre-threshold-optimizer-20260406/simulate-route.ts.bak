@@ -25,10 +25,10 @@ import { normalizeWeights, calculateConfidence, calculateEffectiveCandidates } f
 import type { WorkWeight, AiGateChoice } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
+import { Worker } from 'worker_threads';
 import path from 'path';
 import fs from 'fs';
 import { cpus } from 'os';
-import { runSimulationInWorker, type WorkerResultItem } from '@/server/simulation/simulationWorkerRunner';
 import { setSimProgress, clearSimProgress } from '@/server/bulk/progressStore';
 import {
   getCorrectAnswer,
@@ -720,6 +720,7 @@ export async function PUT(request: NextRequest) {
     } = body;
 
     const level = ambiguityLevel != null ? Math.max(1, Math.min(10, Number(ambiguityLevel))) : 2;
+    // Worker Thread 数（CPU コアの 80% を使用、最大 numCpus-2）
     const numCpus = cpus().length;
     const defaultParallel = Math.max(4, Math.min(numCpus - 2, Math.floor(numCpus * 0.8)));
     const parallel = Math.max(1, Math.min(numCpus, Number(parallelCount) || defaultParallel));
@@ -869,13 +870,13 @@ export async function PUT(request: NextRequest) {
       return {
         failureCount: failures.length,
         avgWasNoisyCount: withAnalysis.length > 0
-          ? Math.round((withAnalysis.reduce((s, f) => s + ((f.analysisData as SimulationAnalysisData).wasNoisyCount), 0) / withAnalysis.length) * 100) / 100
+          ? Math.round((withAnalysis.reduce((s, f) => s + (f.analysisData!.wasNoisyCount), 0) / withAnalysis.length) * 100) / 100
           : null,
         avgCorrectRank: withDiag.length > 0
-          ? Math.round((withDiag.reduce((s, f) => s + ((f.diagnostic as SimulationDiagnostic).correctRank), 0) / withDiag.length) * 100) / 100
+          ? Math.round((withDiag.reduce((s, f) => s + (f.diagnostic!.correctRank), 0) / withDiag.length) * 100) / 100
           : null,
         avgTop1Confidence: withDiag.length > 0
-          ? Math.round((withDiag.reduce((s, f) => s + ((f.diagnostic as SimulationDiagnostic).top1Confidence), 0) / withDiag.length) * 10000) / 10000
+          ? Math.round((withDiag.reduce((s, f) => s + (f.diagnostic!.top1Confidence), 0) / withDiag.length) * 10000) / 10000
           : null,
       };
     })() : null;
@@ -956,6 +957,151 @@ export async function PATCH(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Worker Thread でシミュレーションバッチを実行
+ * メインスレッドをブロックしないため、UI や他の API が応答し続ける
+ */
+interface WorkerResultItem {
+  workId: string;
+  title: string;
+  success: boolean;
+  questionCount: number;
+  outcome: string;
+  steps?: SimulationStep[];
+  workDetails?: WorkDetails;
+  diagnostic?: SimulationDiagnostic;
+  analysisData?: SimulationAnalysisData;
+  errorMessage?: string;
+  perfSummary?: Record<string, number>;
+}
+
+import { execSync } from 'child_process';
+
+function ensureWorkerBundle(): void {
+  const bundlePath = path.resolve(process.cwd(), 'dist/simulationWorker.js');
+  const srcPath = path.resolve(process.cwd(), 'src/server/simulation/simulationWorker.ts');
+  const configDeps = [
+    path.resolve(process.cwd(), 'src/server/config/schema.ts'),
+    path.resolve(process.cwd(), 'src/server/config/loader.ts'),
+  ];
+  try {
+    const srcStat = fs.statSync(srcPath);
+    const depMtime = Math.max(
+      srcStat.mtimeMs,
+      ...configDeps.map((p) => (fs.existsSync(p) ? fs.statSync(p).mtimeMs : 0))
+    );
+    let needsBuild = !fs.existsSync(bundlePath);
+    if (!needsBuild) {
+      const bundleStat = fs.statSync(bundlePath);
+      needsBuild = depMtime > bundleStat.mtimeMs;
+    }
+    if (needsBuild) {
+      const distDir = path.resolve(process.cwd(), 'dist');
+      if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
+      execSync(
+        'npx esbuild src/server/simulation/simulationWorker.ts --bundle --platform=node --target=node18 --outfile=dist/simulationWorker.js --format=cjs --alias:@/server/db/client=./src/server/simulation/prismaStub.ts',
+        { cwd: process.cwd(), stdio: 'pipe' }
+      );
+      console.log('[Sim] Worker bundle rebuilt');
+    }
+  } catch (e) {
+    console.warn('[Sim] Failed to build worker bundle, falling back to tsx:', e);
+  }
+}
+
+async function runSimulationInWorker(opts: {
+  tasks: Array<{ targetWorkId: string; trial: number }>;
+  level: number;
+  aiGateChoice: string;
+  includePerf: boolean;
+  parallel: number;
+  sharedContext: SharedBatchContext;
+  workTagMatrixData: ReturnType<typeof getWorkTagMatrix>;
+  tagCacheData: Array<{ tagKey: string; displayName: string; tagType: string | null; questionText: string | null }>;
+  simWorkDataEntries: [string, SimWorkData][];
+  onProgress?: (done: number, total: number) => void;
+}): Promise<{ results: WorkerResultItem[]; totalWorksInDb: number }> {
+  ensureWorkerBundle();
+  const workerPathJs = path.resolve(process.cwd(), 'dist/simulationWorker.js');
+  const workerPathTs = path.resolve(process.cwd(), 'src/server/simulation/simulationWorker.ts');
+  const useBundle = fs.existsSync(workerPathJs);
+  const workerPath = useBundle ? workerPathJs : workerPathTs;
+  const workerCount = Math.min(opts.parallel, opts.tasks.length);
+  if (workerCount === 0) return { results: [], totalWorksInDb: opts.sharedContext.allWorks.length };
+
+  // 共有データを SharedArrayBuffer に格納（ファイル I/O ゼロ、全 Worker がゼロコピーで参照）
+  const sharedPayload = JSON.stringify({
+    sharedContextSerialized: {
+      allWorks: opts.sharedContext.allWorks,
+      workTitleEntries: Array.from(opts.sharedContext.workTitleMap.entries()),
+      workDetailEntries: Array.from(opts.sharedContext.workDetailMap.entries()),
+      workTagEntries: Array.from(opts.sharedContext.workTagMap.entries()),
+    },
+    workTagMatrixData: opts.workTagMatrixData,
+    tagCacheData: opts.tagCacheData,
+    simWorkDataEntries: opts.simWorkDataEntries,
+  });
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(sharedPayload);
+  const sharedBuffer = new SharedArrayBuffer(bytes.byteLength);
+  new Uint8Array(sharedBuffer).set(bytes);
+  console.log(`[Sim] Shared data in memory: ${(bytes.byteLength / 1024 / 1024).toFixed(1)}MB (SharedArrayBuffer)`);
+
+  // 動的タスクキュー: Atomics で次タスクインデックスを共有（早く終わった Worker が次のタスクを取得）
+  const taskIndexBuffer = new SharedArrayBuffer(4);
+  new Int32Array(taskIndexBuffer)[0] = 0;
+
+  let totalDone = 0;
+  const totalTasks = opts.tasks.length;
+
+  const sharedWorkerData = {
+    tasks: opts.tasks,
+    level: opts.level,
+    aiGateChoice: opts.aiGateChoice,
+    includePerf: opts.includePerf,
+    sharedBuffer,
+    taskIndexBuffer,
+  };
+
+  function spawnWorker(): Promise<WorkerResultItem[]> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(workerPath, {
+        ...(useBundle ? {} : { execArgv: ['--require', 'tsx/cjs'] }),
+        workerData: sharedWorkerData,
+      });
+
+      let workerResults: WorkerResultItem[] = [];
+
+      worker.on('message', (msg: { type: string; results?: WorkerResultItem[]; totalWorksInDb?: number; done?: number; total?: number; message?: string }) => {
+        if (msg.type === 'done') {
+          workerResults = msg.results ?? [];
+        } else if (msg.type === 'progress' && msg.done != null) {
+          totalDone++;
+          opts.onProgress?.(totalDone, totalTasks);
+        } else if (msg.type === 'error') {
+          reject(new Error(msg.message ?? 'Worker error'));
+        }
+      });
+
+      worker.on('error', reject);
+
+      worker.on('exit', (code) => {
+        if (workerResults.length > 0 || code === 0) {
+          resolve(workerResults);
+        } else {
+          reject(new Error(`Worker exited with code ${code}`));
+        }
+      });
+    });
+  }
+
+  console.log(`[Sim] Spawning ${workerCount} workers for ${totalTasks} tasks (dynamic queue, bundle=${useBundle})`);
+  const workerPromises = Array.from({ length: workerCount }, () => spawnWorker());
+
+  const allResults = await Promise.all(workerPromises);
+  return { results: allResults.flat(), totalWorksInDb: opts.sharedContext.allWorks.length };
 }
 
 /**

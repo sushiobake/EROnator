@@ -142,6 +142,11 @@ interface StageProps {
   mobileCanvasBodyHeightPx?: number;
   /** PCのみ：true で白板を広い幅に（おすすめ5件表示時）。USE_NARROW_WHITEBOARD が false のときは無視され常に広い */
   whiteboardWide?: boolean;
+  /**
+   * PCのみ：キャラ非表示時に白板をコンテンツエリアいっぱい（maxWidth 固定を外し左右パディング対称）。
+   * FAIL_LIST など「全体を使った白板」向け。
+   */
+  whiteboardFullContentWidth?: boolean;
   /** characterVariant='thinking' のとき、どの考え中画像を使うか。未指定なら inari_thinking.png */
   thinkingSubType?: 'opening' | 'early' | 'mid' | 'late' | 'closing' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList';
 }
@@ -540,12 +545,37 @@ function MobileStageInner({
   );
 }
 
-function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, whiteboardWide, hideCharacter }: { children: React.ReactNode; showLogo?: boolean; characterSpeech?: React.ReactNode; characterUrl: string; scale?: number; whiteboardWide?: boolean; hideCharacter?: boolean }) {
+function StageInner({
+  children,
+  showLogo,
+  characterSpeech,
+  characterUrl,
+  scale,
+  whiteboardWide,
+  hideCharacter,
+  whiteboardFullContentWidth,
+}: {
+  children: React.ReactNode;
+  showLogo?: boolean;
+  characterSpeech?: React.ReactNode;
+  characterUrl: string;
+  scale?: number;
+  whiteboardWide?: boolean;
+  hideCharacter?: boolean;
+  whiteboardFullContentWidth?: boolean;
+}) {
   // 白背景はフレーム内側に収める（フレームの外に白が出ない）
   const insetTop = PC_FRAME_WIDTH;
   const insetBottom = PC_FRAME_TRAY_HEIGHT + PC_FRAME_WIDTH;
   const insetSide = PC_FRAME_WIDTH;
-  const whiteboardWidthPx = !USE_NARROW_WHITEBOARD ? WHITEBOARD_MAX_WIDTH_PX : (whiteboardWide ? WHITEBOARD_MAX_WIDTH_PX : WHITEBOARD_NARROW_WIDTH_PX);
+  const fullWb = !!(whiteboardFullContentWidth && hideCharacter);
+  const whiteboardWidthPx = fullWb
+    ? undefined
+    : !USE_NARROW_WHITEBOARD
+      ? WHITEBOARD_MAX_WIDTH_PX
+      : whiteboardWide
+        ? WHITEBOARD_MAX_WIDTH_PX
+        : WHITEBOARD_NARROW_WIDTH_PX;
   return (
     <>
       <div
@@ -620,15 +650,15 @@ function StageInner({ children, showLogo, characterSpeech, characterUrl, scale, 
           bottom: 0,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-start',
-          padding: '32px 32px 32px 0',
+          justifyContent: fullWb ? 'stretch' : 'flex-start',
+          padding: fullWb ? '32px' : '32px 32px 32px 0',
           zIndex: 2,
         }}
       >
         <div
           style={{
             width: '100%',
-            maxWidth: whiteboardWidthPx,
+            maxWidth: whiteboardWidthPx ?? '100%',
             backgroundColor: '#faf8f5',
             borderRadius: WHITEBOARD_BORDER_RADIUS_PX,
             padding: WHITEBOARD_PADDING_PX,
@@ -662,6 +692,7 @@ export function Stage({
   mobileWhiteboardPadding,
   mobileCanvasBodyHeightPx,
   whiteboardWide,
+  whiteboardFullContentWidth,
   thinkingSubType,
 }: StageProps) {
   const characterUrl =
@@ -747,7 +778,7 @@ export function Stage({
             zIndex: 10,
             width: '100%',
             backgroundColor: 'transparent',
-            maxWidth: hasBelowCanvas ? 600 : undefined,
+            maxWidth: hasBelowCanvas ? (whiteboardFullContentWidth ? 'min(100%, 720px)' : 600) : undefined,
           }}
         >
           {/* scaleでレイアウトが伸びるのを防ぎ、見た目高さだけ確保。リストをキャンバス直下に */}
@@ -893,7 +924,17 @@ export function Stage({
           }}
         >
           <WhiteboardFrameSvg />
-          <StageInner showLogo={showLogo} characterSpeech={characterSpeech} characterUrl={characterUrl} scale={scale} whiteboardWide={whiteboardWide} hideCharacter={hideCharacter}>{children}</StageInner>
+          <StageInner
+            showLogo={showLogo}
+            characterSpeech={characterSpeech}
+            characterUrl={characterUrl}
+            scale={scale}
+            whiteboardWide={whiteboardWide}
+            hideCharacter={hideCharacter}
+            whiteboardFullContentWidth={whiteboardFullContentWidth}
+          >
+            {children}
+          </StageInner>
         </div>
       </div>
       <footer

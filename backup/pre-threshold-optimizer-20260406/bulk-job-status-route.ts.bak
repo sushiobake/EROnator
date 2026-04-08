@@ -6,14 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
-import {
-  readBulkProgress,
-  readLastCompleted,
-  getQueuedJob,
-  getCancelState,
-  getSimProgress,
-  getOptimizeProgress,
-} from '@/server/bulk/progressStore';
+import { readBulkProgress, readLastCompleted, getQueuedJob, getCancelState, getSimProgress } from '@/server/bulk/progressStore';
 
 export async function GET(request: NextRequest) {
   if (!isAdminAllowed(request)) {
@@ -25,14 +18,12 @@ export async function GET(request: NextRequest) {
   const queue = getQueuedJob();
   const cancelState = getCancelState();
   const simProgress = getSimProgress();
-  const optimizeProgress = getOptimizeProgress();
 
   const base = {
     lastCompleted,
     queue,
     cancelState,
     simProgress: simProgress ?? null,
-    optimizeProgress: optimizeProgress ?? null,
   };
 
   if (progress) {

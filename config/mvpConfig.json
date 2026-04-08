@@ -12,9 +12,9 @@
     "successSpeech": "やったーー！！{questionCount}問でわかっちゃった！！何でもお見通しだもの！！",
     "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
     "recommendTitle": "なら…そんなあなたにおススメもある！！",
-    "failListSpeech": "ごめんね、ここまでの手がかりだとまだ特定しきれなかったわ。",
-    "failListSubMobile": "このあと一緒に探そう。まずは下の候補に近いのはある？",
-    "failListSubPc": "このあと一緒に探そう。まずはこの候補の中に近いのはある？",
+    "failListSpeech": "う～～～ん……ごめん！ちょっと特定しきれなかったわ。",
+    "failListSubMobile": "だから一緒に探してくれるかっしら。下の候補に近いのはある？",
+    "failListSubPc": "だから一緒に探してくれるかっしら。この候補に近いのはある？",
     "failListNotInListPrompt": "ない？ならここに作品名書いてくれないかしら？",
     "failListBtnNotInList": "リストにない",
     "failListBtnRecommend": "推薦で探す",
@@ -109,13 +109,13 @@
     "revealThreshold": 0.7,
     "confidenceConfirmBand": [
       0.25,
-      0.7
+      0.5
     ],
     "qForcedIndices": [
       10
     ],
     "softConfidenceMin": 0.25,
-    "hardConfidenceMin": 0.45
+    "hardConfidenceMin": 0.6
   },
   "algo": {
     "beta": 1.2,
@@ -150,7 +150,7 @@
     "consecutiveNoForAtari": 5,
     "summaryPreferRatio": 0.2,
     "titleInitialTopN": 2,
-    "hardConfirmInjectionRatio": 0.1,
+    "hardConfirmInjectionRatio": 0,
     "specialQuestionSlotIndices": [
       3,
       5,
@@ -171,26 +171,25 @@
       "reviewIndices": [
         25,
         30,
-        35,
-        40
+        35
       ],
       "requiredConditions": 2,
       "thresholds": {
         "q25": {
-          "minConfidence": 0.22,
-          "maxEffectiveCandidates": 15
+          "minConfidence": 0.04,
+          "maxEffectiveCandidates": 90
         },
         "q30": {
-          "minConfidence": 0.18,
-          "maxEffectiveCandidates": 20
+          "minConfidence": 0.06,
+          "maxEffectiveCandidates": 60
         },
         "q35": {
-          "minConfidence": 0.15,
-          "maxEffectiveCandidates": 25
+          "minConfidence": 0.08,
+          "maxEffectiveCandidates": 35
         },
         "q40": {
-          "minConfidence": 0.12,
-          "maxEffectiveCandidates": 30
+          "minConfidence": 0.1,
+          "maxEffectiveCandidates": 40
         }
       }
     }

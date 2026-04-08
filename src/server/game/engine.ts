@@ -332,7 +332,7 @@ function getEarlyExitThreshold(
   const review = config.flow.earlyExitReview;
   if (!review || review.enabled === false) return null;
   if (!review.reviewIndices.includes(qIndex)) return null;
-  const key = (`q${qIndex}` as 'q25' | 'q30' | 'q35' | 'q40');
+  const key = (`q${qIndex}` as 'q20' | 'q25' | 'q30' | 'q35' | 'q40');
   const raw = review.thresholds[key];
   if (!raw) return null;
   return {
@@ -362,7 +362,7 @@ export function getEarlyExitStepSnapshot(
       thresholds: null,
       requiredConditions: null,
       matchLowConfidence: false,
-      matchNarrowCandidates: false,
+      matchWideCandidates: false,
       matchedCount: 0,
       wouldEarlyExit: false,
     };
@@ -370,9 +370,9 @@ export function getEarlyExitStepSnapshot(
   const { threshold, requiredConditions } = review;
   const reviewKey = `q${newQuestionCount}`;
   const matchLowConfidence = confidence < threshold.minConfidence;
-  const matchNarrowCandidates = effectiveCandidates <= threshold.maxEffectiveCandidates;
-  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchNarrowCandidates ? 1 : 0);
-  const wouldEarlyExit = matchLowConfidence && matchNarrowCandidates;
+  const matchWideCandidates = effectiveCandidates > threshold.maxEffectiveCandidates;
+  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchWideCandidates ? 1 : 0);
+  const wouldEarlyExit = matchLowConfidence && matchWideCandidates;
   return {
     questionCountAfterAnswer: newQuestionCount,
     confidence,
@@ -385,7 +385,7 @@ export function getEarlyExitStepSnapshot(
     },
     requiredConditions,
     matchLowConfidence,
-    matchNarrowCandidates,
+    matchWideCandidates,
     matchedCount,
     wouldEarlyExit,
   };

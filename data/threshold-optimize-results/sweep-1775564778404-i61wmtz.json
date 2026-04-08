@@ -1,0 +1,4917 @@
+{
+  "sweepId": "sweep-1775564778404-i61wmtz",
+  "phase": 1,
+  "startedAt": "2026-04-07T12:26:18.404Z",
+  "completedAt": "2026-04-07T14:11:59.195Z",
+  "durationSeconds": 6341,
+  "sampleSize": 25,
+  "ambiguityLevels": [
+    1,
+    3,
+    5
+  ],
+  "trialsPerWork": 2,
+  "totalSimulations": 6900,
+  "paramSetCount": 45,
+  "scoreCards": [
+    {
+      "paramSetId": "ps_v3_030",
+      "paramSet": {
+        "id": "ps_v3_030",
+        "label": "V3_B_MC3_EC3_CF3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.55,
+        "hardConfidenceMin": 0.55,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_030",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.354166666666668,
+          "avgQuestionsAll": 20.78,
+          "softConfirmTotal": 144,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.6260869565217392,
+          "hardBurstRate": 0.0007692307692307692,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5665484126984128,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_030",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 39,
+          "successRate": 0.78,
+          "avgQuestionsOnSuccess": 22.615384615384617,
+          "avgQuestionsAll": 24.62,
+          "softConfirmTotal": 189,
+          "hardConfirmTotal": 115,
+          "softHardRatio": 0.6217105263157895,
+          "hardBurstRate": 0.003522908543069834,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5568175324675326,
+          "endedByBreakdown": {
+            "SUCCESS": 39,
+            "FAIL_LIST": 10,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_030",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 31,
+          "successRate": 0.62,
+          "avgQuestionsOnSuccess": 24.29032258064516,
+          "avgQuestionsAll": 28,
+          "softConfirmTotal": 230,
+          "hardConfirmTotal": 160,
+          "softHardRatio": 0.5897435897435898,
+          "hardBurstRate": 0.014297966850222624,
+          "earlyExitCount": 13,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5508175158175156,
+          "endedByBreakdown": {
+            "SUCCESS": 31,
+            "FAIL_LIST": 14,
+            "MAX_QUESTIONS": 5
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.752,
+      "weightedAvgQuestions": 25.204,
+      "weightedSoftHardRatio": 0.6097990377280996,
+      "weightedHardBurstRate": 0.007282196311163138,
+      "weightedFalsePositiveRate": 0.10400000000000001,
+      "weightedMissedEarlyExitRate": 0.09200000000000001,
+      "weightedRhythmScore": 0.5563637018537019,
+      "totalScore": 0.7406680543270637,
+      "rank": 1
+    },
+    {
+      "paramSetId": "ps_v3_025",
+      "paramSet": {
+        "id": "ps_v3_025",
+        "label": "V3_A_MC5_EC5",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 100
+          },
+          "q30": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 70
+          },
+          "q35": {
+            "minConfidence": 0.12,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_025",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.041666666666668,
+          "avgQuestionsAll": 20.64,
+          "softConfirmTotal": 151,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.6371308016877637,
+          "hardBurstRate": 0.00583392317473664,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5698359529359529,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_025",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 45,
+          "successRate": 0.9,
+          "avgQuestionsOnSuccess": 22.822222222222223,
+          "avgQuestionsAll": 24.14,
+          "softConfirmTotal": 183,
+          "hardConfirmTotal": 122,
+          "softHardRatio": 0.6,
+          "hardBurstRate": 0.007987431922915794,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 2,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5634913752913754,
+          "endedByBreakdown": {
+            "FAIL_LIST": 4,
+            "SUCCESS": 45,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_025",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 24,
+          "successRate": 0.48,
+          "avgQuestionsOnSuccess": 25.666666666666668,
+          "avgQuestionsAll": 29.3,
+          "softConfirmTotal": 243,
+          "hardConfirmTotal": 159,
+          "softHardRatio": 0.6044776119402985,
+          "hardBurstRate": 0.017834930242188306,
+          "earlyExitCount": 16,
+          "earlyExitFalsePositiveCount": 12,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5326464535464536,
+          "endedByBreakdown": {
+            "FAIL_LIST": 22,
+            "MAX_QUESTIONS": 4,
+            "SUCCESS": 24
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.744,
+      "weightedAvgQuestions": 25.504,
+      "weightedSoftHardRatio": 0.6092172051136722,
+      "weightedHardBurstRate": 0.011495729500988969,
+      "weightedFalsePositiveRate": 0.112,
+      "weightedMissedEarlyExitRate": 0.09600000000000002,
+      "weightedRhythmScore": 0.5524223221223222,
+      "totalScore": 0.7342943797735005,
+      "rank": 2
+    },
+    {
+      "paramSetId": "ps_v3_038",
+      "paramSet": {
+        "id": "ps_v3_038",
+        "label": "V3_C_bl0.35",
+        "confidenceConfirmBandLower": 0.35,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_038",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.854166666666668,
+          "avgQuestionsAll": 20.56,
+          "softConfirmTotal": 147,
+          "hardConfirmTotal": 78,
+          "softHardRatio": 0.6533333333333333,
+          "hardBurstRate": 0.002192192192192192,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5725809523809524,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 48,
+            "FAIL_LIST": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_038",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 40,
+          "successRate": 0.8,
+          "avgQuestionsOnSuccess": 23.6,
+          "avgQuestionsAll": 25.88,
+          "softConfirmTotal": 231,
+          "hardConfirmTotal": 121,
+          "softHardRatio": 0.65625,
+          "hardBurstRate": 0.011043919974565134,
+          "earlyExitCount": 7,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5659359307359307,
+          "endedByBreakdown": {
+            "SUCCESS": 40,
+            "FAIL_LIST": 7,
+            "MAX_QUESTIONS": 3
+          }
+        },
+        {
+          "paramSetId": "ps_v3_038",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 29,
+          "successRate": 0.58,
+          "avgQuestionsOnSuccess": 24.20689655172414,
+          "avgQuestionsAll": 27.82,
+          "softConfirmTotal": 230,
+          "hardConfirmTotal": 155,
+          "softHardRatio": 0.5974025974025974,
+          "hardBurstRate": 0.015950351104051293,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5238043845043844,
+          "endedByBreakdown": {
+            "FAIL_LIST": 19,
+            "SUCCESS": 29,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.744,
+      "weightedAvgQuestions": 25.592,
+      "weightedSoftHardRatio": 0.6321277056277056,
+      "weightedHardBurstRate": 0.01123614686988501,
+      "weightedFalsePositiveRate": 0.15200000000000002,
+      "weightedMissedEarlyExitRate": 0.064,
+      "weightedRhythmScore": 0.5504123165723165,
+      "totalScore": 0.7331703875330138,
+      "rank": 3
+    },
+    {
+      "paramSetId": "ps_v3_004",
+      "paramSet": {
+        "id": "ps_v3_004",
+        "label": "V3_A_MC1_EC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 90
+          },
+          "q30": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 60
+          },
+          "q35": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 35
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_004",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.916666666666668,
+          "avgQuestionsAll": 20.5,
+          "softConfirmTotal": 151,
+          "hardConfirmTotal": 74,
+          "softHardRatio": 0.6711111111111111,
+          "hardBurstRate": 0.005437927663734116,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5676047619047622,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_004",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 42,
+          "successRate": 0.84,
+          "avgQuestionsOnSuccess": 22.904761904761905,
+          "avgQuestionsAll": 24.64,
+          "softConfirmTotal": 209,
+          "hardConfirmTotal": 110,
+          "softHardRatio": 0.6551724137931034,
+          "hardBurstRate": 0.006353759579566032,
+          "earlyExitCount": 5,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5799045066045068,
+          "endedByBreakdown": {
+            "FAIL_LIST": 6,
+            "SUCCESS": 42,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_004",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 25.73913043478261,
+          "avgQuestionsAll": 29.38,
+          "softConfirmTotal": 264,
+          "hardConfirmTotal": 128,
+          "softHardRatio": 0.673469387755102,
+          "hardBurstRate": 0.015163995756320561,
+          "earlyExitCount": 18,
+          "earlyExitFalsePositiveCount": 12,
+          "missedEarlyExitCount": 9,
+          "rhythmScore": 0.5254585137085137,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 23,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7120000000000001,
+      "weightedAvgQuestions": 25.708000000000006,
+      "weightedSoftHardRatio": 0.6656789428415044,
+      "weightedHardBurstRate": 0.009694687667101461,
+      "weightedFalsePositiveRate": 0.12,
+      "weightedMissedEarlyExitRate": 0.09999999999999999,
+      "weightedRhythmScore": 0.5556661605061607,
+      "totalScore": 0.7282250415680563,
+      "rank": 4
+    },
+    {
+      "paramSetId": "ps_v3_018",
+      "paramSet": {
+        "id": "ps_v3_018",
+        "label": "V3_A_MC4_EC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_018",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.0625,
+          "avgQuestionsAll": 20.56,
+          "softConfirmTotal": 145,
+          "hardConfirmTotal": 83,
+          "softHardRatio": 0.6359649122807017,
+          "hardBurstRate": 0.0068230694037145646,
+          "earlyExitCount": 2,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 0,
+          "rhythmScore": 0.5461436507936507,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_018",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 22.026315789473685,
+          "avgQuestionsAll": 24.32,
+          "softConfirmTotal": 190,
+          "hardConfirmTotal": 117,
+          "softHardRatio": 0.6188925081433225,
+          "hardBurstRate": 0.008859914916875869,
+          "earlyExitCount": 8,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.555869191919192,
+          "endedByBreakdown": {
+            "FAIL_LIST": 12,
+            "SUCCESS": 38
+          }
+        },
+        {
+          "paramSetId": "ps_v3_018",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 28,
+          "successRate": 0.56,
+          "avgQuestionsOnSuccess": 22.857142857142858,
+          "avgQuestionsAll": 26.84,
+          "softConfirmTotal": 185,
+          "hardConfirmTotal": 111,
+          "softHardRatio": 0.625,
+          "hardBurstRate": 0.012627295498263242,
+          "earlyExitCount": 14,
+          "earlyExitFalsePositiveCount": 11,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5211650183150183,
+          "endedByBreakdown": {
+            "FAIL_LIST": 19,
+            "SUCCESS": 28,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7200000000000001,
+      "weightedAvgQuestions": 24.576,
+      "weightedSoftHardRatio": 0.6247499857134694,
+      "weightedHardBurstRate": 0.009959498046798559,
+      "weightedFalsePositiveRate": 0.15200000000000002,
+      "weightedMissedEarlyExitRate": 0.096,
+      "weightedRhythmScore": 0.5400424142524143,
+      "totalScore": 0.7262032901919085,
+      "rank": 5
+    },
+    {
+      "paramSetId": "ps_v3_024",
+      "paramSet": {
+        "id": "ps_v3_024",
+        "label": "V3_A_MC5_EC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 90
+          },
+          "q30": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 60
+          },
+          "q35": {
+            "minConfidence": 0.12,
+            "maxEffectiveCandidates": 35
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_024",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.958333333333332,
+          "avgQuestionsAll": 20.48,
+          "softConfirmTotal": 135,
+          "hardConfirmTotal": 81,
+          "softHardRatio": 0.625,
+          "hardBurstRate": 0.0006060606060606061,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5659961760461761,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_024",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 43,
+          "successRate": 0.86,
+          "avgQuestionsOnSuccess": 22.488372093023255,
+          "avgQuestionsAll": 24.26,
+          "softConfirmTotal": 178,
+          "hardConfirmTotal": 127,
+          "softHardRatio": 0.5836065573770491,
+          "hardBurstRate": 0.011203466138950008,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5738026917526919,
+          "endedByBreakdown": {
+            "FAIL_LIST": 5,
+            "SUCCESS": 43,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_024",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 24.545454545454547,
+          "avgQuestionsAll": 29.68,
+          "softConfirmTotal": 263,
+          "hardConfirmTotal": 134,
+          "softHardRatio": 0.6624685138539043,
+          "hardBurstRate": 0.009264569358022869,
+          "earlyExitCount": 18,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5405147463647464,
+          "endedByBreakdown": {
+            "FAIL_LIST": 21,
+            "SUCCESS": 22,
+            "MAX_QUESTIONS": 7
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7120000000000001,
+      "weightedAvgQuestions": 25.672,
+      "weightedSoftHardRatio": 0.6234300284923813,
+      "weightedHardBurstRate": 0.008308426320001273,
+      "weightedFalsePositiveRate": 0.10400000000000001,
+      "weightedMissedEarlyExitRate": 0.11200000000000002,
+      "weightedRhythmScore": 0.5589262104562106,
+      "totalScore": 0.7258447812628591,
+      "rank": 6
+    },
+    {
+      "paramSetId": "ps_v3_036",
+      "paramSet": {
+        "id": "ps_v3_036",
+        "label": "V3_C_bl0.2",
+        "confidenceConfirmBandLower": 0.2,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_036",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.708333333333332,
+          "avgQuestionsAll": 20.22,
+          "softConfirmTotal": 133,
+          "hardConfirmTotal": 81,
+          "softHardRatio": 0.6214953271028038,
+          "hardBurstRate": 0.0019090909090909091,
+          "earlyExitCount": 2,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 0,
+          "rhythmScore": 0.5655396825396826,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_036",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 41,
+          "successRate": 0.82,
+          "avgQuestionsOnSuccess": 21.829268292682926,
+          "avgQuestionsAll": 24.34,
+          "softConfirmTotal": 211,
+          "hardConfirmTotal": 124,
+          "softHardRatio": 0.6298507462686567,
+          "hardBurstRate": 0.006928205128205127,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5771721445221446,
+          "endedByBreakdown": {
+            "SUCCESS": 41,
+            "FAIL_LIST": 6,
+            "MAX_QUESTIONS": 3
+          }
+        },
+        {
+          "paramSetId": "ps_v3_036",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 25,
+          "successRate": 0.5,
+          "avgQuestionsOnSuccess": 24.84,
+          "avgQuestionsAll": 29.48,
+          "softConfirmTotal": 279,
+          "hardConfirmTotal": 154,
+          "softHardRatio": 0.6443418013856813,
+          "hardBurstRate": 0.016494497765465507,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5250276168276167,
+          "endedByBreakdown": {
+            "SUCCESS": 25,
+            "MAX_QUESTIONS": 3,
+            "FAIL_LIST": 22
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.72,
+      "weightedAvgQuestions": 25.572000000000003,
+      "weightedSoftHardRatio": 0.6339760844822959,
+      "weightedHardBurstRate": 0.009750899339286436,
+      "weightedFalsePositiveRate": 0.136,
+      "weightedMissedEarlyExitRate": 0.10400000000000001,
+      "weightedRhythmScore": 0.553987841047841,
+      "totalScore": 0.7251613026190851,
+      "rank": 7
+    },
+    {
+      "paramSetId": "ps_v3_009",
+      "paramSet": {
+        "id": "ps_v3_009",
+        "label": "V3_A_MC2_EC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 90
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 60
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 35
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_009",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.854166666666668,
+          "avgQuestionsAll": 20.3,
+          "softConfirmTotal": 144,
+          "hardConfirmTotal": 81,
+          "softHardRatio": 0.64,
+          "hardBurstRate": 0.004447552447552448,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5634460317460317,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_009",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 40,
+          "successRate": 0.8,
+          "avgQuestionsOnSuccess": 22.225,
+          "avgQuestionsAll": 24.3,
+          "softConfirmTotal": 177,
+          "hardConfirmTotal": 111,
+          "softHardRatio": 0.6145833333333334,
+          "hardBurstRate": 0.007763554242414812,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5610292929292929,
+          "endedByBreakdown": {
+            "SUCCESS": 40,
+            "FAIL_LIST": 10
+          }
+        },
+        {
+          "paramSetId": "ps_v3_009",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 25,
+          "successRate": 0.5,
+          "avgQuestionsOnSuccess": 25.32,
+          "avgQuestionsAll": 29,
+          "softConfirmTotal": 250,
+          "hardConfirmTotal": 145,
+          "softHardRatio": 0.6329113924050633,
+          "hardBurstRate": 0.010908360043843917,
+          "earlyExitCount": 11,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 14,
+          "rhythmScore": 0.5348381118881119,
+          "endedByBreakdown": {
+            "FAIL_LIST": 20,
+            "SUCCESS": 25,
+            "MAX_QUESTIONS": 5
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.712,
+      "weightedAvgQuestions": 25.380000000000003,
+      "weightedSoftHardRatio": 0.6269978902953587,
+      "weightedHardBurstRate": 0.00835827620401398,
+      "weightedFalsePositiveRate": 0.10400000000000001,
+      "weightedMissedEarlyExitRate": 0.14800000000000002,
+      "weightedRhythmScore": 0.5510361682761683,
+      "totalScore": 0.7232675782367513,
+      "rank": 8
+    },
+    {
+      "paramSetId": "ps_v3_014",
+      "paramSet": {
+        "id": "ps_v3_014",
+        "label": "V3_A_MC3_EC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 90
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 60
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 35
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_014",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.145833333333332,
+          "avgQuestionsAll": 20.6,
+          "softConfirmTotal": 155,
+          "hardConfirmTotal": 78,
+          "softHardRatio": 0.6652360515021459,
+          "hardBurstRate": 0.00255425219941349,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5623253968253968,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_014",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 41,
+          "successRate": 0.82,
+          "avgQuestionsOnSuccess": 23.78048780487805,
+          "avgQuestionsAll": 25.32,
+          "softConfirmTotal": 214,
+          "hardConfirmTotal": 116,
+          "softHardRatio": 0.6484848484848484,
+          "hardBurstRate": 0.009936103219413177,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 4,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5679463203463204,
+          "endedByBreakdown": {
+            "FAIL_LIST": 9,
+            "SUCCESS": 41
+          }
+        },
+        {
+          "paramSetId": "ps_v3_014",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 24,
+          "successRate": 0.48,
+          "avgQuestionsOnSuccess": 25.166666666666668,
+          "avgQuestionsAll": 29.34,
+          "softConfirmTotal": 254,
+          "hardConfirmTotal": 139,
+          "softHardRatio": 0.6463104325699746,
+          "hardBurstRate": 0.015093765186981502,
+          "earlyExitCount": 13,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 13,
+          "rhythmScore": 0.5485597846597848,
+          "endedByBreakdown": {
+            "FAIL_LIST": 21,
+            "SUCCESS": 24,
+            "MAX_QUESTIONS": 5
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.712,
+      "weightedAvgQuestions": 25.984,
+      "weightedSoftHardRatio": 0.6509653227223584,
+      "weightedHardBurstRate": 0.01052279780244057,
+      "weightedFalsePositiveRate": 0.104,
+      "weightedMissedEarlyExitRate": 0.14800000000000002,
+      "weightedRhythmScore": 0.5590675213675215,
+      "totalScore": 0.7232310046287439,
+      "rank": 9
+    },
+    {
+      "paramSetId": "ps_v3_035",
+      "paramSet": {
+        "id": "ps_v3_035",
+        "label": "V3_C_bl0.15",
+        "confidenceConfirmBandLower": 0.15,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_035",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.208333333333332,
+          "avgQuestionsAll": 20.82,
+          "softConfirmTotal": 146,
+          "hardConfirmTotal": 93,
+          "softHardRatio": 0.6108786610878661,
+          "hardBurstRate": 0.008415289743760991,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5510920634920634,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_035",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 42,
+          "successRate": 0.84,
+          "avgQuestionsOnSuccess": 23.642857142857142,
+          "avgQuestionsAll": 25.78,
+          "softConfirmTotal": 220,
+          "hardConfirmTotal": 146,
+          "softHardRatio": 0.6010928961748634,
+          "hardBurstRate": 0.01279230782769803,
+          "earlyExitCount": 3,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.57057118992119,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 5,
+            "SUCCESS": 42,
+            "FAIL_LIST": 3
+          }
+        },
+        {
+          "paramSetId": "ps_v3_035",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 24.434782608695652,
+          "avgQuestionsAll": 28.56,
+          "softConfirmTotal": 257,
+          "hardConfirmTotal": 137,
+          "softHardRatio": 0.6522842639593909,
+          "hardBurstRate": 0.01554141103818523,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5338379564879565,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 23,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7120000000000001,
+      "weightedAvgQuestions": 25.900000000000002,
+      "weightedSoftHardRatio": 0.623526596271275,
+      "weightedHardBurstRate": 0.013016545495105503,
+      "weightedFalsePositiveRate": 0.10400000000000001,
+      "weightedMissedEarlyExitRate": 0.12400000000000003,
+      "weightedRhythmScore": 0.5519820712620713,
+      "totalScore": 0.7223492122038241,
+      "rank": 10
+    },
+    {
+      "paramSetId": "ps_v3_044",
+      "paramSet": {
+        "id": "ps_v3_044",
+        "label": "V3_F_CF2_bl020",
+        "confidenceConfirmBandLower": 0.2,
+        "confidenceConfirmBandUpper": 0.45,
+        "hardConfidenceMin": 0.65,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_044",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.895833333333332,
+          "avgQuestionsAll": 20.44,
+          "softConfirmTotal": 140,
+          "hardConfirmTotal": 85,
+          "softHardRatio": 0.6222222222222222,
+          "hardBurstRate": 0.004421670117322292,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5569049062049063,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_044",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 40,
+          "successRate": 0.8,
+          "avgQuestionsOnSuccess": 21.5,
+          "avgQuestionsAll": 24.28,
+          "softConfirmTotal": 210,
+          "hardConfirmTotal": 109,
+          "softHardRatio": 0.658307210031348,
+          "hardBurstRate": 0.009679595451072531,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5486268620268622,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 40,
+            "FAIL_LIST": 9
+          }
+        },
+        {
+          "paramSetId": "ps_v3_044",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 23.434782608695652,
+          "avgQuestionsAll": 28.14,
+          "softConfirmTotal": 231,
+          "hardConfirmTotal": 145,
+          "softHardRatio": 0.6143617021276596,
+          "hardBurstRate": 0.015479901355596572,
+          "earlyExitCount": 19,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5120029082029084,
+          "endedByBreakdown": {
+            "FAIL_LIST": 26,
+            "SUCCESS": 23,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6960000000000001,
+      "weightedAvgQuestions": 25.056,
+      "weightedSoftHardRatio": 0.6335120093080475,
+      "weightedHardBurstRate": 0.0109481327461321,
+      "weightedFalsePositiveRate": 0.12000000000000002,
+      "weightedMissedEarlyExitRate": 0.10400000000000001,
+      "weightedRhythmScore": 0.5356328893328896,
+      "totalScore": 0.7209396765894805,
+      "rank": 11
+    },
+    {
+      "paramSetId": "ps_v3_015",
+      "paramSet": {
+        "id": "ps_v3_015",
+        "label": "V3_A_MC3_EC5",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 100
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 70
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_015",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.895833333333332,
+          "avgQuestionsAll": 20.4,
+          "softConfirmTotal": 145,
+          "hardConfirmTotal": 74,
+          "softHardRatio": 0.6621004566210046,
+          "hardBurstRate": 0,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5745457431457431,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_015",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 40,
+          "successRate": 0.8,
+          "avgQuestionsOnSuccess": 22.825,
+          "avgQuestionsAll": 25.02,
+          "softConfirmTotal": 202,
+          "hardConfirmTotal": 123,
+          "softHardRatio": 0.6215384615384615,
+          "hardBurstRate": 0.006750843348091925,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5474877899877899,
+          "endedByBreakdown": {
+            "FAIL_LIST": 8,
+            "SUCCESS": 40,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_015",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 25,
+          "successRate": 0.5,
+          "avgQuestionsOnSuccess": 26.96,
+          "avgQuestionsAll": 30.44,
+          "softConfirmTotal": 261,
+          "hardConfirmTotal": 159,
+          "softHardRatio": 0.6214285714285714,
+          "hardBurstRate": 0.010946198894253922,
+          "earlyExitCount": 16,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 9,
+          "rhythmScore": 0.5298563381063381,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 4,
+            "SUCCESS": 25,
+            "FAIL_LIST": 21
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.712,
+      "weightedAvgQuestions": 26.264000000000003,
+      "weightedSoftHardRatio": 0.6296069045110141,
+      "weightedHardBurstRate": 0.0070788168969383395,
+      "weightedFalsePositiveRate": 0.10400000000000001,
+      "weightedMissedEarlyExitRate": 0.128,
+      "weightedRhythmScore": 0.5458467998667998,
+      "totalScore": 0.7207174887480876,
+      "rank": 12
+    },
+    {
+      "paramSetId": "ps_v3_026",
+      "paramSet": {
+        "id": "ps_v3_026",
+        "label": "V3_B_MC2_EC3_CF2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.45,
+        "hardConfidenceMin": 0.65,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_026",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.0625,
+          "avgQuestionsAll": 20.5,
+          "softConfirmTotal": 137,
+          "hardConfirmTotal": 82,
+          "softHardRatio": 0.6255707762557078,
+          "hardBurstRate": 0.005838383838383838,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5535306471306471,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_026",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 43,
+          "successRate": 0.86,
+          "avgQuestionsOnSuccess": 24.325581395348838,
+          "avgQuestionsAll": 25.08,
+          "softConfirmTotal": 211,
+          "hardConfirmTotal": 118,
+          "softHardRatio": 0.6413373860182371,
+          "hardBurstRate": 0.004549974805814628,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5734618770118769,
+          "endedByBreakdown": {
+            "FAIL_LIST": 7,
+            "SUCCESS": 43
+          }
+        },
+        {
+          "paramSetId": "ps_v3_026",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 21,
+          "successRate": 0.42,
+          "avgQuestionsOnSuccess": 25.38095238095238,
+          "avgQuestionsAll": 29.42,
+          "softConfirmTotal": 254,
+          "hardConfirmTotal": 131,
+          "softHardRatio": 0.6597402597402597,
+          "hardBurstRate": 0.008273434725047627,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 15,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5282509934509934,
+          "endedByBreakdown": {
+            "FAIL_LIST": 26,
+            "SUCCESS": 21,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7040000000000001,
+      "weightedAvgQuestions": 25.900000000000002,
+      "weightedSoftHardRatio": 0.6455452135545403,
+      "weightedHardBurstRate": 0.00629704058002167,
+      "weightedFalsePositiveRate": 0.144,
+      "weightedMissedEarlyExitRate": 0.096,
+      "weightedRhythmScore": 0.5513912776112775,
+      "totalScore": 0.7195639450585796,
+      "rank": 13
+    },
+    {
+      "paramSetId": "ps_v3_003",
+      "paramSet": {
+        "id": "ps_v3_003",
+        "label": "V3_A_MC1_EC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_003",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.708333333333332,
+          "avgQuestionsAll": 20.42,
+          "softConfirmTotal": 127,
+          "hardConfirmTotal": 85,
+          "softHardRatio": 0.5990566037735849,
+          "hardBurstRate": 0.009902129232774394,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.567084126984127,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 1,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_003",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 37,
+          "successRate": 0.74,
+          "avgQuestionsOnSuccess": 22.81081081081081,
+          "avgQuestionsAll": 26.34,
+          "softConfirmTotal": 237,
+          "hardConfirmTotal": 158,
+          "softHardRatio": 0.6,
+          "hardBurstRate": 0.023679157933885402,
+          "earlyExitCount": 8,
+          "earlyExitFalsePositiveCount": 7,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.562877677877678,
+          "endedByBreakdown": {
+            "SUCCESS": 37,
+            "MAX_QUESTIONS": 5,
+            "FAIL_LIST": 8
+          }
+        },
+        {
+          "paramSetId": "ps_v3_003",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 28,
+          "successRate": 0.56,
+          "avgQuestionsOnSuccess": 25.714285714285715,
+          "avgQuestionsAll": 29.16,
+          "softConfirmTotal": 242,
+          "hardConfirmTotal": 162,
+          "softHardRatio": 0.599009900990099,
+          "hardBurstRate": 0.017788589085363276,
+          "earlyExitCount": 12,
+          "earlyExitFalsePositiveCount": 7,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.543111865911866,
+          "endedByBreakdown": {
+            "FAIL_LIST": 17,
+            "SUCCESS": 28,
+            "MAX_QUESTIONS": 5
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.712,
+      "weightedAvgQuestions": 26.284000000000002,
+      "weightedSoftHardRatio": 0.5994152811507566,
+      "weightedHardBurstRate": 0.018567524654254354,
+      "weightedFalsePositiveRate": 0.11200000000000002,
+      "weightedMissedEarlyExitRate": 0.12400000000000003,
+      "weightedRhythmScore": 0.555812642912643,
+      "totalScore": 0.7166460399409146,
+      "rank": 14
+    },
+    {
+      "paramSetId": "ps_v3_007",
+      "paramSet": {
+        "id": "ps_v3_007",
+        "label": "V3_A_MC2_EC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 65
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 40
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 25
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_007",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.729166666666668,
+          "avgQuestionsAll": 20.36,
+          "softConfirmTotal": 129,
+          "hardConfirmTotal": 84,
+          "softHardRatio": 0.6056338028169014,
+          "hardBurstRate": 0.006192192192192192,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5565648906648907,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_007",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 43,
+          "successRate": 0.86,
+          "avgQuestionsOnSuccess": 22.11627906976744,
+          "avgQuestionsAll": 23.8,
+          "softConfirmTotal": 189,
+          "hardConfirmTotal": 104,
+          "softHardRatio": 0.6450511945392492,
+          "hardBurstRate": 0.004640856986018276,
+          "earlyExitCount": 5,
+          "earlyExitFalsePositiveCount": 4,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5583436507936509,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 43,
+            "FAIL_LIST": 6
+          }
+        },
+        {
+          "paramSetId": "ps_v3_007",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 19,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 24,
+          "avgQuestionsAll": 28.74,
+          "softConfirmTotal": 253,
+          "hardConfirmTotal": 143,
+          "softHardRatio": 0.6388888888888888,
+          "hardBurstRate": 0.012197557358847678,
+          "earlyExitCount": 22,
+          "earlyExitFalsePositiveCount": 15,
+          "missedEarlyExitCount": 9,
+          "rhythmScore": 0.4958324175824177,
+          "endedByBreakdown": {
+            "FAIL_LIST": 29,
+            "SUCCESS": 19,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6880000000000001,
+      "weightedAvgQuestions": 25.088,
+      "weightedSoftHardRatio": 0.6347027939346355,
+      "weightedHardBurstRate": 0.007973804176384821,
+      "weightedFalsePositiveRate": 0.152,
+      "weightedMissedEarlyExitRate": 0.096,
+      "weightedRhythmScore": 0.5329834054834056,
+      "totalScore": 0.7145312395241658,
+      "rank": 15
+    },
+    {
+      "paramSetId": "ps_v3_008",
+      "paramSet": {
+        "id": "ps_v3_008",
+        "label": "V3_A_MC2_EC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_008",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.416666666666668,
+          "avgQuestionsAll": 21.04,
+          "softConfirmTotal": 150,
+          "hardConfirmTotal": 91,
+          "softHardRatio": 0.6224066390041494,
+          "hardBurstRate": 0.0037950558213716112,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.560837445887446,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 1,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_008",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 23.526315789473685,
+          "avgQuestionsAll": 25.76,
+          "softConfirmTotal": 231,
+          "hardConfirmTotal": 114,
+          "softHardRatio": 0.6695652173913044,
+          "hardBurstRate": 0.005730530361370184,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5481346542346541,
+          "endedByBreakdown": {
+            "SUCCESS": 38,
+            "FAIL_LIST": 11,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_008",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 24,
+          "successRate": 0.48,
+          "avgQuestionsOnSuccess": 24.875,
+          "avgQuestionsAll": 28.76,
+          "softConfirmTotal": 244,
+          "hardConfirmTotal": 147,
+          "softHardRatio": 0.6240409207161125,
+          "hardBurstRate": 0.0068719210170823065,
+          "earlyExitCount": 14,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 12,
+          "rhythmScore": 0.5486530025530025,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 5,
+            "FAIL_LIST": 21,
+            "SUCCESS": 24
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6880000000000001,
+      "weightedAvgQuestions": 26.016000000000005,
+      "weightedSoftHardRatio": 0.6419237830437967,
+      "weightedHardBurstRate": 0.005799991715655319,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.12,
+      "weightedRhythmScore": 0.5508825518925519,
+      "totalScore": 0.7138206343220693,
+      "rank": 16
+    },
+    {
+      "paramSetId": "ps_v3_017",
+      "paramSet": {
+        "id": "ps_v3_017",
+        "label": "V3_A_MC4_EC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 65
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 40
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 25
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_017",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.833333333333332,
+          "avgQuestionsAll": 20.34,
+          "softConfirmTotal": 149,
+          "hardConfirmTotal": 70,
+          "softHardRatio": 0.680365296803653,
+          "hardBurstRate": 0.001,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5757636363636364,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_017",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 41,
+          "successRate": 0.82,
+          "avgQuestionsOnSuccess": 23.634146341463413,
+          "avgQuestionsAll": 25.12,
+          "softConfirmTotal": 216,
+          "hardConfirmTotal": 122,
+          "softHardRatio": 0.6390532544378699,
+          "hardBurstRate": 0.006981709619858287,
+          "earlyExitCount": 7,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5363854978354978,
+          "endedByBreakdown": {
+            "SUCCESS": 41,
+            "FAIL_LIST": 8,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_017",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 19,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 23.894736842105264,
+          "avgQuestionsAll": 27.6,
+          "softConfirmTotal": 230,
+          "hardConfirmTotal": 112,
+          "softHardRatio": 0.672514619883041,
+          "hardBurstRate": 0.006953231006711482,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5162025252525252,
+          "endedByBreakdown": {
+            "FAIL_LIST": 29,
+            "SUCCESS": 19,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.672,
+      "weightedAvgQuestions": 25.156000000000006,
+      "weightedSoftHardRatio": 0.660700209089095,
+      "weightedHardBurstRate": 0.005773976250627908,
+      "weightedFalsePositiveRate": 0.15200000000000002,
+      "weightedMissedEarlyExitRate": 0.088,
+      "weightedRhythmScore": 0.5361879365079365,
+      "totalScore": 0.7133314169346403,
+      "rank": 17
+    },
+    {
+      "paramSetId": "ps_v3_005",
+      "paramSet": {
+        "id": "ps_v3_005",
+        "label": "V3_A_MC1_EC5",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 100
+          },
+          "q30": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 70
+          },
+          "q35": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_005",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.604166666666668,
+          "avgQuestionsAll": 20.2,
+          "softConfirmTotal": 139,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.6177777777777778,
+          "hardBurstRate": 0.0038529880851862273,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5602396825396826,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_005",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 21.63157894736842,
+          "avgQuestionsAll": 24.28,
+          "softConfirmTotal": 205,
+          "hardConfirmTotal": 105,
+          "softHardRatio": 0.6612903225806451,
+          "hardBurstRate": 0.005610290093048714,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 4,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5552256132756135,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 4,
+            "FAIL_LIST": 8,
+            "SUCCESS": 38
+          }
+        },
+        {
+          "paramSetId": "ps_v3_005",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 25,
+          "successRate": 0.5,
+          "avgQuestionsOnSuccess": 25.48,
+          "avgQuestionsAll": 29.7,
+          "softConfirmTotal": 219,
+          "hardConfirmTotal": 181,
+          "softHardRatio": 0.5475,
+          "hardBurstRate": 0.02760793480890974,
+          "earlyExitCount": 13,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 12,
+          "rhythmScore": 0.5219588855588856,
+          "endedByBreakdown": {
+            "SUCCESS": 25,
+            "FAIL_LIST": 19,
+            "MAX_QUESTIONS": 6
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6960000000000001,
+      "weightedAvgQuestions": 25.632000000000005,
+      "weightedSoftHardRatio": 0.6070716845878136,
+      "weightedHardBurstRate": 0.014057887577820626,
+      "weightedFalsePositiveRate": 0.096,
+      "weightedMissedEarlyExitRate": 0.168,
+      "weightedRhythmScore": 0.5429217360417362,
+      "totalScore": 0.7130335533051729,
+      "rank": 18
+    },
+    {
+      "paramSetId": "ps_v3_020",
+      "paramSet": {
+        "id": "ps_v3_020",
+        "label": "V3_A_MC4_EC5",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 100
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 70
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_020",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.3125,
+          "avgQuestionsAll": 21.02,
+          "softConfirmTotal": 135,
+          "hardConfirmTotal": 99,
+          "softHardRatio": 0.5769230769230769,
+          "hardBurstRate": 0.006874731874731874,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5597388888888889,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 48,
+            "FAIL_LIST": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_020",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 24.710526315789473,
+          "avgQuestionsAll": 26.84,
+          "softConfirmTotal": 230,
+          "hardConfirmTotal": 153,
+          "softHardRatio": 0.6005221932114883,
+          "hardBurstRate": 0.013121007255132894,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5744397935397935,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 3,
+            "SUCCESS": 38,
+            "FAIL_LIST": 9
+          }
+        },
+        {
+          "paramSetId": "ps_v3_020",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 26,
+          "successRate": 0.52,
+          "avgQuestionsOnSuccess": 23.76923076923077,
+          "avgQuestionsAll": 28.42,
+          "softConfirmTotal": 246,
+          "hardConfirmTotal": 137,
+          "softHardRatio": 0.6422976501305483,
+          "hardBurstRate": 0.011660378131751551,
+          "earlyExitCount": 12,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 12,
+          "rhythmScore": 0.5553189421689421,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 6,
+            "SUCCESS": 26,
+            "FAIL_LIST": 18
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.7040000000000001,
+      "weightedAvgQuestions": 26.308000000000003,
+      "weightedSoftHardRatio": 0.61251255272143,
+      "weightedHardBurstRate": 0.011287500529700154,
+      "weightedFalsePositiveRate": 0.12000000000000002,
+      "weightedMissedEarlyExitRate": 0.152,
+      "weightedRhythmScore": 0.5638512720612721,
+      "totalScore": 0.7129676324253003,
+      "rank": 19
+    },
+    {
+      "paramSetId": "ps_v3_040",
+      "paramSet": {
+        "id": "ps_v3_040",
+        "label": "V3_D_maxQ40",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        },
+        "maxQuestions": 40
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_040",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.166666666666668,
+          "avgQuestionsAll": 20.46,
+          "softConfirmTotal": 134,
+          "hardConfirmTotal": 84,
+          "softHardRatio": 0.6146788990825688,
+          "hardBurstRate": 0.003466666666666667,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5597357142857144,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_040",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 37,
+          "successRate": 0.74,
+          "avgQuestionsOnSuccess": 22.89189189189189,
+          "avgQuestionsAll": 24.94,
+          "softConfirmTotal": 209,
+          "hardConfirmTotal": 122,
+          "softHardRatio": 0.6314199395770392,
+          "hardBurstRate": 0.007232128152289443,
+          "earlyExitCount": 5,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5558224386724386,
+          "endedByBreakdown": {
+            "FAIL_LIST": 12,
+            "SUCCESS": 37,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_040",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 26,
+          "successRate": 0.52,
+          "avgQuestionsOnSuccess": 24.96153846153846,
+          "avgQuestionsAll": 28.94,
+          "softConfirmTotal": 243,
+          "hardConfirmTotal": 151,
+          "softHardRatio": 0.616751269035533,
+          "hardBurstRate": 0.009672785381350454,
+          "earlyExitCount": 14,
+          "earlyExitFalsePositiveCount": 11,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5280086580086579,
+          "endedByBreakdown": {
+            "SUCCESS": 26,
+            "FAIL_LIST": 19,
+            "MAX_QUESTIONS": 5
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.696,
+      "weightedAvgQuestions": 25.644000000000002,
+      "weightedSoftHardRatio": 0.6222042632615427,
+      "weightedHardBurstRate": 0.007455298746789293,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.15200000000000002,
+      "weightedRhythmScore": 0.5454795815295815,
+      "totalScore": 0.7122028546044334,
+      "rank": 20
+    },
+    {
+      "paramSetId": "ps_v3_021",
+      "paramSet": {
+        "id": "ps_v3_021",
+        "label": "V3_A_MC5_EC1",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q30": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          },
+          "q35": {
+            "minConfidence": 0.12,
+            "maxEffectiveCandidates": 20
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_021",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.916666666666668,
+          "avgQuestionsAll": 20.34,
+          "softConfirmTotal": 146,
+          "hardConfirmTotal": 78,
+          "softHardRatio": 0.6517857142857143,
+          "hardBurstRate": 0.0026825396825396826,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.572736507936508,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_021",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 35,
+          "successRate": 0.7,
+          "avgQuestionsOnSuccess": 21.257142857142856,
+          "avgQuestionsAll": 23.36,
+          "softConfirmTotal": 182,
+          "hardConfirmTotal": 91,
+          "softHardRatio": 0.6666666666666666,
+          "hardBurstRate": 0.010128647029648141,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5295464646464647,
+          "endedByBreakdown": {
+            "SUCCESS": 35,
+            "FAIL_LIST": 15
+          }
+        },
+        {
+          "paramSetId": "ps_v3_021",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 25,
+          "successRate": 0.5,
+          "avgQuestionsOnSuccess": 22.96,
+          "avgQuestionsAll": 26.44,
+          "softConfirmTotal": 207,
+          "hardConfirmTotal": 128,
+          "softHardRatio": 0.6179104477611941,
+          "hardBurstRate": 0.008973335618496909,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 15,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5039088245088246,
+          "endedByBreakdown": {
+            "FAIL_LIST": 24,
+            "SUCCESS": 25,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6719999999999999,
+      "weightedAvgQuestions": 23.988,
+      "weightedSoftHardRatio": 0.6441879886282872,
+      "weightedHardBurstRate": 0.008177300995765958,
+      "weightedFalsePositiveRate": 0.192,
+      "weightedMissedEarlyExitRate": 0.07600000000000001,
+      "weightedRhythmScore": 0.5279294172494173,
+      "totalScore": 0.7116540104881939,
+      "rank": 21
+    },
+    {
+      "paramSetId": "ps_v3_002",
+      "paramSet": {
+        "id": "ps_v3_002",
+        "label": "V3_A_MC1_EC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 65
+          },
+          "q30": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 40
+          },
+          "q35": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 25
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_002",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.125,
+          "avgQuestionsAll": 20.62,
+          "softConfirmTotal": 140,
+          "hardConfirmTotal": 87,
+          "softHardRatio": 0.6167400881057269,
+          "hardBurstRate": 0.008323621407422249,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5573979076479078,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_002",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 36,
+          "successRate": 0.72,
+          "avgQuestionsOnSuccess": 23.47222222222222,
+          "avgQuestionsAll": 25.72,
+          "softConfirmTotal": 213,
+          "hardConfirmTotal": 137,
+          "softHardRatio": 0.6085714285714285,
+          "hardBurstRate": 0.010382248217732088,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 4,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5484461427461427,
+          "endedByBreakdown": {
+            "FAIL_LIST": 14,
+            "SUCCESS": 36
+          }
+        },
+        {
+          "paramSetId": "ps_v3_002",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 26,
+          "successRate": 0.52,
+          "avgQuestionsOnSuccess": 22.923076923076923,
+          "avgQuestionsAll": 27.56,
+          "softConfirmTotal": 223,
+          "hardConfirmTotal": 122,
+          "softHardRatio": 0.6463768115942029,
+          "hardBurstRate": 0.0057896914550140365,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 7,
+          "rhythmScore": 0.5257998556998557,
+          "endedByBreakdown": {
+            "SUCCESS": 26,
+            "FAIL_LIST": 21,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.688,
+      "weightedAvgQuestions": 25.436,
+      "weightedSoftHardRatio": 0.625327313687398,
+      "weightedHardBurstRate": 0.0081335001505829,
+      "weightedFalsePositiveRate": 0.14400000000000002,
+      "weightedMissedEarlyExitRate": 0.128,
+      "weightedRhythmScore": 0.5411779809079809,
+      "totalScore": 0.7106571794444796,
+      "rank": 22
+    },
+    {
+      "paramSetId": "ps_v3_022",
+      "paramSet": {
+        "id": "ps_v3_022",
+        "label": "V3_A_MC5_EC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 65
+          },
+          "q30": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 40
+          },
+          "q35": {
+            "minConfidence": 0.12,
+            "maxEffectiveCandidates": 25
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_022",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.166666666666668,
+          "avgQuestionsAll": 20.34,
+          "softConfirmTotal": 124,
+          "hardConfirmTotal": 79,
+          "softHardRatio": 0.6108374384236454,
+          "hardBurstRate": 0.004928571428571429,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5514857142857144,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_022",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 34,
+          "successRate": 0.68,
+          "avgQuestionsOnSuccess": 23.764705882352942,
+          "avgQuestionsAll": 26.1,
+          "softConfirmTotal": 234,
+          "hardConfirmTotal": 125,
+          "softHardRatio": 0.6518105849582173,
+          "hardBurstRate": 0.011333125441690512,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5459798423798423,
+          "endedByBreakdown": {
+            "SUCCESS": 34,
+            "FAIL_LIST": 15,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_022",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 28,
+          "successRate": 0.56,
+          "avgQuestionsOnSuccess": 25.892857142857142,
+          "avgQuestionsAll": 27.9,
+          "softConfirmTotal": 226,
+          "hardConfirmTotal": 131,
+          "softHardRatio": 0.6330532212885154,
+          "hardBurstRate": 0.011339072520123361,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.507958125208125,
+          "endedByBreakdown": {
+            "SUCCESS": 28,
+            "FAIL_LIST": 21,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6880000000000001,
+      "weightedAvgQuestions": 25.668000000000003,
+      "weightedSoftHardRatio": 0.6361130101834221,
+      "weightedHardBurstRate": 0.010054593470439835,
+      "weightedFalsePositiveRate": 0.168,
+      "weightedMissedEarlyExitRate": 0.096,
+      "weightedRhythmScore": 0.5318723298923298,
+      "totalScore": 0.7090530746605312,
+      "rank": 23
+    },
+    {
+      "paramSetId": "ps_v3_042",
+      "paramSet": {
+        "id": "ps_v3_042",
+        "label": "V3_E_Q20_MC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          20,
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q20": {
+            "minConfidence": 0.03,
+            "maxEffectiveCandidates": 150
+          },
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          },
+          "q40": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_042",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.604166666666668,
+          "avgQuestionsAll": 20.22,
+          "softConfirmTotal": 145,
+          "hardConfirmTotal": 74,
+          "softHardRatio": 0.6621004566210046,
+          "hardBurstRate": 0.0021637426900584793,
+          "earlyExitCount": 2,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 0,
+          "rhythmScore": 0.5481730158730157,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_042",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 39,
+          "successRate": 0.78,
+          "avgQuestionsOnSuccess": 23.05128205128205,
+          "avgQuestionsAll": 25.22,
+          "softConfirmTotal": 205,
+          "hardConfirmTotal": 118,
+          "softHardRatio": 0.6346749226006192,
+          "hardBurstRate": 0.00622569057351666,
+          "earlyExitCount": 9,
+          "earlyExitFalsePositiveCount": 7,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5614766233766231,
+          "endedByBreakdown": {
+            "FAIL_LIST": 10,
+            "SUCCESS": 39,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_042",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 25.90909090909091,
+          "avgQuestionsAll": 28.46,
+          "softConfirmTotal": 228,
+          "hardConfirmTotal": 145,
+          "softHardRatio": 0.6112600536193029,
+          "hardBurstRate": 0.011061099813222054,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 16,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.4964798201798202,
+          "endedByBreakdown": {
+            "SUCCESS": 22,
+            "FAIL_LIST": 28
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.68,
+      "weightedAvgQuestions": 25.516000000000002,
+      "weightedSoftHardRatio": 0.6307940818121698,
+      "weightedHardBurstRate": 0.007347464692707182,
+      "weightedFalsePositiveRate": 0.184,
+      "weightedMissedEarlyExitRate": 0.05600000000000001,
+      "weightedRhythmScore": 0.5328171805971804,
+      "totalScore": 0.7088463797716644,
+      "rank": 24
+    },
+    {
+      "paramSetId": "ps_v3_043",
+      "paramSet": {
+        "id": "ps_v3_043",
+        "label": "V3_E_Q20_MC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          20,
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q20": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 150
+          },
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 30
+          },
+          "q40": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_043",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.833333333333332,
+          "avgQuestionsAll": 20.44,
+          "softConfirmTotal": 136,
+          "hardConfirmTotal": 80,
+          "softHardRatio": 0.6296296296296297,
+          "hardBurstRate": 0.0025714285714285717,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5774349206349207,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_043",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 37,
+          "successRate": 0.74,
+          "avgQuestionsOnSuccess": 23.2972972972973,
+          "avgQuestionsAll": 25.94,
+          "softConfirmTotal": 234,
+          "hardConfirmTotal": 129,
+          "softHardRatio": 0.6446280991735537,
+          "hardBurstRate": 0.01005008749456829,
+          "earlyExitCount": 12,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.536249728049728,
+          "endedByBreakdown": {
+            "SUCCESS": 37,
+            "FAIL_LIST": 12,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_043",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 24,
+          "successRate": 0.48,
+          "avgQuestionsOnSuccess": 25.375,
+          "avgQuestionsAll": 27.82,
+          "softConfirmTotal": 226,
+          "hardConfirmTotal": 129,
+          "softHardRatio": 0.6366197183098592,
+          "hardBurstRate": 0.006735436606404348,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5123318903318903,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 24,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6799999999999999,
+      "weightedAvgQuestions": 25.592000000000002,
+      "weightedSoftHardRatio": 0.6384250529192911,
+      "weightedHardBurstRate": 0.00722849535467477,
+      "weightedFalsePositiveRate": 0.208,
+      "weightedMissedEarlyExitRate": 0.04,
+      "weightedRhythmScore": 0.5349196314796315,
+      "totalScore": 0.7074516189044248,
+      "rank": 25
+    },
+    {
+      "paramSetId": "ps_v3_039",
+      "paramSet": {
+        "id": "ps_v3_039",
+        "label": "V3_D_maxQ30",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        },
+        "maxQuestions": 30
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_039",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.270833333333332,
+          "avgQuestionsAll": 20.38,
+          "softConfirmTotal": 143,
+          "hardConfirmTotal": 77,
+          "softHardRatio": 0.65,
+          "hardBurstRate": 0.0030202020202020202,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5699880952380952,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_039",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 42,
+          "successRate": 0.84,
+          "avgQuestionsOnSuccess": 20.761904761904763,
+          "avgQuestionsAll": 22.52,
+          "softConfirmTotal": 150,
+          "hardConfirmTotal": 97,
+          "softHardRatio": 0.6072874493927125,
+          "hardBurstRate": 0.007094574780058652,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 2,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5426640803640806,
+          "endedByBreakdown": {
+            "SUCCESS": 42,
+            "MAX_QUESTIONS": 2,
+            "FAIL_LIST": 6
+          }
+        },
+        {
+          "paramSetId": "ps_v3_039",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 18,
+          "successRate": 0.36,
+          "avgQuestionsOnSuccess": 26.055555555555557,
+          "avgQuestionsAll": 29.82,
+          "softConfirmTotal": 222,
+          "hardConfirmTotal": 163,
+          "softHardRatio": 0.5766233766233766,
+          "hardBurstRate": 0.01389299737464365,
+          "earlyExitCount": 20,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 12,
+          "rhythmScore": 0.49112607392607394,
+          "endedByBreakdown": {
+            "FAIL_LIST": 26,
+            "MAX_QUESTIONS": 6,
+            "SUCCESS": 18
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.672,
+      "weightedAvgQuestions": 25.012,
+      "weightedSoftHardRatio": 0.6035643304064356,
+      "weightedHardBurstRate": 0.008999069265921325,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.136,
+      "weightedRhythmScore": 0.5275136807636809,
+      "totalScore": 0.7059478941904196,
+      "rank": 26
+    },
+    {
+      "paramSetId": "ps_v3_019",
+      "paramSet": {
+        "id": "ps_v3_019",
+        "label": "V3_A_MC4_EC4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 90
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 60
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 35
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_019",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.854166666666668,
+          "avgQuestionsAll": 20.4,
+          "softConfirmTotal": 136,
+          "hardConfirmTotal": 84,
+          "softHardRatio": 0.6181818181818182,
+          "hardBurstRate": 0.0033968253968253968,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5598661172161171,
+          "endedByBreakdown": {
+            "FAIL_LIST": 1,
+            "SUCCESS": 48,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_019",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 40,
+          "successRate": 0.8,
+          "avgQuestionsOnSuccess": 23.625,
+          "avgQuestionsAll": 25.88,
+          "softConfirmTotal": 211,
+          "hardConfirmTotal": 128,
+          "softHardRatio": 0.6224188790560472,
+          "hardBurstRate": 0.01066193988865378,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 6,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5819813353313354,
+          "endedByBreakdown": {
+            "SUCCESS": 40,
+            "FAIL_LIST": 7,
+            "MAX_QUESTIONS": 3
+          }
+        },
+        {
+          "paramSetId": "ps_v3_019",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 20,
+          "successRate": 0.4,
+          "avgQuestionsOnSuccess": 24.5,
+          "avgQuestionsAll": 29.16,
+          "softConfirmTotal": 251,
+          "hardConfirmTotal": 144,
+          "softHardRatio": 0.6354430379746835,
+          "hardBurstRate": 0.01334332272597011,
+          "earlyExitCount": 19,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 11,
+          "rhythmScore": 0.5281577922077925,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 3,
+            "SUCCESS": 20,
+            "FAIL_LIST": 27
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.672,
+      "weightedAvgQuestions": 26.096000000000004,
+      "weightedSoftHardRatio": 0.6267811304486559,
+      "weightedHardBurstRate": 0.010281470125214635,
+      "weightedFalsePositiveRate": 0.15200000000000002,
+      "weightedMissedEarlyExitRate": 0.128,
+      "weightedRhythmScore": 0.5560288744588746,
+      "totalScore": 0.7027728534782315,
+      "rank": 27
+    },
+    {
+      "paramSetId": "ps_v3_013",
+      "paramSet": {
+        "id": "ps_v3_013",
+        "label": "V3_A_MC3_EC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_013",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.916666666666668,
+          "avgQuestionsAll": 20.72,
+          "softConfirmTotal": 135,
+          "hardConfirmTotal": 90,
+          "softHardRatio": 0.6,
+          "hardBurstRate": 0.004411793611793612,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5570499999999999,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_013",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 23.657894736842106,
+          "avgQuestionsAll": 26.06,
+          "softConfirmTotal": 191,
+          "hardConfirmTotal": 147,
+          "softHardRatio": 0.5650887573964497,
+          "hardBurstRate": 0.015595873693870005,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5415732323232324,
+          "endedByBreakdown": {
+            "FAIL_LIST": 11,
+            "SUCCESS": 38,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_013",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 24.565217391304348,
+          "avgQuestionsAll": 28.36,
+          "softConfirmTotal": 237,
+          "hardConfirmTotal": 139,
+          "softHardRatio": 0.6303191489361702,
+          "hardBurstRate": 0.01067765157865269,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5205807636807637,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 23,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.68,
+      "weightedAvgQuestions": 25.912,
+      "weightedSoftHardRatio": 0.5981631625330479,
+      "weightedHardBurstRate": 0.011391768831367801,
+      "weightedFalsePositiveRate": 0.184,
+      "weightedMissedEarlyExitRate": 0.07200000000000001,
+      "weightedRhythmScore": 0.5362715984015984,
+      "totalScore": 0.701944299210328,
+      "rank": 28
+    },
+    {
+      "paramSetId": "ps_v3_011",
+      "paramSet": {
+        "id": "ps_v3_011",
+        "label": "V3_A_MC3_EC1",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 50
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 30
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 20
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_011",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.541666666666668,
+          "avgQuestionsAll": 20.14,
+          "softConfirmTotal": 149,
+          "hardConfirmTotal": 72,
+          "softHardRatio": 0.6742081447963801,
+          "hardBurstRate": 0.0012903225806451613,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.57959126984127,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_011",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 36,
+          "successRate": 0.72,
+          "avgQuestionsOnSuccess": 22.52777777777778,
+          "avgQuestionsAll": 24.7,
+          "softConfirmTotal": 214,
+          "hardConfirmTotal": 111,
+          "softHardRatio": 0.6584615384615384,
+          "hardBurstRate": 0.0037328130806391674,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5566386446886445,
+          "endedByBreakdown": {
+            "SUCCESS": 36,
+            "FAIL_LIST": 12,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_011",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 23.5,
+          "avgQuestionsAll": 27.06,
+          "softConfirmTotal": 196,
+          "hardConfirmTotal": 117,
+          "softHardRatio": 0.6261980830670927,
+          "hardBurstRate": 0.015457121389047385,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5076532190032189,
+          "endedByBreakdown": {
+            "FAIL_LIST": 27,
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 22
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.656,
+      "weightedAvgQuestions": 24.732,
+      "weightedSoftHardRatio": 0.6487054775707285,
+      "weightedHardBurstRate": 0.007934038304003655,
+      "weightedFalsePositiveRate": 0.21599999999999997,
+      "weightedMissedEarlyExitRate": 0.07600000000000001,
+      "weightedRhythmScore": 0.5416349994449994,
+      "totalScore": 0.7013806438711725,
+      "rank": 29
+    },
+    {
+      "paramSetId": "ps_v3_037",
+      "paramSet": {
+        "id": "ps_v3_037",
+        "label": "V3_C_bl0.3",
+        "confidenceConfirmBandLower": 0.3,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_037",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.1875,
+          "avgQuestionsAll": 20.64,
+          "softConfirmTotal": 134,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.6090909090909091,
+          "hardBurstRate": 0.001,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5673499999999997,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_037",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 41,
+          "successRate": 0.82,
+          "avgQuestionsOnSuccess": 21.902439024390244,
+          "avgQuestionsAll": 23.88,
+          "softConfirmTotal": 186,
+          "hardConfirmTotal": 97,
+          "softHardRatio": 0.657243816254417,
+          "hardBurstRate": 0.008315928832057864,
+          "earlyExitCount": 7,
+          "earlyExitFalsePositiveCount": 6,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5519808580308581,
+          "endedByBreakdown": {
+            "FAIL_LIST": 8,
+            "SUCCESS": 41,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_037",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 19,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 27.57894736842105,
+          "avgQuestionsAll": 30.58,
+          "softConfirmTotal": 254,
+          "hardConfirmTotal": 166,
+          "softHardRatio": 0.6047619047619047,
+          "hardBurstRate": 0.008529637738440003,
+          "earlyExitCount": 24,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 7,
+          "rhythmScore": 0.5088774614274617,
+          "endedByBreakdown": {
+            "SUCCESS": 19,
+            "FAIL_LIST": 27,
+            "MAX_QUESTIONS": 4
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.672,
+      "weightedAvgQuestions": 25.912,
+      "weightedSoftHardRatio": 0.6266204702247105,
+      "weightedHardBurstRate": 0.006938226628199148,
+      "weightedFalsePositiveRate": 0.192,
+      "weightedMissedEarlyExitRate": 0.08000000000000002,
+      "weightedRhythmScore": 0.5378133277833279,
+      "totalScore": 0.7009895571379839,
+      "rank": 30
+    },
+    {
+      "paramSetId": "ps_v3_031",
+      "paramSet": {
+        "id": "ps_v3_031",
+        "label": "V3_B_MC3_EC3_CF4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0.05,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_031",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.875,
+          "avgQuestionsAll": 20.26,
+          "softConfirmTotal": 144,
+          "hardConfirmTotal": 74,
+          "softHardRatio": 0.6605504587155964,
+          "hardBurstRate": 0.0051839447102605,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5659803030303032,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_031",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 23.026315789473685,
+          "avgQuestionsAll": 25.16,
+          "softConfirmTotal": 199,
+          "hardConfirmTotal": 129,
+          "softHardRatio": 0.6067073170731707,
+          "hardBurstRate": 0.01302488096036483,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5359507936507935,
+          "endedByBreakdown": {
+            "SUCCESS": 38,
+            "FAIL_LIST": 11,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_031",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 23.954545454545453,
+          "avgQuestionsAll": 28.32,
+          "softConfirmTotal": 254,
+          "hardConfirmTotal": 143,
+          "softHardRatio": 0.6397984886649875,
+          "hardBurstRate": 0.009911799782767525,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 17,
+          "missedEarlyExitCount": 7,
+          "rhythmScore": 0.5050472471972473,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 22,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.672,
+      "weightedAvgQuestions": 25.444000000000003,
+      "weightedSoftHardRatio": 0.6307124140383826,
+      "weightedHardBurstRate": 0.010211461239305043,
+      "weightedFalsePositiveRate": 0.20800000000000002,
+      "weightedMissedEarlyExitRate": 0.08000000000000002,
+      "weightedRhythmScore": 0.529595276945277,
+      "totalScore": 0.7001896229744355,
+      "rank": 31
+    },
+    {
+      "paramSetId": "ps_v3_006",
+      "paramSet": {
+        "id": "ps_v3_006",
+        "label": "V3_A_MC2_EC1",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 50
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 30
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 20
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_006",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.770833333333332,
+          "avgQuestionsAll": 20.16,
+          "softConfirmTotal": 150,
+          "hardConfirmTotal": 76,
+          "softHardRatio": 0.6637168141592921,
+          "hardBurstRate": 0,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5726118326118326,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_006",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 36,
+          "successRate": 0.72,
+          "avgQuestionsOnSuccess": 23.97222222222222,
+          "avgQuestionsAll": 25.9,
+          "softConfirmTotal": 219,
+          "hardConfirmTotal": 132,
+          "softHardRatio": 0.6239316239316239,
+          "hardBurstRate": 0.01065476459024846,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5488057997557999,
+          "endedByBreakdown": {
+            "FAIL_LIST": 13,
+            "SUCCESS": 36,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_006",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 24.636363636363637,
+          "avgQuestionsAll": 28.54,
+          "softConfirmTotal": 229,
+          "hardConfirmTotal": 130,
+          "softHardRatio": 0.637883008356546,
+          "hardBurstRate": 0.013938601708763002,
+          "earlyExitCount": 20,
+          "earlyExitFalsePositiveCount": 14,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5130657398157398,
+          "endedByBreakdown": {
+            "FAIL_LIST": 26,
+            "SUCCESS": 22,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.656,
+      "weightedAvgQuestions": 25.808,
+      "weightedSoftHardRatio": 0.6374692157471264,
+      "weightedHardBurstRate": 0.009837346519604585,
+      "weightedFalsePositiveRate": 0.17600000000000002,
+      "weightedMissedEarlyExitRate": 0.10400000000000001,
+      "weightedRhythmScore": 0.5392709823509825,
+      "totalScore": 0.6976502851578503,
+      "rank": 32
+    },
+    {
+      "paramSetId": "ps_v3_023",
+      "paramSet": {
+        "id": "ps_v3_023",
+        "label": "V3_A_MC5_EC3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.12,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_023",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.791666666666668,
+          "avgQuestionsAll": 20.26,
+          "softConfirmTotal": 140,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.6194690265486725,
+          "hardBurstRate": 0.006511044511044513,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5623936507936508,
+          "endedByBreakdown": {
+            "FAIL_LIST": 1,
+            "SUCCESS": 48,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_023",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 23.18421052631579,
+          "avgQuestionsAll": 25.12,
+          "softConfirmTotal": 211,
+          "hardConfirmTotal": 129,
+          "softHardRatio": 0.6205882352941177,
+          "hardBurstRate": 0.010267129090658505,
+          "earlyExitCount": 8,
+          "earlyExitFalsePositiveCount": 7,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.5593013042513043,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 38,
+            "FAIL_LIST": 11
+          }
+        },
+        {
+          "paramSetId": "ps_v3_023",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 21,
+          "successRate": 0.42,
+          "avgQuestionsOnSuccess": 24.523809523809526,
+          "avgQuestionsAll": 29.5,
+          "softConfirmTotal": 256,
+          "hardConfirmTotal": 143,
+          "softHardRatio": 0.6416040100250626,
+          "hardBurstRate": 0.013480082982186767,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5185063991563993,
+          "endedByBreakdown": {
+            "FAIL_LIST": 26,
+            "SUCCESS": 21,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.664,
+      "weightedAvgQuestions": 25.900000000000002,
+      "weightedSoftHardRatio": 0.6287707034374066,
+      "weightedHardBurstRate": 0.010801093731347012,
+      "weightedFalsePositiveRate": 0.2,
+      "weightedMissedEarlyExitRate": 0.088,
+      "weightedRhythmScore": 0.5436018115218116,
+      "totalScore": 0.6970571421227871,
+      "rank": 33
+    },
+    {
+      "paramSetId": "ps_v3_041",
+      "paramSet": {
+        "id": "ps_v3_041",
+        "label": "V3_E_Q20_MC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          20,
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q20": {
+            "minConfidence": 0.02,
+            "maxEffectiveCandidates": 150
+          },
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          },
+          "q40": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_041",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.5625,
+          "avgQuestionsAll": 20.18,
+          "softConfirmTotal": 123,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.5885167464114832,
+          "hardBurstRate": 0.004516129032258064,
+          "earlyExitCount": 2,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 0,
+          "rhythmScore": 0.5470380952380953,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_041",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 33,
+          "successRate": 0.66,
+          "avgQuestionsOnSuccess": 23.393939393939394,
+          "avgQuestionsAll": 25.82,
+          "softConfirmTotal": 221,
+          "hardConfirmTotal": 123,
+          "softHardRatio": 0.6424418604651163,
+          "hardBurstRate": 0.014443902155326684,
+          "earlyExitCount": 8,
+          "earlyExitFalsePositiveCount": 6,
+          "missedEarlyExitCount": 9,
+          "rhythmScore": 0.536085114885115,
+          "endedByBreakdown": {
+            "FAIL_LIST": 17,
+            "SUCCESS": 33
+          }
+        },
+        {
+          "paramSetId": "ps_v3_041",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 21.52173913043478,
+          "avgQuestionsAll": 25.96,
+          "softConfirmTotal": 205,
+          "hardConfirmTotal": 111,
+          "softHardRatio": 0.6487341772151899,
+          "hardBurstRate": 0.010019589245395697,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 12,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5148612554112555,
+          "endedByBreakdown": {
+            "SUCCESS": 23,
+            "FAIL_LIST": 25,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.64,
+      "weightedAvgQuestions": 24.748,
+      "weightedSoftHardRatio": 0.6341737643544192,
+      "weightedHardBurstRate": 0.010688622366740565,
+      "weightedFalsePositiveRate": 0.14400000000000002,
+      "weightedMissedEarlyExitRate": 0.15200000000000002,
+      "weightedRhythmScore": 0.5297861671661673,
+      "totalScore": 0.6967871309153846,
+      "rank": 34
+    },
+    {
+      "paramSetId": "ps_v3_032",
+      "paramSet": {
+        "id": "ps_v3_032",
+        "label": "V3_B_MC4_EC3_CF2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.45,
+        "hardConfidenceMin": 0.65,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_032",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.979166666666668,
+          "avgQuestionsAll": 20.4,
+          "softConfirmTotal": 127,
+          "hardConfirmTotal": 89,
+          "softHardRatio": 0.5879629629629629,
+          "hardBurstRate": 0.005102564102564103,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5510222222222223,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_032",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 22.763157894736842,
+          "avgQuestionsAll": 24.96,
+          "softConfirmTotal": 209,
+          "hardConfirmTotal": 121,
+          "softHardRatio": 0.6333333333333333,
+          "hardBurstRate": 0.006254200703027904,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5405732656232657,
+          "endedByBreakdown": {
+            "FAIL_LIST": 11,
+            "SUCCESS": 38,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_032",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 20,
+          "successRate": 0.4,
+          "avgQuestionsOnSuccess": 26.25,
+          "avgQuestionsAll": 30.22,
+          "softConfirmTotal": 277,
+          "hardConfirmTotal": 162,
+          "softHardRatio": 0.6309794988610479,
+          "hardBurstRate": 0.015284406921978083,
+          "earlyExitCount": 20,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5205433899433899,
+          "endedByBreakdown": {
+            "SUCCESS": 20,
+            "FAIL_LIST": 26,
+            "MAX_QUESTIONS": 4
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6560000000000001,
+      "weightedAvgQuestions": 26.152,
+      "weightedSoftHardRatio": 0.623317725470345,
+      "weightedHardBurstRate": 0.009635955870515217,
+      "weightedFalsePositiveRate": 0.176,
+      "weightedMissedEarlyExitRate": 0.10400000000000001,
+      "weightedRhythmScore": 0.5346511066711067,
+      "totalScore": 0.6940732876270937,
+      "rank": 35
+    },
+    {
+      "paramSetId": "ps_v3_001",
+      "paramSet": {
+        "id": "ps_v3_001",
+        "label": "V3_A_MC1_EC1",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.04,
+            "maxEffectiveCandidates": 50
+          },
+          "q30": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 30
+          },
+          "q35": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 20
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_001",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.395833333333332,
+          "avgQuestionsAll": 20.9,
+          "softConfirmTotal": 156,
+          "hardConfirmTotal": 76,
+          "softHardRatio": 0.6724137931034483,
+          "hardBurstRate": 0.0028695652173913043,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5574368686868687,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_001",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 34,
+          "successRate": 0.68,
+          "avgQuestionsOnSuccess": 23.11764705882353,
+          "avgQuestionsAll": 25.8,
+          "softConfirmTotal": 246,
+          "hardConfirmTotal": 125,
+          "softHardRatio": 0.6630727762803235,
+          "hardBurstRate": 0.006070178005661877,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5634090687090686,
+          "endedByBreakdown": {
+            "FAIL_LIST": 14,
+            "MAX_QUESTIONS": 2,
+            "SUCCESS": 34
+          }
+        },
+        {
+          "paramSetId": "ps_v3_001",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 23,
+          "successRate": 0.46,
+          "avgQuestionsOnSuccess": 25.391304347826086,
+          "avgQuestionsAll": 29.34,
+          "softConfirmTotal": 258,
+          "hardConfirmTotal": 166,
+          "softHardRatio": 0.6084905660377359,
+          "hardBurstRate": 0.024194441110824815,
+          "earlyExitCount": 11,
+          "earlyExitFalsePositiveCount": 7,
+          "missedEarlyExitCount": 16,
+          "rhythmScore": 0.5384578366078366,
+          "endedByBreakdown": {
+            "FAIL_LIST": 19,
+            "SUCCESS": 23,
+            "MAX_QUESTIONS": 8
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.648,
+      "weightedAvgQuestions": 26.236,
+      "weightedSoftHardRatio": 0.6431080955479135,
+      "weightedHardBurstRate": 0.012679760690072938,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.184,
+      "weightedRhythmScore": 0.5522341358641358,
+      "totalScore": 0.6938862470721977,
+      "rank": 36
+    },
+    {
+      "paramSetId": "ps_v3_012",
+      "paramSet": {
+        "id": "ps_v3_012",
+        "label": "V3_A_MC3_EC2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 65
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 40
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 25
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_012",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.270833333333332,
+          "avgQuestionsAll": 20.78,
+          "softConfirmTotal": 157,
+          "hardConfirmTotal": 75,
+          "softHardRatio": 0.6767241379310345,
+          "hardBurstRate": 0.0031098901098901097,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5711682539682541,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_012",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 32,
+          "successRate": 0.64,
+          "avgQuestionsOnSuccess": 23.40625,
+          "avgQuestionsAll": 26.2,
+          "softConfirmTotal": 241,
+          "hardConfirmTotal": 122,
+          "softHardRatio": 0.6639118457300276,
+          "hardBurstRate": 0.009199819535303407,
+          "earlyExitCount": 16,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5402419913419916,
+          "endedByBreakdown": {
+            "FAIL_LIST": 18,
+            "SUCCESS": 32
+          }
+        },
+        {
+          "paramSetId": "ps_v3_012",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 26.227272727272727,
+          "avgQuestionsAll": 29.18,
+          "softConfirmTotal": 271,
+          "hardConfirmTotal": 158,
+          "softHardRatio": 0.6317016317016317,
+          "hardBurstRate": 0.019650215550357862,
+          "earlyExitCount": 18,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 10,
+          "rhythmScore": 0.5221491341991343,
+          "endedByBreakdown": {
+            "FAIL_LIST": 25,
+            "SUCCESS": 22,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.624,
+      "weightedAvgQuestions": 26.308,
+      "weightedSoftHardRatio": 0.6535902185588707,
+      "weightedHardBurstRate": 0.012161992056242531,
+      "weightedFalsePositiveRate": 0.18400000000000002,
+      "weightedMissedEarlyExitRate": 0.10000000000000002,
+      "weightedRhythmScore": 0.5391901010101012,
+      "totalScore": 0.6861218327512728,
+      "rank": 37
+    },
+    {
+      "paramSetId": "ps_v3_010",
+      "paramSet": {
+        "id": "ps_v3_010",
+        "label": "V3_A_MC2_EC5",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 100
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 70
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 40
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_010",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.479166666666668,
+          "avgQuestionsAll": 19.94,
+          "softConfirmTotal": 129,
+          "hardConfirmTotal": 82,
+          "softHardRatio": 0.6113744075829384,
+          "hardBurstRate": 0.003955685891169762,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5571873015873017,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_010",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 38,
+          "successRate": 0.76,
+          "avgQuestionsOnSuccess": 24.13157894736842,
+          "avgQuestionsAll": 27.06,
+          "softConfirmTotal": 237,
+          "hardConfirmTotal": 149,
+          "softHardRatio": 0.6139896373056994,
+          "hardBurstRate": 0.013205148981999076,
+          "earlyExitCount": 4,
+          "earlyExitFalsePositiveCount": 3,
+          "missedEarlyExitCount": 8,
+          "rhythmScore": 0.5456886724386725,
+          "endedByBreakdown": {
+            "SUCCESS": 38,
+            "FAIL_LIST": 6,
+            "MAX_QUESTIONS": 6
+          }
+        },
+        {
+          "paramSetId": "ps_v3_010",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 18,
+          "successRate": 0.36,
+          "avgQuestionsOnSuccess": 25.666666666666668,
+          "avgQuestionsAll": 30.34,
+          "softConfirmTotal": 277,
+          "hardConfirmTotal": 151,
+          "softHardRatio": 0.647196261682243,
+          "hardBurstRate": 0.009949826111116434,
+          "earlyExitCount": 17,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 15,
+          "rhythmScore": 0.5323402208902209,
+          "endedByBreakdown": {
+            "FAIL_LIST": 28,
+            "SUCCESS": 18,
+            "MAX_QUESTIONS": 4
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.64,
+      "weightedAvgQuestions": 26.948,
+      "weightedSoftHardRatio": 0.6267492411117647,
+      "weightedHardBurstRate": 0.010053127215480157,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.188,
+      "weightedRhythmScore": 0.5426490176490177,
+      "totalScore": 0.6851945131545303,
+      "rank": 38
+    },
+    {
+      "paramSetId": "ps_v3_033",
+      "paramSet": {
+        "id": "ps_v3_033",
+        "label": "V3_B_MC4_EC3_CF3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.55,
+        "hardConfidenceMin": 0.55,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_033",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.0625,
+          "avgQuestionsAll": 20.82,
+          "softConfirmTotal": 135,
+          "hardConfirmTotal": 85,
+          "softHardRatio": 0.6136363636363636,
+          "hardBurstRate": 0.0050732732732732735,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5525564713064713,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 1,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_033",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 35,
+          "successRate": 0.7,
+          "avgQuestionsOnSuccess": 22.314285714285713,
+          "avgQuestionsAll": 25.7,
+          "softConfirmTotal": 214,
+          "hardConfirmTotal": 149,
+          "softHardRatio": 0.5895316804407713,
+          "hardBurstRate": 0.008427896534857484,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5593037296037296,
+          "endedByBreakdown": {
+            "FAIL_LIST": 13,
+            "SUCCESS": 35,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_033",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 22,
+          "successRate": 0.44,
+          "avgQuestionsOnSuccess": 25.363636363636363,
+          "avgQuestionsAll": 29.76,
+          "softConfirmTotal": 280,
+          "hardConfirmTotal": 156,
+          "softHardRatio": 0.6422018348623854,
+          "hardBurstRate": 0.012245198051649663,
+          "earlyExitCount": 23,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.516627627927628,
+          "endedByBreakdown": {
+            "FAIL_LIST": 27,
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 22
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.648,
+      "weightedAvgQuestions": 26.348000000000006,
+      "weightedSoftHardRatio": 0.6154206788485355,
+      "weightedHardBurstRate": 0.009283892489257513,
+      "weightedFalsePositiveRate": 0.224,
+      "weightedMissedEarlyExitRate": 0.08800000000000002,
+      "weightedRhythmScore": 0.5408838372738374,
+      "totalScore": 0.6849620623633115,
+      "rank": 39
+    },
+    {
+      "paramSetId": "ps_v3_029",
+      "paramSet": {
+        "id": "ps_v3_029",
+        "label": "V3_B_MC3_EC3_CF2",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.45,
+        "hardConfidenceMin": 0.65,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_029",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.75,
+          "avgQuestionsAll": 20.46,
+          "softConfirmTotal": 144,
+          "hardConfirmTotal": 90,
+          "softHardRatio": 0.6153846153846154,
+          "hardBurstRate": 0.003665363310524601,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5699587301587302,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 1,
+            "SUCCESS": 48,
+            "FAIL_LIST": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_029",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 39,
+          "successRate": 0.78,
+          "avgQuestionsOnSuccess": 23.71794871794872,
+          "avgQuestionsAll": 25.66,
+          "softConfirmTotal": 217,
+          "hardConfirmTotal": 120,
+          "softHardRatio": 0.6439169139465876,
+          "hardBurstRate": 0.008498022781332739,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 9,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5485735042735044,
+          "endedByBreakdown": {
+            "FAIL_LIST": 11,
+            "SUCCESS": 39
+          }
+        },
+        {
+          "paramSetId": "ps_v3_029",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 16,
+          "successRate": 0.32,
+          "avgQuestionsOnSuccess": 26.1875,
+          "avgQuestionsAll": 30.14,
+          "softConfirmTotal": 302,
+          "hardConfirmTotal": 176,
+          "softHardRatio": 0.6317991631799164,
+          "hardBurstRate": 0.02147833973640425,
+          "earlyExitCount": 28,
+          "earlyExitFalsePositiveCount": 18,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5048462925962927,
+          "endedByBreakdown": {
+            "FAIL_LIST": 33,
+            "SUCCESS": 16,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.632,
+      "weightedAvgQuestions": 26.412000000000003,
+      "weightedSoftHardRatio": 0.6333633539275247,
+      "weightedHardBurstRate": 0.012723617669199716,
+      "weightedFalsePositiveRate": 0.21599999999999997,
+      "weightedMissedEarlyExitRate": 0.06,
+      "weightedRhythmScore": 0.5353596647796649,
+      "totalScore": 0.684739940103799,
+      "rank": 40
+    },
+    {
+      "paramSetId": "ps_v3_045",
+      "paramSet": {
+        "id": "ps_v3_045",
+        "label": "V3_F_CF3_bl030",
+        "confidenceConfirmBandLower": 0.3,
+        "confidenceConfirmBandUpper": 0.55,
+        "hardConfidenceMin": 0.55,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.06,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.08,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.1,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_045",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.895833333333332,
+          "avgQuestionsAll": 20.4,
+          "softConfirmTotal": 142,
+          "hardConfirmTotal": 87,
+          "softHardRatio": 0.6200873362445415,
+          "hardBurstRate": 0.0038888888888888888,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5745306637806639,
+          "endedByBreakdown": {
+            "FAIL_LIST": 2,
+            "SUCCESS": 48
+          }
+        },
+        {
+          "paramSetId": "ps_v3_045",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 37,
+          "successRate": 0.74,
+          "avgQuestionsOnSuccess": 23.756756756756758,
+          "avgQuestionsAll": 26.12,
+          "softConfirmTotal": 208,
+          "hardConfirmTotal": 141,
+          "softHardRatio": 0.5959885386819485,
+          "hardBurstRate": 0.013173861085151409,
+          "earlyExitCount": 10,
+          "earlyExitFalsePositiveCount": 8,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5218704906204905,
+          "endedByBreakdown": {
+            "FAIL_LIST": 12,
+            "SUCCESS": 37,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_045",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 19,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 25.68421052631579,
+          "avgQuestionsAll": 29.62,
+          "softConfirmTotal": 241,
+          "hardConfirmTotal": 146,
+          "softHardRatio": 0.6227390180878553,
+          "hardBurstRate": 0.015329919136370749,
+          "earlyExitCount": 16,
+          "earlyExitFalsePositiveCount": 12,
+          "missedEarlyExitCount": 15,
+          "rhythmScore": 0.52076882006882,
+          "endedByBreakdown": {
+            "FAIL_LIST": 28,
+            "SUCCESS": 19,
+            "MAX_QUESTIONS": 3
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.64,
+      "weightedAvgQuestions": 26.376,
+      "weightedSoftHardRatio": 0.6115084899568298,
+      "weightedHardBurstRate": 0.01217928986638664,
+      "weightedFalsePositiveRate": 0.16,
+      "weightedMissedEarlyExitRate": 0.152,
+      "weightedRhythmScore": 0.5319618570318569,
+      "totalScore": 0.6840491057122301,
+      "rank": 41
+    },
+    {
+      "paramSetId": "ps_v3_027",
+      "paramSet": {
+        "id": "ps_v3_027",
+        "label": "V3_B_MC2_EC3_CF3",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.55,
+        "hardConfidenceMin": 0.55,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_027",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.1875,
+          "avgQuestionsAll": 20.86,
+          "softConfirmTotal": 153,
+          "hardConfirmTotal": 94,
+          "softHardRatio": 0.6194331983805668,
+          "hardBurstRate": 0.002762762762762763,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5550277777777778,
+          "endedByBreakdown": {
+            "FAIL_LIST": 1,
+            "SUCCESS": 48,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_027",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 39,
+          "successRate": 0.78,
+          "avgQuestionsOnSuccess": 23.28205128205128,
+          "avgQuestionsAll": 25.62,
+          "softConfirmTotal": 214,
+          "hardConfirmTotal": 136,
+          "softHardRatio": 0.6114285714285714,
+          "hardBurstRate": 0.0123901191102804,
+          "earlyExitCount": 6,
+          "earlyExitFalsePositiveCount": 5,
+          "missedEarlyExitCount": 5,
+          "rhythmScore": 0.5525478854478856,
+          "endedByBreakdown": {
+            "FAIL_LIST": 9,
+            "SUCCESS": 39,
+            "MAX_QUESTIONS": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_027",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 16,
+          "successRate": 0.32,
+          "avgQuestionsOnSuccess": 24.5625,
+          "avgQuestionsAll": 29.82,
+          "softConfirmTotal": 231,
+          "hardConfirmTotal": 166,
+          "softHardRatio": 0.5818639798488665,
+          "hardBurstRate": 0.019757230430200393,
+          "earlyExitCount": 18,
+          "earlyExitFalsePositiveCount": 11,
+          "missedEarlyExitCount": 16,
+          "rhythmScore": 0.504262631812632,
+          "endedByBreakdown": {
+            "FAIL_LIST": 30,
+            "SUCCESS": 16,
+            "MAX_QUESTIONS": 4
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.632,
+      "weightedAvgQuestions": 26.348000000000003,
+      "weightedSoftHardRatio": 0.6012036601870885,
+      "weightedHardBurstRate": 0.01341149236874487,
+      "weightedFalsePositiveRate": 0.128,
+      "weightedMissedEarlyExitRate": 0.17600000000000002,
+      "weightedRhythmScore": 0.5337297624597626,
+      "totalScore": 0.6832121930278107,
+      "rank": 42
+    },
+    {
+      "paramSetId": "ps_v3_016",
+      "paramSet": {
+        "id": "ps_v3_016",
+        "label": "V3_A_MC4_EC1",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 20
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_016",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 19.875,
+          "avgQuestionsAll": 20.38,
+          "softConfirmTotal": 144,
+          "hardConfirmTotal": 79,
+          "softHardRatio": 0.6457399103139013,
+          "hardBurstRate": 0.003942552942552943,
+          "earlyExitCount": 1,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 1,
+          "rhythmScore": 0.5509785714285715,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 1,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_016",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 36,
+          "successRate": 0.72,
+          "avgQuestionsOnSuccess": 22.944444444444443,
+          "avgQuestionsAll": 25.04,
+          "softConfirmTotal": 210,
+          "hardConfirmTotal": 113,
+          "softHardRatio": 0.6501547987616099,
+          "hardBurstRate": 0.012953804165585371,
+          "earlyExitCount": 11,
+          "earlyExitFalsePositiveCount": 10,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5361920801420802,
+          "endedByBreakdown": {
+            "SUCCESS": 36,
+            "FAIL_LIST": 13,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_016",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 18,
+          "successRate": 0.36,
+          "avgQuestionsOnSuccess": 25.555555555555557,
+          "avgQuestionsAll": 28.26,
+          "softConfirmTotal": 237,
+          "hardConfirmTotal": 164,
+          "softHardRatio": 0.5910224438902744,
+          "hardBurstRate": 0.016883994369969128,
+          "earlyExitCount": 26,
+          "earlyExitFalsePositiveCount": 20,
+          "missedEarlyExitCount": 6,
+          "rhythmScore": 0.5068169552669552,
+          "endedByBreakdown": {
+            "FAIL_LIST": 31,
+            "SUCCESS": 18,
+            "MAX_QUESTIONS": 1
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.624,
+      "weightedAvgQuestions": 25.396,
+      "weightedSoftHardRatio": 0.625618879123534,
+      "weightedHardBurstRate": 0.012723630002732389,
+      "weightedFalsePositiveRate": 0.24000000000000005,
+      "weightedMissedEarlyExitRate": 0.076,
+      "weightedRhythmScore": 0.5273993284493285,
+      "totalScore": 0.680649457757013,
+      "rank": 43
+    },
+    {
+      "paramSetId": "ps_v3_028",
+      "paramSet": {
+        "id": "ps_v3_028",
+        "label": "V3_B_MC2_EC3_CF4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0.05,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.05,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_028",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.4375,
+          "avgQuestionsAll": 20.8,
+          "softConfirmTotal": 150,
+          "hardConfirmTotal": 86,
+          "softHardRatio": 0.635593220338983,
+          "hardBurstRate": 0.008682364182364182,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.572318253968254,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "MAX_QUESTIONS": 1,
+            "FAIL_LIST": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_028",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 33,
+          "successRate": 0.66,
+          "avgQuestionsOnSuccess": 24.757575757575758,
+          "avgQuestionsAll": 27.52,
+          "softConfirmTotal": 275,
+          "hardConfirmTotal": 152,
+          "softHardRatio": 0.6440281030444965,
+          "hardBurstRate": 0.011083395592512002,
+          "earlyExitCount": 14,
+          "earlyExitFalsePositiveCount": 12,
+          "missedEarlyExitCount": 3,
+          "rhythmScore": 0.5451508325008324,
+          "endedByBreakdown": {
+            "FAIL_LIST": 17,
+            "SUCCESS": 33
+          }
+        },
+        {
+          "paramSetId": "ps_v3_028",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 20,
+          "successRate": 0.4,
+          "avgQuestionsOnSuccess": 23.8,
+          "avgQuestionsAll": 29.18,
+          "softConfirmTotal": 270,
+          "hardConfirmTotal": 153,
+          "softHardRatio": 0.6382978723404256,
+          "hardBurstRate": 0.013641197028293804,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 13,
+          "missedEarlyExitCount": 9,
+          "rhythmScore": 0.5302395659895661,
+          "endedByBreakdown": {
+            "FAIL_LIST": 28,
+            "SUCCESS": 20,
+            "MAX_QUESTIONS": 2
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.6160000000000001,
+      "weightedAvgQuestions": 26.840000000000003,
+      "weightedSoftHardRatio": 0.6400490342217655,
+      "weightedHardBurstRate": 0.011626309884795159,
+      "weightedFalsePositiveRate": 0.2,
+      "weightedMissedEarlyExitRate": 0.104,
+      "weightedRhythmScore": 0.5446198101898103,
+      "totalScore": 0.6775042534526781,
+      "rank": 44
+    },
+    {
+      "paramSetId": "ps_v3_034",
+      "paramSet": {
+        "id": "ps_v3_034",
+        "label": "V3_B_MC4_EC3_CF4",
+        "confidenceConfirmBandLower": 0.25,
+        "confidenceConfirmBandUpper": 0.5,
+        "hardConfidenceMin": 0.6,
+        "hardConfirmInjectionRatio": 0.05,
+        "reviewIndices": [
+          25,
+          30,
+          35
+        ],
+        "earlyExitThresholds": {
+          "q25": {
+            "minConfidence": 0.07,
+            "maxEffectiveCandidates": 80
+          },
+          "q30": {
+            "minConfidence": 0.09,
+            "maxEffectiveCandidates": 50
+          },
+          "q35": {
+            "minConfidence": 0.11,
+            "maxEffectiveCandidates": 30
+          }
+        }
+      },
+      "levelResults": [
+        {
+          "paramSetId": "ps_v3_034",
+          "ambiguityLevel": 1,
+          "totalTrials": 50,
+          "successCount": 48,
+          "successRate": 0.96,
+          "avgQuestionsOnSuccess": 20.125,
+          "avgQuestionsAll": 20.16,
+          "softConfirmTotal": 140,
+          "hardConfirmTotal": 71,
+          "softHardRatio": 0.6635071090047393,
+          "hardBurstRate": 0.00282020202020202,
+          "earlyExitCount": 0,
+          "earlyExitFalsePositiveCount": 0,
+          "missedEarlyExitCount": 2,
+          "rhythmScore": 0.5645428571428571,
+          "endedByBreakdown": {
+            "SUCCESS": 48,
+            "FAIL_LIST": 2
+          }
+        },
+        {
+          "paramSetId": "ps_v3_034",
+          "ambiguityLevel": 3,
+          "totalTrials": 50,
+          "successCount": 33,
+          "successRate": 0.66,
+          "avgQuestionsOnSuccess": 22.96969696969697,
+          "avgQuestionsAll": 26,
+          "softConfirmTotal": 230,
+          "hardConfirmTotal": 129,
+          "softHardRatio": 0.6406685236768802,
+          "hardBurstRate": 0.012685827184111828,
+          "earlyExitCount": 13,
+          "earlyExitFalsePositiveCount": 11,
+          "missedEarlyExitCount": 4,
+          "rhythmScore": 0.541631746031746,
+          "endedByBreakdown": {
+            "FAIL_LIST": 16,
+            "SUCCESS": 33,
+            "MAX_QUESTIONS": 1
+          }
+        },
+        {
+          "paramSetId": "ps_v3_034",
+          "ambiguityLevel": 5,
+          "totalTrials": 50,
+          "successCount": 17,
+          "successRate": 0.34,
+          "avgQuestionsOnSuccess": 26.529411764705884,
+          "avgQuestionsAll": 29.86,
+          "softConfirmTotal": 265,
+          "hardConfirmTotal": 153,
+          "softHardRatio": 0.6339712918660287,
+          "hardBurstRate": 0.0187577749915435,
+          "earlyExitCount": 21,
+          "earlyExitFalsePositiveCount": 17,
+          "missedEarlyExitCount": 12,
+          "rhythmScore": 0.5118937229437229,
+          "endedByBreakdown": {
+            "MAX_QUESTIONS": 3,
+            "FAIL_LIST": 30,
+            "SUCCESS": 17
+          }
+        }
+      ],
+      "weightedSuccessRate": 0.5920000000000001,
+      "weightedAvgQuestions": 26.376,
+      "weightedSoftHardRatio": 0.6425573480181115,
+      "weightedHardBurstRate": 0.013141481274302536,
+      "weightedFalsePositiveRate": 0.22400000000000003,
+      "weightedMissedEarlyExitRate": 0.136,
+      "weightedRhythmScore": 0.534318759018759,
+      "totalScore": 0.6648934625762568,
+      "rank": 45
+    }
+  ],
+  "baselineScoreCard": {
+    "paramSetId": "baseline",
+    "paramSet": {
+      "id": "baseline",
+      "label": "Baseline (earlyExit OFF, current confirm)",
+      "confidenceConfirmBandLower": 0.25,
+      "confidenceConfirmBandUpper": 0.7,
+      "hardConfidenceMin": 0.45,
+      "hardConfirmInjectionRatio": 0.1,
+      "reviewIndices": [],
+      "earlyExitThresholds": {}
+    },
+    "levelResults": [
+      {
+        "paramSetId": "baseline",
+        "ambiguityLevel": 1,
+        "totalTrials": 50,
+        "successCount": 48,
+        "successRate": 0.96,
+        "avgQuestionsOnSuccess": 20.125,
+        "avgQuestionsAll": 20.52,
+        "softConfirmTotal": 135,
+        "hardConfirmTotal": 89,
+        "softHardRatio": 0.6026785714285714,
+        "hardBurstRate": 0.002909090909090909,
+        "earlyExitCount": 0,
+        "earlyExitFalsePositiveCount": 0,
+        "missedEarlyExitCount": 2,
+        "rhythmScore": 0.5651246031746031,
+        "endedByBreakdown": {
+          "MAX_QUESTIONS": 1,
+          "SUCCESS": 48,
+          "FAIL_LIST": 1
+        }
+      },
+      {
+        "paramSetId": "baseline",
+        "ambiguityLevel": 3,
+        "totalTrials": 50,
+        "successCount": 41,
+        "successRate": 0.82,
+        "avgQuestionsOnSuccess": 23.195121951219512,
+        "avgQuestionsAll": 25.42,
+        "softConfirmTotal": 215,
+        "hardConfirmTotal": 132,
+        "softHardRatio": 0.6195965417867435,
+        "hardBurstRate": 0.009751630041952624,
+        "earlyExitCount": 0,
+        "earlyExitFalsePositiveCount": 0,
+        "missedEarlyExitCount": 9,
+        "rhythmScore": 0.5772398767898769,
+        "endedByBreakdown": {
+          "FAIL_LIST": 3,
+          "SUCCESS": 41,
+          "MAX_QUESTIONS": 6
+        }
+      },
+      {
+        "paramSetId": "baseline",
+        "ambiguityLevel": 5,
+        "totalTrials": 50,
+        "successCount": 24,
+        "successRate": 0.48,
+        "avgQuestionsOnSuccess": 26.5,
+        "avgQuestionsAll": 32.18,
+        "softConfirmTotal": 287,
+        "hardConfirmTotal": 186,
+        "softHardRatio": 0.6067653276955602,
+        "hardBurstRate": 0.016780983044140937,
+        "earlyExitCount": 0,
+        "earlyExitFalsePositiveCount": 0,
+        "missedEarlyExitCount": 26,
+        "rhythmScore": 0.5644697913197912,
+        "endedByBreakdown": {
+          "FAIL_LIST": 5,
+          "MAX_QUESTIONS": 21,
+          "SUCCESS": 24
+        }
+      }
+    ],
+    "weightedSuccessRate": 0.712,
+    "weightedAvgQuestions": 27.144000000000002,
+    "weightedSoftHardRatio": 0.6110804620786359,
+    "weightedHardBurstRate": 0.011194863416255606,
+    "weightedFalsePositiveRate": 0,
+    "weightedMissedEarlyExitRate": 0.28800000000000003,
+    "weightedRhythmScore": 0.5697087878787879,
+    "totalScore": 0.7160394386541168,
+    "rank": 0
+  },
+  "recommendedForPhase2": [
+    "ps_v3_030",
+    "ps_v3_025",
+    "ps_v3_038",
+    "ps_v3_004",
+    "ps_v3_018",
+    "ps_v3_024",
+    "ps_v3_036",
+    "ps_v3_009"
+  ]
+}

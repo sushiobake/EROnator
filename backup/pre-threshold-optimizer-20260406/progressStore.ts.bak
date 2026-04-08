@@ -58,28 +58,8 @@ export type SimProgress = {
   startedAt: string;
 };
 
-/** 閾値最適化スイープ（GET bulk-job-status で参照） */
-export type OptimizeSweepProgress = {
-  sweepId: string;
-  phase: 1 | 2;
-  pipelineStep?: 'phase1' | 'phase2' | 'phase3' | 'done';
-  status: 'running' | 'completed' | 'error';
-  paramSetsDone: number;
-  paramSetsTotal: number;
-  simulationsDone: number;
-  simulationsTotal: number;
-  currentParamSetId: string | null;
-  startedAt: string;
-  errorMessage?: string;
-  resultPath?: string;
-  pipelineResultPath?: string;
-  elapsedSeconds?: number;
-  estimatedRemainingSeconds?: number | null;
-};
-
 let _progress: BulkProgress | null = null;
 let _simProgress: SimProgress | null = null;
-let _optimizeProgress: OptimizeSweepProgress | null = null;
 let _lastCompleted: (BulkProgress & { completedAt: string }) | null = null;
 let _lastCompletedAt = 0;
 let _queuedJob: QueuedJob | null = null;
@@ -184,18 +164,6 @@ export function getSimProgress(): SimProgress | null {
 
 export function clearSimProgress(): void {
   _simProgress = null;
-}
-
-export function setOptimizeProgress(p: OptimizeSweepProgress | null): void {
-  _optimizeProgress = p;
-}
-
-export function getOptimizeProgress(): OptimizeSweepProgress | null {
-  return _optimizeProgress;
-}
-
-export function clearOptimizeProgress(): void {
-  _optimizeProgress = null;
 }
 
 // --- 予約キュー ---

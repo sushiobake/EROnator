@@ -13,8 +13,8 @@ export interface EarlyExitStepSnapshot {
   } | null;
   requiredConditions: number | null;
   matchLowConfidence: boolean;
-  /** 実質候補が閾値以下（狭すぎ）で②マッチ */
-  matchNarrowCandidates: boolean;
+  /** 実質候補が閾値超（広すぎ＝絞れていない）で②マッチ */
+  matchWideCandidates: boolean;
   matchedCount: number;
   wouldEarlyExit: boolean;
 }

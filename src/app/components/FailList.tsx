@@ -2,11 +2,12 @@
  * FAIL_LISTコンポーネント
  * 上位N件（config failListN・既出除外・同一作者1本まで）をグリッド表示。
  * PC: 5列×行（推薦結果のPCグリッドに近い）、モバイル: 2列（推薦キャプチャの2列に近い）。
+ * 流れ: ①リストから選択 → ②タイトル一部で検索（右上/先に表示） → ③「リストにない」でタイトル入力
  */
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import {
   failFlowBackToTopButtonStyle,
   getFailListBottomRowStyles,
@@ -24,6 +25,9 @@ interface FailListCandidateItem {
 }
 
 const DEFAULT_NOT_IN_LIST_PROMPT = 'ない？ならここに作品名書いてよ！お願いだから！';
+
+/** 検索ブロック見出し（右上エリアのラベル） */
+const FAIL_LIST_SEARCH_HEADING = '名前を入れて検索';
 
 const CARD_GAP = 10;
 
@@ -246,194 +250,278 @@ export function FailList({
     color: 'var(--color-text)',
   };
 
-  return (
-    <div style={{ padding: isMobile ? '0.75rem 0' : '1rem 0', maxWidth: '100%', minWidth: 0 }}>
-      {!hideCandidateGrid && (
+  const searchPanelStyle: CSSProperties = {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '1px solid #e5e7eb',
+    borderRadius: 10,
+    padding: isMobile ? '8px' : '10px 12px',
+    background: '#fff',
+  };
+
+  const candidateGrid = !hideCandidateGrid ? (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))',
+        gap: CARD_GAP,
+        marginBottom: isMobile ? 8 : 0,
+        width: '100%',
+      }}
+    >
+      {candidates.map((work) => (
+        <FailListWorkTile
+          key={work.workId}
+          work={work}
+          streamerMode={streamerMode}
+          interactionDisabled={interactionDisabled}
+          onSelect={() => handleSelectWork(work.workId)}
+        />
+      ))}
+    </div>
+  ) : null;
+
+  const searchPanelInner = (
+    <>
+      <p
+        style={{
+          margin: '0 0 6px 0',
+          fontSize: chrome.fontBody + 1,
+          fontWeight: 700,
+          color: 'var(--color-text)',
+        }}
+      >
+        {FAIL_LIST_SEARCH_HEADING}
+      </p>
+      <p
+        style={{
+          margin: '0 0 8px 0',
+          fontSize: Math.max(11, chrome.fontBody - 1),
+          fontWeight: 500,
+          color: 'var(--color-text-muted)',
+          lineHeight: 1.35,
+        }}
+      >
+        {failListSearchIntro}
+      </p>
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        style={{ ...inputStyle, width: '100%' }}
+        placeholder={failListSearchPlaceholder}
+      />
+      {searchLoading && (
+        <p style={{ margin: '8px 0 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>検索中...</p>
+      )}
+      {searchResults.length > 0 && (
         <div
           style={{
+            marginTop: 8,
             display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(5, minmax(0, 1fr))',
-            gap: CARD_GAP,
-            marginBottom: 8,
-            width: '100%',
+            gap: 8,
+            maxHeight: 280,
+            overflowY: 'auto',
+            textAlign: 'left',
           }}
         >
-          {candidates.map((work) => (
-            <FailListWorkTile
-              key={work.workId}
-              work={work}
-              streamerMode={streamerMode}
-              interactionDisabled={interactionDisabled}
-              onSelect={() => handleSelectWork(work.workId)}
-            />
+          {searchResults.map((w) => (
+            <button
+              key={`search-${w.workId}`}
+              type="button"
+              onClick={() => onSelectWork(w.workId, 'search', searchQuery.trim())}
+              disabled={interactionDisabled}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '64px 1fr',
+                gap: 8,
+                alignItems: 'center',
+                width: '100%',
+                textAlign: 'left',
+                border: '1px solid #e5e7eb',
+                background: '#fafafa',
+                borderRadius: 8,
+                padding: 8,
+                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <img
+                src={w.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(w.workId)}`}
+                alt={w.title}
+                style={{ width: 64, height: 48, borderRadius: 6, objectFit: 'cover' }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>
+                  {streamerMode ? <StreamerCensoredText text={w.title} censorAll /> : w.title}
+                </p>
+                <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  {w.authorName}
+                  {w.source === 'reserve' ? ' / reserve' : ''}
+                </p>
+              </div>
+            </button>
           ))}
         </div>
       )}
-      {!submittedNotInList && !showInput && (
-        <div
-          style={{
-            ...chrome.row,
-            marginTop: isMobile ? '0.75rem' : '1rem',
-            justifyContent: 'center',
-            alignSelf: 'center',
-          }}
-        >
-          <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
-            {failListBtnNotInList}
-          </button>
-          {onGoRecommend && (
-            <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
-              {failListBtnRecommend}
-            </button>
-          )}
-          <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
-            {failListBtnTop}
-          </button>
-        </div>
+    </>
+  );
+
+  const threeButtonsRow = !submittedNotInList && !showInput && (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: chrome.gap,
+        width: '100%',
+        maxWidth: '100%',
+        justifyContent: isMobile ? 'center' : 'flex-end',
+        alignItems: 'center',
+      }}
+    >
+      <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
+        {failListBtnNotInList}
+      </button>
+      {onGoRecommend && (
+        <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
+          {failListBtnRecommend}
+        </button>
       )}
-      {showInput && !submittedNotInList && (
-        <div
+      <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
+        {failListBtnTop}
+      </button>
+    </div>
+  );
+
+  const titleInputBlock =
+    showInput && !submittedNotInList ? (
+      <div
+        style={{
+          marginTop: isMobile ? '0.75rem' : 0,
+          width: '100%',
+          maxWidth: isMobile ? 420 : '100%',
+          minWidth: 0,
+          boxSizing: 'border-box',
+        }}
+      >
+        <p
           style={{
-            marginTop: isMobile ? '0.75rem' : '1rem',
+            margin: `0 0 ${chrome.gap}px 0`,
             width: '100%',
-            maxWidth: 420,
-            minWidth: 0,
-            alignSelf: 'center',
-            boxSizing: 'border-box',
+            fontSize: chrome.fontBody,
+            fontWeight: 600,
+            color: 'var(--color-text)',
+            lineHeight: 1.35,
+            wordBreak: 'break-word',
           }}
         >
-          <p
-            style={{
-              margin: `0 0 ${chrome.gap}px 0`,
-              width: '100%',
-              fontSize: chrome.fontBody,
-              fontWeight: 600,
-              color: 'var(--color-text)',
-              lineHeight: 1.35,
-              wordBreak: 'break-word',
-            }}
-          >
-            {notInListPrompt}
-          </p>
+          {notInListPrompt}
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: chrome.gap,
+            width: '100%',
+            minWidth: 0,
+          }}
+        >
+          <input
+            type="text"
+            value={submittedText}
+            onChange={(e) => setSubmittedText(e.target.value)}
+            style={inputStyle}
+            placeholder="作品名"
+          />
           <div
             style={{
               display: 'flex',
               flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              gap: chrome.gap,
-              width: '100%',
+              flex: '1 1 140px',
               minWidth: 0,
+              gap: chrome.gap,
             }}
           >
-            <input
-              type="text"
-              value={submittedText}
-              onChange={(e) => setSubmittedText(e.target.value)}
-              style={inputStyle}
-              placeholder="作品名"
-            />
-            <div
+            <button
+              type="button"
+              onClick={handleNotInList}
+              disabled={interactionDisabled}
               style={{
-                display: 'flex',
-                flexDirection: 'row',
-                flex: '1 1 140px',
-                minWidth: 0,
-                gap: chrome.gap,
+                ...chrome.btnPrimaryInline,
+                opacity: interactionDisabled ? 0.7 : 1,
+                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
               }}
             >
-              <button
-                type="button"
-                onClick={handleNotInList}
-                disabled={interactionDisabled}
-                style={{
-                  ...chrome.btnPrimaryInline,
-                  opacity: interactionDisabled ? 0.7 : 1,
-                  cursor: interactionDisabled ? 'not-allowed' : 'pointer',
-                }}
-              >
-                送信
-              </button>
-              <button type="button" onClick={onBackToTop} style={chrome.btnPrimaryInline}>
-                {failListBtnTop}
-              </button>
-            </div>
+              送信
+            </button>
+            <button type="button" onClick={onBackToTop} style={chrome.btnPrimaryInline}>
+              {failListBtnTop}
+            </button>
           </div>
         </div>
-      )}
+      </div>
+    ) : null;
+
+  const submittedResetBlock =
+    submittedNotInList && onBackToTopWithReset ? (
+      <button type="button" onClick={onBackToTopWithReset} style={failFlowBackToTopButtonStyle(isMobile)}>
+        {failListBtnTop}
+      </button>
+    ) : null;
+
+  if (isMobile) {
+    return (
+      <div style={{ padding: '0.75rem 0', maxWidth: '100%', minWidth: 0, width: '100%' }}>
+        {hideCandidateGrid ? (
+          <FailListVerticalList
+            candidates={candidates}
+            onSelectWork={(workId) => handleSelectWork(workId)}
+            streamerMode={streamerMode}
+          />
+        ) : (
+          candidateGrid
+        )}
+        <div style={{ ...searchPanelStyle, marginTop: '0.75rem' }}>{searchPanelInner}</div>
+        <div style={{ marginTop: '0.75rem' }}>{threeButtonsRow}</div>
+        {titleInputBlock}
+        {submittedResetBlock}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '0.25rem 0 0 0', maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
       <div
         style={{
-          marginTop: isMobile ? '0.75rem' : '1rem',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1.25fr) minmax(260px, 400px)',
+          gap: 20,
+          alignItems: 'stretch',
           width: '100%',
-          maxWidth: 520,
-          minWidth: 0,
-          alignSelf: 'center',
-          boxSizing: 'border-box',
-          border: '1px solid #e5e7eb',
-          borderRadius: 10,
-          padding: isMobile ? '8px' : '10px',
-          background: '#fff',
         }}
       >
-        <p style={{ margin: '0 0 8px 0', fontSize: chrome.fontBody, fontWeight: 600, color: 'var(--color-text)' }}>
-          {failListSearchIntro}
-        </p>
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ ...inputStyle, width: '100%' }}
-          placeholder={failListSearchPlaceholder}
-        />
-        {searchLoading && (
-          <p style={{ margin: '8px 0 0 0', fontSize: 12, color: 'var(--color-text-muted)' }}>検索中...</p>
-        )}
-        {searchResults.length > 0 && (
-          <div style={{ marginTop: 8, display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
-            {searchResults.map((w) => (
-              <button
-                key={`search-${w.workId}`}
-                type="button"
-                onClick={() => onSelectWork(w.workId, 'search', searchQuery.trim())}
-                disabled={interactionDisabled}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '64px 1fr',
-                  gap: 8,
-                  alignItems: 'center',
-                  width: '100%',
-                  textAlign: 'left',
-                  border: '1px solid #e5e7eb',
-                  background: '#fafafa',
-                  borderRadius: 8,
-                  padding: 8,
-                  cursor: interactionDisabled ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <img
-                  src={w.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(w.workId)}`}
-                  alt={w.title}
-                  style={{ width: 64, height: 48, borderRadius: 6, objectFit: 'cover' }}
-                />
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>
-                    {streamerMode ? <StreamerCensoredText text={w.title} censorAll /> : w.title}
-                  </p>
-                  <p style={{ margin: '2px 0 0 0', fontSize: 11, color: 'var(--color-text-muted)' }}>
-                    {w.authorName}
-                    {w.source === 'reserve' ? ' / reserve' : ''}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, alignItems: 'stretch' }}>
+          {candidateGrid}
+          {titleInputBlock}
+          {submittedResetBlock}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            alignSelf: 'stretch',
+            minWidth: 0,
+            minHeight: 360,
+          }}
+        >
+          <div style={{ ...searchPanelStyle, textAlign: 'right' }}>{searchPanelInner}</div>
+          <div style={{ marginTop: 'auto', paddingTop: 16, width: '100%' }}>{threeButtonsRow}</div>
+        </div>
       </div>
-      {submittedNotInList && onBackToTopWithReset && (
-        <button type="button" onClick={onBackToTopWithReset} style={failFlowBackToTopButtonStyle(isMobile)}>
-          {failListBtnTop}
-        </button>
-      )}
     </div>
   );
 }

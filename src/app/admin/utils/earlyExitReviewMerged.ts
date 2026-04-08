@@ -5,10 +5,10 @@ const DEFAULT_EARLY_EXIT_REVIEW = {
   reviewIndices: [25, 30, 35, 40],
   requiredConditions: 2,
   thresholds: {
-    q25: { minConfidence: 0.22, maxEffectiveCandidates: 15 },
-    q30: { minConfidence: 0.18, maxEffectiveCandidates: 20 },
-    q35: { minConfidence: 0.15, maxEffectiveCandidates: 25 },
-    q40: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+    q25: { minConfidence: 0.08, maxEffectiveCandidates: 80 },
+    q30: { minConfidence: 0.1, maxEffectiveCandidates: 50 },
+    q35: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+    q40: { minConfidence: 0.1, maxEffectiveCandidates: 40 },
   },
 } as const;
 

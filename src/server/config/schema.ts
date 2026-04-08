@@ -111,7 +111,7 @@ const FlowSchema = z.object({
     .optional(),
   /**
    * 早期分岐レビュー（Q25/Q30/Q35/Q40 など）。
-   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 以下（狭すぎ）のとき早期失敗。
+   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 超（広すぎ＝絞れていない）のとき早期失敗。
    * maxConfidenceDelta5 は後方互換のためパースのみ（無視）。
    */
   earlyExitReview: z
@@ -121,6 +121,14 @@ const FlowSchema = z.object({
       requiredConditions: z.number().int().min(2).max(2).optional(),
       thresholds: z
         .object({
+          q20: z
+            .object({
+              minConfidence: z.number().min(0).max(1),
+              maxEffectiveCandidates: z.number().positive(),
+              maxConfidenceDelta5: z.number().min(0).max(1).optional(),
+            })
+            .strict()
+            .optional(),
           q25: z
             .object({
               minConfidence: z.number().min(0).max(1),

@@ -59,10 +59,10 @@ const DEFAULT_EARLY_EXIT_REVIEW = {
   reviewIndices: [25, 30, 35, 40],
   requiredConditions: 2,
   thresholds: {
-    q25: { minConfidence: 0.22, maxEffectiveCandidates: 15 },
-    q30: { minConfidence: 0.18, maxEffectiveCandidates: 20 },
-    q35: { minConfidence: 0.15, maxEffectiveCandidates: 25 },
-    q40: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+    q25: { minConfidence: 0.08, maxEffectiveCandidates: 80 },
+    q30: { minConfidence: 0.1, maxEffectiveCandidates: 50 },
+    q35: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+    q40: { minConfidence: 0.1, maxEffectiveCandidates: 40 },
   },
 } as const;
 
@@ -1092,7 +1092,7 @@ export default function ConfigTab({
                 >
                   <strong style={{ fontSize: '0.95rem' }}>{label}（{qk}）</strong>
                   <p style={{ margin: '0.35rem 0 0.5rem', fontSize: '0.82rem', color: '#555' }}>
-                    ① 1位の確率がこの値<strong>未満</strong>　② 実質候補がこの値<strong>以下</strong>（狭すぎ）のとき②側が揃う
+                    ① 1位の確率がこの値<strong>未満</strong>　② 実質候補がこの値<strong>超</strong>（広すぎ）のとき②側が揃う
                   </p>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                     <label style={{ flex: '1 1 120px' }}>
@@ -1114,7 +1114,7 @@ export default function ConfigTab({
                       />
                     </label>
                     <label style={{ flex: '1 1 120px' }}>
-                      ② 実質候補「狭さ」上限（件数）
+                      ② 実質候補「広さ」閾値（件数・超えたら②成立）
                       <input
                         type="number"
                         min={1}

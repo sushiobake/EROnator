@@ -2119,7 +2119,7 @@ function getEarlyExitStepSnapshot(newQuestionCount, confidence, effectiveCandida
       thresholds: null,
       requiredConditions: null,
       matchLowConfidence: false,
-      matchNarrowCandidates: false,
+      matchWideCandidates: false,
       matchedCount: 0,
       wouldEarlyExit: false
     };
@@ -2127,9 +2127,9 @@ function getEarlyExitStepSnapshot(newQuestionCount, confidence, effectiveCandida
   const { threshold, requiredConditions } = review;
   const reviewKey = `q${newQuestionCount}`;
   const matchLowConfidence = confidence < threshold.minConfidence;
-  const matchNarrowCandidates = effectiveCandidates <= threshold.maxEffectiveCandidates;
-  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchNarrowCandidates ? 1 : 0);
-  const wouldEarlyExit = matchLowConfidence && matchNarrowCandidates;
+  const matchWideCandidates = effectiveCandidates > threshold.maxEffectiveCandidates;
+  const matchedCount = (matchLowConfidence ? 1 : 0) + (matchWideCandidates ? 1 : 0);
+  const wouldEarlyExit = matchLowConfidence && matchWideCandidates;
   return {
     questionCountAfterAnswer: newQuestionCount,
     confidence,
@@ -2142,7 +2142,7 @@ function getEarlyExitStepSnapshot(newQuestionCount, confidence, effectiveCandida
     },
     requiredConditions,
     matchLowConfidence,
-    matchNarrowCandidates,
+    matchWideCandidates,
     matchedCount,
     wouldEarlyExit
   };
@@ -7720,7 +7720,7 @@ var FlowSchema = external_exports.object({
   }).strict().optional(),
   /**
    * 早期分岐レビュー（Q25/Q30/Q35/Q40 など）。
-   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 以下（狭すぎ）のとき早期失敗。
+   * ①確度が minConfidence 未満 かつ ②実質候補が maxEffectiveCandidates 超（広すぎ＝絞れていない）のとき早期失敗。
    * maxConfidenceDelta5 は後方互換のためパースのみ（無視）。
    */
   earlyExitReview: external_exports.object({
@@ -7728,6 +7728,11 @@ var FlowSchema = external_exports.object({
     reviewIndices: external_exports.array(external_exports.number().int().positive()),
     requiredConditions: external_exports.number().int().min(2).max(2).optional(),
     thresholds: external_exports.object({
+      q20: external_exports.object({
+        minConfidence: external_exports.number().min(0).max(1),
+        maxEffectiveCandidates: external_exports.number().positive(),
+        maxConfidenceDelta5: external_exports.number().min(0).max(1).optional()
+      }).strict().optional(),
       q25: external_exports.object({
         minConfidence: external_exports.number().min(0).max(1),
         maxEffectiveCandidates: external_exports.number().positive(),
@@ -8495,19 +8500,20 @@ async function main() {
     workDetailMap: new Map(shared.sharedContextSerialized.workDetailEntries),
     workTagMap: new Map(shared.sharedContextSerialized.workTagEntries)
   };
-  const config = getMvpConfig();
+  const config = input.configOverrideJson ? JSON.parse(input.configOverrideJson) : getMvpConfig();
   const { tasks, level, aiGateChoice, includePerf, taskIndexBuffer } = input;
   const taskIndexView = new Int32Array(taskIndexBuffer);
   const results = [];
   while (true) {
     const index = Atomics.add(taskIndexView, 0, 1);
     if (index >= tasks.length) break;
-    const { targetWorkId } = tasks[index];
+    const { targetWorkId, trial } = tasks[index];
     try {
       const simResult = await runSimulation(targetWorkId, level, aiGateChoice, config, sharedContext, includePerf);
       if (simResult) {
         results.push({
           workId: simResult.targetWorkId,
+          trial,
           title: simResult.targetWorkTitle,
           success: simResult.success,
           questionCount: simResult.questionCount,
@@ -8523,6 +8529,7 @@ async function main() {
     } catch {
       results.push({
         workId: targetWorkId,
+        trial,
         title: "",
         success: false,
         questionCount: 0,

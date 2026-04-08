@@ -12,10 +12,15 @@
     "successSpeech": "やったーー！！{questionCount}問でわかっちゃった！！何でもお見通しだもの！！",
     "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
     "recommendTitle": "なら…そんなあなたにおススメもある！！",
-    "failListSpeech": "うーん…ちょっとわからなかったわ。",
-    "failListSubMobile": "ちなみに、下のリストの中にある？",
-    "failListSubPc": "ちなみに、このリストの中にはある？",
+    "failListSpeech": "ごめんね、ここまでの手がかりだとまだ特定しきれなかったわ。",
+    "failListSubMobile": "このあと一緒に探そう。まずは下の候補に近いのはある？",
+    "failListSubPc": "このあと一緒に探そう。まずはこの候補の中に近いのはある？",
     "failListNotInListPrompt": "ない？ならここに作品名書いてくれないかしら？",
+    "failListBtnNotInList": "リストにない",
+    "failListBtnRecommend": "推薦で探す",
+    "failListBtnTop": "トップに戻る",
+    "failListSearchIntro": "タイトルの一部を入れてくれない？　あたしの頭脳が照合するから",
+    "failListSearchPlaceholder": "例: 鬼、学園、寝取られ など",
     "almostSuccessSpeech": "それか～～～！悔しい！！次回は当てるから！！",
     "aiGatePreamble": "最初に教えて！その同人誌は……",
     "aiGateMain": "AI生成作品？それとも違う？"
@@ -25,17 +30,18 @@
     "aiGateMain": "AI生成作品？それとも違う？",
     "initialMain": "あなたの好みは？",
     "initialPopularityQuestion": "やっぱり有名作品！　隠れた名作！　中間くらいの作品！",
-    "initialPriorityQuestion": "あなたが優先したいのは？順位をつけて！",
+    "initialPriorityQuestion": "あなたが優先したいのは？\n順位をつけて！",
     "questionFamous": "あなたの好みを…この中から3つまで選んで！",
     "questionFamousStory": "\"ストーリー\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
     "questionFamousPlay": "\"プレイ\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
     "questionFamousCharacter": "\"キャラクター\"について「有名な特徴」を並べているわ。ここから好みを３つまで選んで！",
     "questionUnknown": "「有名な特徴」を元に「マニアックな特徴」を並べているわ。ここから好みを３つまで選んで！",
     "importantPrompt": "特に重視する要素はある？あれば選んで！",
-    "sortPrompt": "今まで選んだ特徴を、好きな順に並べてくれる？",
-    "sortPromptFront": "今まで選んだ特徴を、好きな順に並べてくれる？",
-    "sortPromptBack": "今まで選んだ特徴を、好きな順に並べてくれる？",
+    "sortPrompt": "ここまで選んだ「すべての特徴」を、より好きな順に５位まで決めて！",
+    "sortPromptFront": "ここまで選んだ「有名な特徴」を、５位まで決めて！",
+    "sortPromptBack": "ここまで選んだ「すべての特徴」を、より好きな順に５位まで決めて！",
     "thinkingText": "あなたにぴったりの作品を探しているわ……",
+    "recommendResultsHeading": "結果が出たわ！こんな作品はどうかな？",
     "btnNext": "次へ",
     "btnNextSortFront": "後半へ",
     "btnNextSortBack": "結果へ",
@@ -93,10 +99,10 @@
       "text": "ちがうかあ……"
     },
     "failListSelect": {
-      "text": "なるほど……？"
+      "text": "うーん、じゃあリストから当てはまるのを探してみよう"
     },
     "failListNotInList": {
-      "text": "なるほど……？"
+      "text": "了解。タイトルや覚えてる言葉を教えてくれる？"
     }
   },
   "confirm": {
@@ -144,20 +150,49 @@
     "consecutiveNoForAtari": 5,
     "summaryPreferRatio": 0.2,
     "titleInitialTopN": 2,
-    "hardConfirmInjectionRatio": 0.25,
+    "hardConfirmInjectionRatio": 0.1,
     "specialQuestionSlotIndices": [
       3,
       5,
       9,
-      16
+      12
     ],
     "rescueSpecialCondition": {
       "slotIndices": [
+        16,
         20,
         24
       ],
       "effectiveCandidatesMin": 25,
       "confidenceMax": 0.35
+    },
+    "earlyExitReview": {
+      "enabled": true,
+      "reviewIndices": [
+        25,
+        30,
+        35,
+        40
+      ],
+      "requiredConditions": 2,
+      "thresholds": {
+        "q25": {
+          "minConfidence": 0.22,
+          "maxEffectiveCandidates": 15
+        },
+        "q30": {
+          "minConfidence": 0.18,
+          "maxEffectiveCandidates": 20
+        },
+        "q35": {
+          "minConfidence": 0.15,
+          "maxEffectiveCandidates": 25
+        },
+        "q40": {
+          "minConfidence": 0.12,
+          "maxEffectiveCandidates": 30
+        }
+      }
     }
   },
   "dataQuality": {
@@ -168,5 +203,42 @@
   },
   "popularity": {
     "playBonusOnSuccess": 0
+  },
+  "newTagQuestions": {
+    "enabled": true,
+    "slotIndices": [
+      2,
+      7,
+      13
+    ],
+    "variants": [
+      {
+        "id": "nt1",
+        "tagKey": "newtag_modern_japan",
+        "displayText": "舞台は現代日本？"
+      },
+      {
+        "id": "nt2",
+        "tagKey": "newtag_male_protagonist",
+        "displayText": "主人公は男性？"
+      },
+      {
+        "id": "nt3",
+        "tagKey": "newtag_has_source",
+        "displayText": "原作がある？"
+      }
+    ]
+  },
+  "noiseGuideRecommend": {
+    "enabled": true,
+    "questionText": "もしかして…タイトルや作品にこだわりがない？なら私からおススメを推薦するわよ？"
+  },
+  "failHub": {
+    "enabled": true,
+    "candidateCount": 5,
+    "searchDebounceMs": 300,
+    "searchLimitDefault": 10,
+    "searchLimitMax": 20,
+    "showRecommendEntry": true
   }
 }

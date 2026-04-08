@@ -26,12 +26,14 @@ const JOB_LABELS: Record<JobType, string> = {
   phase0: 'Phase0（タグ付け）',
   phase12: 'Phase1+2（チェック）',
   simulate: 'シミュレーション',
+  optimize: '閾値最適化',
 };
 const JOB_SHORT: Record<JobType, string> = {
   comment: 'コメント',
   phase0: 'P0（タグ付け）',
   phase12: 'P1+2（チェック）',
   simulate: 'シミュ',
+  optimize: '閾値OPT',
 };
 
 function fmt(sec: number): string {
@@ -340,19 +342,20 @@ export default function ProgressPanel() {
     (progress.phase12?.total ?? 0) > 0;
 
   const isSimRunning = (progress.simulate?.total ?? 0) > 0;
-  const isRunning = isBulkRunning || isSimRunning;
+  const isOptimizeRunning = (progress.optimize?.total ?? 0) > 0;
+  const isRunning = isBulkRunning || isSimRunning || isOptimizeRunning;
 
   const hasAny = isRunning || !!serverLastCompleted;
 
   // Elapsed timer
   useEffect(() => {
     if (!isRunning) { setElapsedSec(0); return; }
-    const st = progress.comment?.startTime || progress.phase0?.startTime || progress.phase12?.startTime || progress.simulate?.startTime || Date.now();
+    const st = progress.comment?.startTime || progress.phase0?.startTime || progress.phase12?.startTime || progress.simulate?.startTime || progress.optimize?.startTime || Date.now();
     const tick = () => setElapsedSec(Math.floor((Date.now() - st) / 1000));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [isRunning, progress.comment?.startTime, progress.phase0?.startTime, progress.phase12?.startTime, progress.simulate?.startTime]);
+  }, [isRunning, progress.comment?.startTime, progress.phase0?.startTime, progress.phase12?.startTime, progress.simulate?.startTime, progress.optimize?.startTime]);
 
   // Polling
   // 重要: ポーリングは「サーバーにデータがある時のみ」Context を更新する。
@@ -406,6 +409,7 @@ export default function ProgressPanel() {
       setProgress('comment', null);
       setProgress('phase0', null);
       setProgress('phase12', null);
+      setProgress('optimize', null);
     };
 
     const handleLastCompleted = (lc: Record<string, unknown>) => {
@@ -431,8 +435,39 @@ export default function ProgressPanel() {
 
         const status = data.status as string;
         const simProgress = data.simProgress as { done: number; total: number; startedAt: string } | null;
+        const optimizeProgress = data.optimizeProgress as {
+          status: string;
+          simulationsDone: number;
+          simulationsTotal: number;
+          paramSetsDone: number;
+          paramSetsTotal: number;
+          pipelineStep?: string;
+          currentParamSetId: string | null;
+          startedAt: string;
+        } | null;
 
-        if (status === 'running' && data.progress) {
+        if (optimizeProgress && optimizeProgress.status === 'running') {
+          lastServerDataRef.current = Date.now();
+          const phaseStr = [optimizeProgress.pipelineStep, optimizeProgress.currentParamSetId].filter(Boolean).join(' ');
+          setProgress('optimize', {
+            done: optimizeProgress.simulationsDone,
+            total: Math.max(1, optimizeProgress.simulationsTotal),
+            phase: `ParamSet ${optimizeProgress.paramSetsDone}/${optimizeProgress.paramSetsTotal} ${phaseStr}`,
+            startTime: new Date(optimizeProgress.startedAt).getTime(),
+          });
+          schedulePoll(POLL_RUNNING_MS);
+        } else if (optimizeProgress && optimizeProgress.status === 'completed') {
+          lastServerDataRef.current = Date.now();
+          const opx = optimizeProgress as { resultPath?: string; pipelineResultPath?: string; simulationsTotal?: number };
+          const pathMsg = opx.pipelineResultPath ?? opx.resultPath ?? '';
+          setProgress('optimize', {
+            done: Math.max(1, opx.simulationsTotal ?? 1),
+            total: Math.max(1, opx.simulationsTotal ?? 1),
+            phase: pathMsg ? `完了 ${pathMsg}` : '完了',
+            startTime: new Date(optimizeProgress.startedAt).getTime(),
+          });
+          schedulePoll(POLL_IDLE_MS);
+        } else if (status === 'running' && data.progress) {
           applyServerProgress(data.progress, data.phases ?? data.progress.phases);
           schedulePoll(POLL_RUNNING_MS);
         } else if (status === 'done' && data.progress) {
@@ -596,6 +631,24 @@ export default function ProgressPanel() {
             {cancelState !== 'none' && (
               <div style={{ padding: '5px 8px', background: cancelState === 'requesting' ? '#fff3e0' : '#ffebee', fontSize: 11, fontWeight: 600, color: cancelState === 'requesting' ? '#e65100' : '#c62828', borderBottom: '1px solid #eee' }}>
                 {cancelLabels[cancelState]}
+              </div>
+            )}
+
+            {/* Optimize sweep section */}
+            {isOptimizeRunning && progress.optimize && (
+              <div style={{ padding: '8px 8px 10px', borderBottom: '1px solid #eee', background: '#e8f5e9' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#2e7d32' }}>
+                    📊 閾値最適化 {fmt(elapsedSec)}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#555', fontWeight: 600 }}>
+                    {progress.optimize.done ?? 0}/{progress.optimize.total}
+                  </span>
+                </div>
+                <ProgressBar value={progress.optimize.done ?? 0} max={progress.optimize.total} color="#43a047" />
+                {progress.optimize.phase && (
+                  <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>{progress.optimize.phase}</div>
+                )}
               </div>
             )}
 

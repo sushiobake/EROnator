@@ -33,7 +33,7 @@ export function SimEarlyExitThresholdsSummary({ flow }: { flow?: { earlyExitRevi
     .map((q) => {
       const t = ee.thresholds[q];
       const n = q.slice(1);
-      return `${n}問:①${(t.minConfidence * 100).toFixed(0)}%②≤${t.maxEffectiveCandidates}（狭さ）`;
+      return `${n}問:①${(t.minConfidence * 100).toFixed(0)}%②>${t.maxEffectiveCandidates}（広さ）`;
     })
     .join('　｜　');
 
@@ -43,7 +43,7 @@ export function SimEarlyExitThresholdsSummary({ flow }: { flow?: { earlyExitRevi
         早期失敗（現在のコンフィグ）　{ee.reviewIndices.join('・')}問直後に審査、①と②の<strong>両方</strong>で発動
       </div>
       <div style={row}>
-        ①<strong>確度</strong>（→の右）が下限未満　②<strong>実質候補</strong>が「狭さ」閾値以下（件数）
+        ①<strong>確度</strong>（→の右）が下限未満　②<strong>実質候補</strong>が「広さ」閾値超（件数）
       </div>
       <div style={{ ...row, wordBreak: 'break-word' }}>{line3}</div>
     </div>

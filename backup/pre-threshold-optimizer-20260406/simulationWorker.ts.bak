@@ -20,8 +20,6 @@ interface WorkerInput {
   includePerf: boolean;
   sharedBuffer: SharedArrayBuffer;
   taskIndexBuffer: SharedArrayBuffer;
-  /** 閾値最適化スイープ用。指定時は getMvpConfig() の代わりに使用 */
-  configOverrideJson?: string;
 }
 
 type WorkDetail = SharedBatchContext['workDetailMap'] extends Map<string, infer V> ? V : never;
@@ -67,15 +65,12 @@ async function main() {
     workTagMap: new Map(shared.sharedContextSerialized.workTagEntries),
   };
 
-  const config = input.configOverrideJson
-    ? (JSON.parse(input.configOverrideJson) as ReturnType<typeof getMvpConfig>)
-    : getMvpConfig();
+  const config = getMvpConfig();
   const { tasks, level, aiGateChoice, includePerf, taskIndexBuffer } = input;
   const taskIndexView = new Int32Array(taskIndexBuffer);
 
   const results: Array<{
     workId: string;
-    trial: number;
     title: string;
     success: boolean;
     questionCount: number;
@@ -93,13 +88,12 @@ async function main() {
     const index = Atomics.add(taskIndexView, 0, 1);
     if (index >= tasks.length) break;
 
-    const { targetWorkId, trial } = tasks[index];
+    const { targetWorkId } = tasks[index];
     try {
       const simResult = await runSimulation(targetWorkId, level, aiGateChoice, config, sharedContext, includePerf);
       if (simResult) {
         results.push({
           workId: simResult.targetWorkId,
-          trial,
           title: simResult.targetWorkTitle,
           success: simResult.success,
           questionCount: simResult.questionCount,
@@ -115,7 +109,6 @@ async function main() {
     } catch {
       results.push({
         workId: targetWorkId,
-        trial,
         title: '',
         success: false,
         questionCount: 0,

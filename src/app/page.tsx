@@ -10,7 +10,7 @@ import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
 import { Reveal } from './components/Reveal';
 import { Success, SuccessRecommendationsVertical } from './components/Success';
-import { FailList, FailListVerticalList } from './components/FailList';
+import { FailList } from './components/FailList';
 import { DebugPanel, type ForceNavigateScreen } from './components/DebugPanel';
 import { Stage, type CharacterVariant } from './components/Stage';
 import { useMediaQuery } from './components/useMediaQuery';
@@ -1103,14 +1103,9 @@ export default function Home() {
                 </div>
               )
           }
-          mobileBelowCanvas={isThinking ? undefined : (isMobile ? (
-            <FailListVerticalList
-              candidates={failListCandidates}
-              onSelectWork={handleFailListSelectWork}
-              streamerMode={streamerMode}
-            />
-          ) : undefined)}
+          mobileBelowCanvas={undefined}
           whiteboardWide={true}
+          whiteboardFullContentWidth={true}
         >
           {isThinking ? null : (
           <FailList
