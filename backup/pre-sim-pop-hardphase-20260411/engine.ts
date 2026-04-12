@@ -21,7 +21,6 @@ import {
   getNextHardConfirmType,
   type TagInfo,
 } from '@/server/algo/questionSelection';
-import { getEffectiveHardConfidenceMin } from '@/server/game/confirmHardMin';
 import { passesCoverageGate } from '@/server/algo/coverage';
 import { hasDerivedFeature, updateWeightsForTagQuestion, updateWeightsForTagQuestionBayesian, updateWeightsForPopularitySoft, applyRevealPenalty } from '@/server/algo/weightUpdate';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
@@ -821,16 +820,9 @@ export async function selectNextQuestion(
 
     const hasSoftConfirmData = derivedTags.some(tag => tag.workTags.length > 0);
 
-    const top1PopularityForHard =
-      top1WorkId != null ? getSimWorkDataMap()?.get(top1WorkId)?.popularityBase ?? null : null;
-    const effectiveHardMin = getEffectiveHardConfidenceMin(
-      config,
-      questionIndex,
-      top1PopularityForHard
-    );
     const confirmType = selectConfirmType(confidence, hasSoftConfirmData, {
       softConfidenceMin: config.confirm.softConfidenceMin,
-      hardConfidenceMin: effectiveHardMin,
+      hardConfidenceMin: config.confirm.hardConfidenceMin,
     });
 
     if (confirmType === 'SOFT_CONFIRM' && derivedTags.length > 0) {

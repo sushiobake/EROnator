@@ -15,20 +15,6 @@ const ConfirmSchema = z.object({
   qForcedIndices: z.array(z.number().int().positive()),
   softConfidenceMin: z.number().min(0).max(1),
   hardConfidenceMin: z.number().min(0).max(1),
-  hardConfidenceMinByPhase: z
-    .object({
-      enabled: z.boolean(),
-      minPopularityBase: z.number().min(0).max(100).optional(),
-      phases: z
-        .object({
-          q20: z.number().min(0).max(1),
-          q25: z.number().min(0).max(1),
-          q30: z.number().min(0).max(1),
-        })
-        .strict(),
-    })
-    .strict()
-    .optional(),
 }).strict();
 
 const AlgoSchema = z.object({

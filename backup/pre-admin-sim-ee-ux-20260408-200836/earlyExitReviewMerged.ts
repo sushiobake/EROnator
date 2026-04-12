@@ -1,14 +1,13 @@
 import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
 
-/** リポジトリの config/mvpConfig.json の earlyExitReview と揃える（欠損時のマージ用） */
 const DEFAULT_EARLY_EXIT_REVIEW = {
   enabled: true,
-  reviewIndices: [25, 30, 35],
+  reviewIndices: [25, 30, 35, 40],
   requiredConditions: 2,
   thresholds: {
-    q25: { minConfidence: 0.04, maxEffectiveCandidates: 90 },
-    q30: { minConfidence: 0.06, maxEffectiveCandidates: 60 },
-    q35: { minConfidence: 0.08, maxEffectiveCandidates: 35 },
+    q25: { minConfidence: 0.08, maxEffectiveCandidates: 80 },
+    q30: { minConfidence: 0.1, maxEffectiveCandidates: 50 },
+    q35: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
     q40: { minConfidence: 0.1, maxEffectiveCandidates: 40 },
   },
 } as const;
@@ -86,9 +85,8 @@ type SimStepLike = {
 };
 
 /**
- * シミュ表用: ①②とも「早期失敗条件に該当しない」なら真（列を緑）。
- * ① 確度 ≥ minConfidence  ② 実質候補 ≤ maxEffectiveCandidates（広すぎ閾値以下＝②の「広すぎ」マッチでない）
- * 審査点かつ閾値付きスナップショットは engine と同一の match フラグを使用（表示と本番のずれ防止）。
+ * シミュ表用: 行ごとに閾値で常時比較し「早期失敗の条件に該当しない側」なら真（列を緑）。
+ * ① 確度(回答後) ≥ minConfidence ② 実質候補 > maxEffectiveCandidates（狭すぎ閾値より大きい）
  */
 export function computeSimEarlyExitColumnOk(
   step: SimStepLike,
@@ -98,19 +96,15 @@ export function computeSimEarlyExitColumnOk(
   if (step.question.kind === 'REVEAL' || !ex) {
     return { conf: false, cand: false };
   }
-  if (ex.isReviewPoint && ex.thresholds) {
-    return {
-      conf: !ex.matchLowConfidence,
-      cand: !ex.matchWideCandidates,
-    };
-  }
   const merged = mergeEarlyExitReview(flow?.earlyExitReview);
   const thr = getEarlyExitThresholdForSimRowColor(merged, ex.questionCountAfterAnswer);
   if (!thr) {
     return { conf: false, cand: false };
   }
+
   const confOk = ex.confidence >= thr.minConfidence;
-  const candOk = ex.effectiveCandidates <= thr.maxEffectiveCandidates;
+  const candOk = ex.effectiveCandidates > thr.maxEffectiveCandidates;
+
   return {
     conf: confOk,
     cand: candOk,

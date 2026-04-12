@@ -37,30 +37,6 @@ import {
   evaluateSimulationEarlyExitAfterQuizAnswer,
 } from '@/server/simulation/simulationRunner';
 
-/** popularityBase の [lo,hi]（0 / 100 は開境界）。min>max の入力は入れ替え。 */
-function normalizePopularityRange(minRaw: unknown, maxRaw: unknown): { lo: number; hi: number } {
-  const min = Math.max(0, Math.min(100, Math.floor(Number(minRaw) || 0)));
-  const maxUncapped = maxRaw === undefined || maxRaw === null || maxRaw === ''
-    ? 100
-    : Math.max(0, Math.min(100, Math.floor(Number(maxRaw) || 100)));
-  const lo = Math.min(min, maxUncapped);
-  const hi = Math.max(min, maxUncapped);
-  return { lo, hi };
-}
-
-function popularityBaseWhere(lo: number, hi: number): { popularityBase?: { gte?: number; lte?: number } } {
-  const c: { gte?: number; lte?: number } = {};
-  if (lo > 0) c.gte = lo;
-  if (hi < 100) c.lte = hi;
-  return Object.keys(c).length > 0 ? { popularityBase: c } : {};
-}
-
-function popularityInRange(pop: number, lo: number, hi: number): boolean {
-  if (lo > 0 && pop < lo) return false;
-  if (hi < 100 && pop > hi) return false;
-  return true;
-}
-
 interface SimulationStep {
   qIndex: number;
   question: {
@@ -698,17 +674,8 @@ export async function GET(request: NextRequest) {
   try {
     await ensurePrismaConnected();
     const sampleSize = Math.max(0, Number(request.nextUrl.searchParams.get('sampleSize') ?? 0));
-    const minQ = request.nextUrl.searchParams.get('minPopularity');
-    const maxQ = request.nextUrl.searchParams.get('maxPopularity');
-    const { lo, hi } = normalizePopularityRange(minQ, maxQ === null || maxQ === '' ? undefined : maxQ);
-    const baseWhere = {
-      gameRegistered: true,
-      needsReview: false,
-      ...popularityBaseWhere(lo, hi),
-    } as const;
-    const totalFiltered = await prisma.work.count({ where: baseWhere });
     const works = await prisma.work.findMany({
-      where: baseWhere,
+      where: { gameRegistered: true, needsReview: false },
       select: { workId: true },
     });
     let workIds = works.map((w) => w.workId);
@@ -720,7 +687,7 @@ export async function GET(request: NextRequest) {
       }
       workIds = shuffled.slice(0, sampleSize);
     }
-    return NextResponse.json({ workIds, totalFiltered, minPopularity: lo, maxPopularity: hi });
+    return NextResponse.json({ workIds });
   } catch (error) {
     console.error('Error in /api/admin/simulate (GET):', error);
     return NextResponse.json(
@@ -750,11 +717,7 @@ export async function PUT(request: NextRequest) {
       includePerf = false,
       totalTrials: totalTrialsParam,
       doneOffset = 0,
-      minPopularity: minPopularityRaw = 0,
-      maxPopularity: maxPopularityRaw,
     } = body;
-
-    const { lo: popLo, hi: popHi } = normalizePopularityRange(minPopularityRaw, maxPopularityRaw);
 
     const level = ambiguityLevel != null ? Math.max(1, Math.min(10, Number(ambiguityLevel))) : 2;
     const numCpus = cpus().length;
@@ -767,17 +730,13 @@ export async function PUT(request: NextRequest) {
     getWorkTagMatrix();
     await ensureTagCacheLoaded();
 
-    // 対象作品を取得（未指定時はゲーム登録済みのみ。人気度は popularityBase の [lo,hi]）
+    // 対象作品を取得（未指定時はゲーム登録済みのみ）
     let targetWorkIds: string[];
     if (workIds && workIds.length > 0) {
       targetWorkIds = workIds;
     } else {
       const works = await prisma.work.findMany({
-        where: {
-          gameRegistered: true,
-          needsReview: false,
-          ...popularityBaseWhere(popLo, popHi),
-        },
+        where: { gameRegistered: true, needsReview: false },
         select: { workId: true },
       });
       targetWorkIds = works.map(w => w.workId);
@@ -803,11 +762,6 @@ export async function PUT(request: NextRequest) {
       allWorks.map(w => [w.workId, w.title ?? '(不明)'])
     );
     const workDetailMap = new Map(allWorks.map(w => [w.workId, w]));
-
-    if (workIds && workIds.length > 0 && (popLo > 0 || popHi < 100)) {
-      const popById = new Map(allWorks.map(w => [w.workId, w.popularityBase ?? 0]));
-      targetWorkIds = targetWorkIds.filter((id) => popularityInRange(popById.get(id) ?? 0, popLo, popHi));
-    }
 
     // 行列 + タグキャッシュから workId→タグ配列を構築（DB 不要）
     const matrix = getWorkTagMatrix();
@@ -945,8 +899,6 @@ export async function PUT(request: NextRequest) {
         trialsPerWork,
         parallelCount: parallel,
         durationSeconds,
-        minPopularity: popLo,
-        maxPopularity: popHi,
       },
     });
   } catch (error) {

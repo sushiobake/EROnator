@@ -1,8 +1,7 @@
 /**
  * FAIL_LISTコンポーネント
  * 上位N件（config failListN・既出除外・同一作者1本まで）をグリッド表示。
- * PC: 5列×行（推薦結果のPCグリッドに近い）、モバイル: 2列（推薦キャプチャの2列に近い）。
- * 流れ: ①リストから選択 → ②タイトル一部で検索（右上/先に表示） → ③「リストにない」でタイトル入力
+ * PC: 左に候補、右に検索→常時の作品名入力→推薦/トップ。ボタンで白板サイズは変えない。
  */
 
 'use client';
@@ -24,10 +23,13 @@ interface FailListCandidateItem {
   thumbnailUrl?: string | null;
 }
 
-const DEFAULT_NOT_IN_LIST_PROMPT = 'ない？ならここに作品名書いてよ！お願いだから！';
-
-/** 検索ブロック見出し（右上エリアのラベル） */
-const FAIL_LIST_SEARCH_HEADING = '名前を入れて検索';
+const DEFAULT_NOT_IN_LIST_PROMPT =
+  'それでも見つからなければ、作品名を教えてくれると助かるわ。';
+const DEFAULT_SEARCH_HEADING = '候補にないなら、ここで検索してみて';
+const DEFAULT_SEARCH_INTRO = 'タイトルの一部でいいから入れてみて。';
+const DEFAULT_SEARCH_PLACEHOLDER = '例: 鬼、学園、寝取られ など';
+const DEFAULT_BTN_RECOMMEND = '推薦してもらう';
+const DEFAULT_BTN_TOP = 'トップに戻る';
 
 const CARD_GAP = 10;
 
@@ -36,24 +38,17 @@ interface FailListProps {
   onSelectWork: (workId: string, selectedFrom?: 'topCandidates' | 'search', searchQuery?: string) => void;
   onNotInList: (submittedTitleText: string) => void;
   onGoRecommend?: () => void;
-  /** 結果画面と同様の「トップに戻る」（セッション維持でトップへ） */
   onBackToTop: () => void;
-  /** リストにない送信後：セッションリセットしてトップへ（表示は「トップに戻る」） */
   onBackToTopWithReset?: () => void;
-  /** true: モバイル白板を縦に伸ばす（リスト表示時）。フォーム表示中は false にする */
-  onWhiteboardVerticalFillChange?: (fill: boolean) => void;
-  /** 「リストにない」押下後に表示する一文（コンフィグで変更可） */
   notInListPrompt?: string;
-  failListBtnNotInList?: string;
   failListBtnRecommend?: string;
   failListBtnTop?: string;
+  failListSearchHeading?: string;
   failListSearchIntro?: string;
   failListSearchPlaceholder?: string;
-  /** @deprecated レイアウト用。mobileBelowCanvas で FailListVerticalList を使用 */
+  /** @deprecated 未使用（互換のため残す） */
   mobileListBelow?: boolean;
-  /** true のとき候補グリッドを出さない（スマホでキャンバス下リストと重複させない） */
   hideCandidateGrid?: boolean;
-  /** 配信者モード時はタイトルを部分的伏字 */
   streamerMode?: boolean;
 }
 
@@ -76,7 +71,6 @@ function FailListWorkTile({
   onSelect: () => void;
   interactionDisabled: boolean;
   streamerMode?: boolean;
-  /** キャンバス下の2列用に余白を少し詰める */
   compact?: boolean;
 }) {
   const pad = compact ? 8 : 10;
@@ -128,7 +122,6 @@ function FailListWorkTile({
   );
 }
 
-/** スマホ用：Stage mobileBelowCanvas — 2列グリッド（推薦結果の2列レイアウトに近い） */
 interface FailListVerticalListProps {
   candidates: FailListCandidateItem[];
   onSelectWork: (workId: string) => void;
@@ -172,19 +165,17 @@ export function FailList({
   onBackToTop,
   onGoRecommend,
   onBackToTopWithReset,
-  onWhiteboardVerticalFillChange,
   notInListPrompt = DEFAULT_NOT_IN_LIST_PROMPT,
-  failListBtnNotInList = 'リストにない',
-  failListBtnRecommend = '推薦で探す',
-  failListBtnTop = 'トップに戻る',
-  failListSearchIntro = 'タイトルの一部を入力して。私の頭脳に照らし合わせるから',
-  failListSearchPlaceholder = '例: 鬼、学園、寝取られ など',
+  failListBtnRecommend = DEFAULT_BTN_RECOMMEND,
+  failListBtnTop = DEFAULT_BTN_TOP,
+  failListSearchHeading = DEFAULT_SEARCH_HEADING,
+  failListSearchIntro = DEFAULT_SEARCH_INTRO,
+  failListSearchPlaceholder = DEFAULT_SEARCH_PLACEHOLDER,
   mobileListBelow: _,
   hideCandidateGrid = false,
   streamerMode,
 }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
-  const [showInput, setShowInput] = useState(false);
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchCandidateItem[]>([]);
@@ -192,11 +183,6 @@ export function FailList({
   const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
   const chrome = getFailListBottomRowStyles(isMobile);
-
-  useEffect(() => {
-    const formOpen = showInput && !submittedNotInList;
-    onWhiteboardVerticalFillChange?.(!formOpen);
-  }, [showInput, submittedNotInList, onWhiteboardVerticalFillChange]);
 
   const handleSelectWork = (workId: string) => {
     if (interactionDisabled) return;
@@ -250,7 +236,7 @@ export function FailList({
     color: 'var(--color-text)',
   };
 
-  const searchPanelStyle: CSSProperties = {
+  const panelStyle: CSSProperties = {
     width: '100%',
     minWidth: 0,
     boxSizing: 'border-box',
@@ -282,7 +268,7 @@ export function FailList({
     </div>
   ) : null;
 
-  const searchPanelInner = (
+  const searchBlock = (
     <>
       <p
         style={{
@@ -292,7 +278,7 @@ export function FailList({
           color: 'var(--color-text)',
         }}
       >
-        {FAIL_LIST_SEARCH_HEADING}
+        {failListSearchHeading}
       </p>
       <p
         style={{
@@ -321,7 +307,7 @@ export function FailList({
             marginTop: 8,
             display: 'grid',
             gap: 8,
-            maxHeight: 280,
+            maxHeight: 220,
             overflowY: 'auto',
             textAlign: 'left',
           }}
@@ -367,48 +353,13 @@ export function FailList({
     </>
   );
 
-  const threeButtonsRow = !submittedNotInList && !showInput && (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: chrome.gap,
-        width: '100%',
-        maxWidth: '100%',
-        justifyContent: isMobile ? 'center' : 'flex-end',
-        alignItems: 'center',
-      }}
-    >
-      <button type="button" onClick={() => setShowInput(true)} style={chrome.btnWhite}>
-        {failListBtnNotInList}
-      </button>
-      {onGoRecommend && (
-        <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
-          {failListBtnRecommend}
-        </button>
-      )}
-      <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
-        {failListBtnTop}
-      </button>
-    </div>
-  );
-
-  const titleInputBlock =
-    showInput && !submittedNotInList ? (
-      <div
-        style={{
-          marginTop: isMobile ? '0.75rem' : 0,
-          width: '100%',
-          maxWidth: isMobile ? 420 : '100%',
-          minWidth: 0,
-          boxSizing: 'border-box',
-        }}
-      >
+  /** 常時表示の作品名入力（送信後は非表示） */
+  const titleBlock =
+    !submittedNotInList && (
+      <div style={{ ...panelStyle, textAlign: 'left' }}>
         <p
           style={{
             margin: `0 0 ${chrome.gap}px 0`,
-            width: '100%',
             fontSize: chrome.fontBody,
             fontWeight: 600,
             color: 'var(--color-text)',
@@ -433,37 +384,49 @@ export function FailList({
             type="text"
             value={submittedText}
             onChange={(e) => setSubmittedText(e.target.value)}
-            style={inputStyle}
+            style={{ ...inputStyle, flex: '1 1 180px', minWidth: 0 }}
             placeholder="作品名"
           />
-          <div
+          <button
+            type="button"
+            onClick={handleNotInList}
+            disabled={interactionDisabled}
             style={{
-              display: 'flex',
-              flexDirection: 'row',
-              flex: '1 1 140px',
-              minWidth: 0,
-              gap: chrome.gap,
+              ...chrome.btnPrimaryInline,
+              flex: '0 0 auto',
+              opacity: interactionDisabled ? 0.7 : 1,
+              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
             }}
           >
-            <button
-              type="button"
-              onClick={handleNotInList}
-              disabled={interactionDisabled}
-              style={{
-                ...chrome.btnPrimaryInline,
-                opacity: interactionDisabled ? 0.7 : 1,
-                cursor: interactionDisabled ? 'not-allowed' : 'pointer',
-              }}
-            >
-              送信
-            </button>
-            <button type="button" onClick={onBackToTop} style={chrome.btnPrimaryInline}>
-              {failListBtnTop}
-            </button>
-          </div>
+            送信
+          </button>
         </div>
       </div>
-    ) : null;
+    );
+
+  const actionButtonsRow =
+    !submittedNotInList && (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          gap: chrome.gap,
+          width: '100%',
+          justifyContent: isMobile ? 'center' : 'flex-end',
+          alignItems: 'center',
+        }}
+      >
+        {onGoRecommend && (
+          <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
+            {failListBtnRecommend}
+          </button>
+        )}
+        <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
+          {failListBtnTop}
+        </button>
+      </div>
+    );
 
   const submittedResetBlock =
     submittedNotInList && onBackToTopWithReset ? (
@@ -471,6 +434,22 @@ export function FailList({
         {failListBtnTop}
       </button>
     ) : null;
+
+  const rightColumnStack = (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        minWidth: 0,
+        width: '100%',
+      }}
+    >
+      <div style={{ ...panelStyle, textAlign: isMobile ? 'left' : 'right' }}>{searchBlock}</div>
+      {titleBlock}
+      {actionButtonsRow}
+    </div>
+  );
 
   if (isMobile) {
     return (
@@ -484,9 +463,7 @@ export function FailList({
         ) : (
           candidateGrid
         )}
-        <div style={{ ...searchPanelStyle, marginTop: '0.75rem' }}>{searchPanelInner}</div>
-        <div style={{ marginTop: '0.75rem' }}>{threeButtonsRow}</div>
-        {titleInputBlock}
+        <div style={{ marginTop: '0.75rem' }}>{rightColumnStack}</div>
         {submittedResetBlock}
       </div>
     );
@@ -499,28 +476,15 @@ export function FailList({
           display: 'grid',
           gridTemplateColumns: 'minmax(0, 1.25fr) minmax(260px, 400px)',
           gap: 20,
-          alignItems: 'stretch',
+          alignItems: 'start',
           width: '100%',
         }}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, alignItems: 'stretch' }}>
           {candidateGrid}
-          {titleInputBlock}
           {submittedResetBlock}
         </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            alignSelf: 'stretch',
-            minWidth: 0,
-            minHeight: 360,
-          }}
-        >
-          <div style={{ ...searchPanelStyle, textAlign: 'right' }}>{searchPanelInner}</div>
-          <div style={{ marginTop: 'auto', paddingTop: 16, width: '100%' }}>{threeButtonsRow}</div>
-        </div>
+        <div style={{ minWidth: 0 }}>{rightColumnStack}</div>
       </div>
     </div>
   );

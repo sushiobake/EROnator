@@ -46,58 +46,6 @@ export const THINKING_IMAGE_PATHS: Record<string, string> = {
 const DEFAULT_CHARACTER_URL = CHARACTER_VARIANTS.usually;
 const LOGO_URL = '/ilust/eronator_logo.jpg';
 
-function StageLogoMark({
-  variant = 'pc',
-  onClick,
-  disabled,
-}: {
-  variant?: 'pc' | 'mobile';
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  const isMobileVariant = variant === 'mobile';
-  const img = (
-    <img
-      src={LOGO_URL}
-      alt="ERONATOR"
-      style={{
-        height: 72,
-        width: 'auto',
-        maxWidth: isMobileVariant ? '90%' : '60%',
-        objectFit: 'contain',
-        display: 'block',
-        pointerEvents: 'none',
-        marginBottom: isMobileVariant ? 2 : 0,
-      }}
-    />
-  );
-  if (!onClick) {
-    return <>{img}</>;
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label="トップへ戻る"
-      style={{
-        border: 'none',
-        background: 'transparent',
-        padding: 0,
-        margin: 0,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.65 : 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {img}
-    </button>
-  );
-}
-
-
 /** キャラ画像切り替えのクロスフェード。false で従来の単一表示に戻せる（thinking→次画像の切り替え遅延対策） */
 const USE_CHARACTER_CROSSFADE = false;
 /** ノベルゲーム風のスムーズさ（300ms, ease-out） */
@@ -201,10 +149,6 @@ interface StageProps {
   whiteboardFullContentWidth?: boolean;
   /** characterVariant='thinking' のとき、どの考え中画像を使うか。未指定なら inari_thinking.png */
   thinkingSubType?: 'opening' | 'early' | 'mid' | 'late' | 'closing' | 'endingCorrect' | 'endingWrong' | 'failListSelect' | 'failListNotInList';
-  /** ロゴクリックでトップへ戻る（未指定時は従来どおりクリック不可） */
-  onLogoClick?: () => void;
-  /** true のときロゴ操作不可（考え中など） */
-  logoClickDisabled?: boolean;
 }
 
 function getScale(): number {
@@ -604,8 +548,6 @@ function MobileStageInner({
 function StageInner({
   children,
   showLogo,
-  onLogoClick,
-  logoClickDisabled,
   characterSpeech,
   characterUrl,
   scale,
@@ -615,8 +557,6 @@ function StageInner({
 }: {
   children: React.ReactNode;
   showLogo?: boolean;
-  onLogoClick?: () => void;
-  logoClickDisabled?: boolean;
   characterSpeech?: React.ReactNode;
   characterUrl: string;
   scale?: number;
@@ -659,14 +599,23 @@ function StageInner({
           right: 0,
           height: 100,
           zIndex: 1,
-          pointerEvents: onLogoClick ? 'auto' : 'none',
+          pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           paddingTop: 8,
         }}
       >
-        <StageLogoMark variant="pc" onClick={onLogoClick} disabled={logoClickDisabled} />
+        <img
+          src={LOGO_URL}
+          alt="ERONATOR"
+          style={{
+            height: 72,
+            width: 'auto',
+            maxWidth: '60%',
+            objectFit: 'contain',
+          }}
+        />
       </div>
       {!hideCharacter && (
         <div
@@ -733,8 +682,6 @@ export function Stage({
   children,
   characterVariant,
   showLogo,
-  onLogoClick,
-  logoClickDisabled,
   characterSpeech,
   mobileExtendWhiteboard,
   mobileBelowCanvas,
@@ -855,7 +802,17 @@ export function Stage({
                 transformOrigin: 'top left',
               }}
             >
-              <StageLogoMark variant="mobile" onClick={onLogoClick} disabled={logoClickDisabled} />
+              <img
+                src={LOGO_URL}
+                alt="ERONATOR"
+                style={{
+                  height: 72,
+                  width: 'auto',
+                  maxWidth: '90%',
+                  objectFit: 'contain',
+                  marginBottom: 2,
+                }}
+              />
               <div
                 style={{
                   width: MOBILE_CANVAS_PX,
@@ -969,8 +926,6 @@ export function Stage({
           <WhiteboardFrameSvg />
           <StageInner
             showLogo={showLogo}
-            onLogoClick={onLogoClick}
-            logoClickDisabled={logoClickDisabled}
             characterSpeech={characterSpeech}
             characterUrl={characterUrl}
             scale={scale}

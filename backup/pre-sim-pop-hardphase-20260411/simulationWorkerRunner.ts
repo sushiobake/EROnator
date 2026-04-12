@@ -34,8 +34,6 @@ function ensureWorkerBundle(): void {
   const configDeps = [
     path.resolve(process.cwd(), 'src/server/config/schema.ts'),
     path.resolve(process.cwd(), 'src/server/config/loader.ts'),
-    path.resolve(process.cwd(), 'src/server/game/engine.ts'),
-    path.resolve(process.cwd(), 'src/server/game/confirmHardMin.ts'),
   ];
   try {
     const srcStat = fs.statSync(srcPath);

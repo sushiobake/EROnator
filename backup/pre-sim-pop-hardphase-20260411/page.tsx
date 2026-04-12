@@ -169,10 +169,7 @@ export default function AdminTagsPage() {
 
   // シミュレーション用state
   const [simWorksStats, setSimWorksStats] = useState<{ totalWorks: number; gameRegisteredCount: number } | null>(null);
-  const [simMinPopularity, setSimMinPopularity] = useState(0);
-  const [simMaxPopularity, setSimMaxPopularity] = useState(100);
-  const [simBatchAmbiguityLevels, setSimBatchAmbiguityLevels] = useState<number[]>([2]);
-  const [simLastTotalFiltered, setSimLastTotalFiltered] = useState<number | null>(null);
+  const [simAmbiguityLevel, setSimAmbiguityLevel] = useState<number>(2);
   const [simAiGateChoice, setSimAiGateChoice] = useState<string>('BOTH');
   const [simLoading, setSimLoading] = useState(false);
   const [simResult, setSimResult] = useState<{
@@ -259,12 +256,8 @@ export default function AdminTagsPage() {
       totalWorksInDb: number;
       sampleSize: number;
       ambiguityLevel?: number;
-      ambiguityLevels?: number[];
-      minPopularity?: number;
-      maxPopularity?: number;
       aiGateChoice: string;
       trialsPerWork: number;
-      durationSeconds?: number;
     };
     failureSummary?: Record<string, number>;
     failureAnalysis?: { failureCount: number; avgWasNoisyCount: number | null; avgCorrectRank: number | null; avgTop1Confidence: number | null };
@@ -305,47 +298,6 @@ export default function AdminTagsPage() {
     diagnostic?: unknown;
     analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
   } | null>(null);
-  const toggleSimBatchLevel = (n: number) => {
-    setSimBatchAmbiguityLevels((prev) => {
-      if (prev.includes(n)) {
-        if (prev.length <= 1) return prev;
-        return prev.filter((x) => x !== n).sort((a, b) => a - b);
-      }
-      return [...prev, n].sort((a, b) => a - b);
-    });
-  };
-
-  const simSortedAmbiguityLevels = useMemo(
-    () => [...new Set(simBatchAmbiguityLevels)].sort((a, b) => a - b),
-    [simBatchAmbiguityLevels]
-  );
-  const simSingleAmbiguityLevel = simSortedAmbiguityLevels[0] ?? 2;
-
-  useEffect(() => {
-    if (!adminToken) return;
-    const lo = Math.min(simMinPopularity, simMaxPopularity);
-    const hi = Math.max(simMinPopularity, simMaxPopularity);
-    const ac = new AbortController();
-    const tid = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const res = await fetch(
-            `/api/admin/simulate?sampleSize=0&minPopularity=${lo}&maxPopularity=${hi}`,
-            { headers: { 'x-eronator-admin-token': adminToken }, signal: ac.signal }
-          );
-          if (!res.ok) return;
-          const j = (await res.json()) as { totalFiltered?: number };
-          if (typeof j.totalFiltered === 'number') setSimLastTotalFiltered(j.totalFiltered);
-        } catch {
-          /* aborted or network */
-        }
-      })();
-    }, 400);
-    return () => {
-      ac.abort();
-      window.clearTimeout(tid);
-    };
-  }, [simMinPopularity, simMaxPopularity, adminToken]);
 
   const simEarlyExitOkInline = useMemo(
     () => (simResult?.steps ? buildSimEarlyExitColumnOkList(simResult.steps as never[], config?.flow) : []),
@@ -2157,8 +2109,22 @@ export default function AdminTagsPage() {
           >
             シミュレーション
           </button>
-
-          {/* 閾値最適化: タブ非表示（中身は下の activeTab==='optimize' ブロックに保持） */}
+          <button
+            onClick={() => setActiveTab('optimize')}
+            style={{
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'optimize' ? '#2e7d32' : 'transparent',
+              color: activeTab === 'optimize' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'optimize' ? '2px solid #2e7d32' : '2px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'optimize' ? 'bold' : 'normal',
+            }}
+          >
+            閾値最適化
+          </button>
           <button
             onClick={() => setActiveTab('config')}
             style={{
@@ -3676,66 +3642,17 @@ export default function AdminTagsPage() {
                 />
                 <span style={{ fontSize: '0.8rem', color: '#666', marginLeft: '0.25rem' }}>（0=全件）</span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>人気度下限（popularityBase）</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={simMinPopularity}
-                    onChange={(e) => setSimMinPopularity(Math.max(0, Math.min(100, Math.floor(Number(e.target.value) || 0))))}
-                    style={{ width: '72px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>人気度上限</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={simMaxPopularity}
-                    onChange={(e) => setSimMaxPopularity(Math.max(0, Math.min(100, Math.floor(Number(e.target.value) || 0))))}
-                    style={{ width: '72px', padding: '0.4rem', border: '1px solid #ccc', borderRadius: '4px' }}
-                  />
-                  <span style={{ fontSize: '0.8rem', color: '#666', marginLeft: '0.25rem' }}>（100=上限なし）</span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: '#333', maxWidth: '22rem' }}>
-                  {simLastTotalFiltered != null ? (
-                    <>
-                      <strong>該当 {simLastTotalFiltered.toLocaleString()} 件</strong>
-                      <span style={{ color: '#666', marginLeft: '0.35rem' }}>
-                        （{Math.min(simMinPopularity, simMaxPopularity)}〜{Math.max(simMinPopularity, simMaxPopularity)}）
-                      </span>
-                      <div style={{ marginTop: '0.25rem', color: '#555' }}>
-                        バッチ試行おおよそ{' '}
-                        {(simSampleSize > 0
-                          ? Math.min(simSampleSize, simLastTotalFiltered)
-                          : simLastTotalFiltered) *
-                          simTrialsPerWork *
-                          simSortedAmbiguityLevels.length}
-                        回（サンプル{simSampleSize > 0 ? `${simSampleSize}件上限` : '全件'}×試行{simTrialsPerWork}×曖昧さ{simSortedAmbiguityLevels.length}種）
-                      </div>
-                    </>
-                  ) : (
-                    <span style={{ color: '#888' }}>人気度を変えると件数を取得します…</span>
-                  )}
-                </div>
-              </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>バッチ曖昧さ（複数可 1–5・単発シミュもこの最小レベルを使用）</label>
-                <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {[1, 2, 3, 4, 5].map((lv) => (
-                    <label key={lv} style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={simBatchAmbiguityLevels.includes(lv)}
-                        onChange={() => toggleSimBatchLevel(lv)}
-                      />
-                      {lv}
-                    </label>
-                  ))}
-                </div>
+                <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>曖昧さレベル 1-10</label>
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  value={simAmbiguityLevel}
+                  onChange={(e) => setSimAmbiguityLevel(Number(e.target.value))}
+                  style={{ width: '120px', verticalAlign: 'middle' }}
+                />
+                <span style={{ fontSize: '0.85rem', marginLeft: '0.5rem' }}>{simAmbiguityLevel}</span>
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.25rem', fontWeight: 'bold' }}>AIゲート</label>
@@ -3786,44 +3703,61 @@ export default function AdminTagsPage() {
                       setSimBatchLoading(false);
                       return;
                     }
-                    const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}&minPopularity=${Math.min(simMinPopularity, simMaxPopularity)}&maxPopularity=${Math.max(simMinPopularity, simMaxPopularity)}`, {
+                    const idsRes = await fetch(`/api/admin/simulate?sampleSize=${simSampleSize || 0}`, {
                       headers: { 'x-eronator-admin-token': adminToken },
                     });
                     if (!idsRes.ok) throw new Error('サンプル取得に失敗しました');
-                    const idsJson = (await idsRes.json()) as { workIds: string[]; totalFiltered?: number };
-                    const { workIds } = idsJson;
-                    if (typeof idsJson.totalFiltered === 'number') {
-                      setSimLastTotalFiltered(idsJson.totalFiltered);
-                    }
-                    const batchLevels = [...new Set(simBatchAmbiguityLevels)].sort((a, b) => a - b);
-                    const trialsPerLevel = workIds.length * simTrialsPerWork;
-                    const totalTrials = trialsPerLevel * batchLevels.length;
+                    const { workIds } = (await idsRes.json()) as { workIds: string[] };
+                    const totalTrials = workIds.length * simTrialsPerWork;
                     setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中', startTime: simStartTime });
                     const CHUNK_SIZE = 100;
-                    const allResults: Array<{ workId: string; title: string; success: boolean; questionCount: number; outcome: string; ambiguityLevel?: number; steps?: unknown; workDetails?: unknown; diagnostic?: unknown; analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number }; errorMessage?: string; perfSummary?: Record<string, number> }> = [];
+                    const allResults: Array<{ workId: string; title: string; success: boolean; questionCount: number; outcome: string; steps?: unknown; workDetails?: unknown; diagnostic?: unknown; analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number }; errorMessage?: string; perfSummary?: Record<string, number> }> = [];
                     let doneCount = 0;
                     let totalWorksInDb = 0;
                     const chunkTimings: Array<{ chunk: number; doneCount: number; elapsedMs: number }> = [];
 
-                    let levelBaseOffset = 0;
-                    let levelIndex = 0;
-                    for (const ambLevel of batchLevels) {
-                      if (simUseSingleRequest) {
-                        setProgress('simulate', { done: doneCount, total: totalTrials, phase: `実行中（1回送信） L${ambLevel}`, startTime: simStartTime });
+                    if (simUseSingleRequest) {
+                      setProgress('simulate', { done: 0, total: totalTrials, phase: '実行中（1回送信）', startTime: simStartTime });
+                      const response = await fetch('/api/admin/simulate', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
+                        body: JSON.stringify({
+                          workIds,
+                          ambiguityLevel: simAmbiguityLevel,
+                          aiGateChoice: simAiGateChoice,
+                          trialsPerWork: simTrialsPerWork,
+                          includePerf: true,
+                          parallelCount: 20,
+                          totalTrials,
+                          doneOffset: 0,
+                        }),
+                      });
+                      if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Batch simulation failed');
+                      }
+                      const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
+                      allResults.push(...data.results);
+                      if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
+                      doneCount = data.results.length;
+                      chunkTimings.push({ chunk: 1, doneCount, elapsedMs: Date.now() - simStartTime });
+                    } else {
+                      for (let i = 0; i < workIds.length; i += CHUNK_SIZE) {
+                        const chunkStart = Date.now();
+                        const chunk = workIds.slice(i, i + CHUNK_SIZE);
+                        const doneOffset = i * simTrialsPerWork;
                         const response = await fetch('/api/admin/simulate', {
                           method: 'PUT',
                           headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                           body: JSON.stringify({
-                            workIds,
-                            ambiguityLevel: ambLevel,
+                            workIds: chunk,
+                            ambiguityLevel: simAmbiguityLevel,
                             aiGateChoice: simAiGateChoice,
                             trialsPerWork: simTrialsPerWork,
                             includePerf: true,
                             parallelCount: 20,
-                            minPopularity: simMinPopularity,
-                            maxPopularity: simMaxPopularity,
-                            totalTrials: trialsPerLevel,
-                            doneOffset: levelBaseOffset,
+                            totalTrials,
+                            doneOffset,
                           }),
                         });
                         if (!response.ok) {
@@ -3831,56 +3765,21 @@ export default function AdminTagsPage() {
                           throw new Error(err.error || 'Batch simulation failed');
                         }
                         const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
-                        allResults.push(...data.results.map((r) => ({ ...r, ambiguityLevel: ambLevel })));
+                        allResults.push(...data.results);
                         if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
                         doneCount += data.results.length;
-                        levelBaseOffset += data.results.length;
-                        levelIndex += 1;
-                        chunkTimings.push({ chunk: levelIndex, doneCount, elapsedMs: Date.now() - simStartTime });
-                      } else {
-                        for (let i = 0; i < workIds.length; i += CHUNK_SIZE) {
-                          const chunkStart = Date.now();
-                          const chunk = workIds.slice(i, i + CHUNK_SIZE);
-                          const doneOffset = levelBaseOffset + i * simTrialsPerWork;
-                          const response = await fetch('/api/admin/simulate', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
-                            body: JSON.stringify({
-                              workIds: chunk,
-                              ambiguityLevel: ambLevel,
-                              aiGateChoice: simAiGateChoice,
-                              trialsPerWork: simTrialsPerWork,
-                              includePerf: true,
-                              parallelCount: 20,
-                              minPopularity: simMinPopularity,
-                              maxPopularity: simMaxPopularity,
-                              totalTrials,
-                              doneOffset,
-                            }),
-                          });
-                          if (!response.ok) {
-                            const err = await response.json();
-                            throw new Error(err.error || 'Batch simulation failed');
-                          }
-                          const data = (await response.json()) as { results: typeof allResults; metadata?: { totalWorksInDb?: number } };
-                          allResults.push(...data.results.map((r) => ({ ...r, ambiguityLevel: ambLevel })));
-                          if (data.metadata?.totalWorksInDb) totalWorksInDb = data.metadata.totalWorksInDb;
-                          doneCount += data.results.length;
-                          chunkTimings.push({ chunk: Math.floor(i / CHUNK_SIZE) + 1, doneCount, elapsedMs: Date.now() - chunkStart });
-                          const elapsedTotal = Date.now() - simStartTime;
-                          const avgMsPerItem = elapsedTotal / Math.max(1, doneCount);
-                          const remainItems = totalTrials - doneCount;
-                          const etaSec = Math.round((avgMsPerItem * remainItems) / 1000);
-                          const lastChunkSec = ((Date.now() - chunkStart) / 1000).toFixed(1);
-                          setProgress('simulate', {
-                            done: doneCount,
-                            total: totalTrials,
-                            phase: `実行中 L${ambLevel} | 直近${lastChunkSec}s | 残り約${etaSec}s`,
-                            startTime: simStartTime,
-                          });
-                        }
-                        levelBaseOffset += trialsPerLevel;
-                        levelIndex += 1;
+                        chunkTimings.push({ chunk: Math.floor(i / CHUNK_SIZE) + 1, doneCount, elapsedMs: Date.now() - chunkStart });
+                        const elapsedTotal = Date.now() - simStartTime;
+                        const avgMsPerItem = elapsedTotal / doneCount;
+                        const remainItems = totalTrials - doneCount;
+                        const etaSec = Math.round((avgMsPerItem * remainItems) / 1000);
+                        const lastChunkSec = ((Date.now() - chunkStart) / 1000).toFixed(1);
+                        setProgress('simulate', {
+                          done: doneCount,
+                          total: totalTrials,
+                          phase: `実行中 | 直近${lastChunkSec}s | 残り約${etaSec}s`,
+                          startTime: simStartTime,
+                        });
                       }
                     }
                     const successCount = allResults.filter((r) => r.success).length;
@@ -3937,10 +3836,7 @@ export default function AdminTagsPage() {
                         timestamp: new Date().toISOString(),
                         sampleSize: workIds.length,
                         totalWorksInDb: totalWorksInDb || (simWorksStats?.gameRegisteredCount ?? 0),
-                        ambiguityLevel: batchLevels.length === 1 ? batchLevels[0] : undefined,
-                        ambiguityLevels: batchLevels,
-                        minPopularity: Math.min(simMinPopularity, simMaxPopularity),
-                        maxPopularity: Math.max(simMinPopularity, simMaxPopularity),
+                        ambiguityLevel: simAmbiguityLevel,
                         aiGateChoice: simAiGateChoice,
                         trialsPerWork: simTrialsPerWork,
                         durationSeconds,
@@ -4003,7 +3899,7 @@ export default function AdminTagsPage() {
                         headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                         body: JSON.stringify({
                           targetWorkId: simResult.targetWorkId,
-                          ambiguityLevel: simSingleAmbiguityLevel,
+                          ambiguityLevel: simAmbiguityLevel,
                           aiGateChoice: simAiGateChoice,
                           includePerf: true,
                         }),
@@ -4544,174 +4440,57 @@ export default function AdminTagsPage() {
                 </div>
               )}
 
-              {(() => {
-                const rows = simBatchResult.results;
-                const byL = new Map<number, typeof rows>();
-                for (const r of rows) {
-                  const L = (r as { ambiguityLevel?: number }).ambiguityLevel;
-                  if (typeof L !== 'number') continue;
-                  if (!byL.has(L)) byL.set(L, []);
-                  byL.get(L)!.push(r);
-                }
-                const levelKeys = [...byL.keys()].sort((a, b) => a - b);
-                const lRowStyle: import('react').CSSProperties = {
-                  fontSize: '0.64rem',
-                  lineHeight: 1.25,
-                  color: '#444',
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '0.2rem 0.4rem',
-                  alignItems: 'center',
-                  justifyContent: 'flex-end',
-                  flex: '1 1 0',
-                  minWidth: 0,
-                  textAlign: 'right',
-                };
-                return (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{
-                  background: '#fff',
-                  padding: '0.75rem 0.85rem',
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(4, 1fr)', 
+                gap: '1rem',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ 
+                  background: '#fff', 
+                  padding: '1rem', 
                   borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.5rem',
-                  minWidth: 0,
+                  textAlign: 'center'
                 }}>
-                  <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0066cc', lineHeight: 1.1 }}>
-                      {(simBatchResult.successRate * 100).toFixed(1)}%
-                    </div>
-                    <div style={{ color: '#666', fontSize: '0.8rem' }}>成功率</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#0066cc' }}>
+                    {(simBatchResult.successRate * 100).toFixed(1)}%
                   </div>
-                  <div style={lRowStyle}>
-                    {levelKeys.length === 0 ? (
-                      <span style={{ color: '#aaa' }}>（L別なし）</span>
-                    ) : (
-                      levelKeys.map((lv) => {
-                        const arr = byL.get(lv)!;
-                        const ok = arr.filter((x) => x.success).length;
-                        const n = arr.length;
-                        const pct = n > 0 ? ((ok / n) * 100).toFixed(1) : '0.0';
-                        return (
-                          <span key={lv} style={{ whiteSpace: 'nowrap' }}>
-                            L{lv}{' '}
-                            <span style={{ color: '#0066cc', fontWeight: 600 }}>{pct}%</span>
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
+                  <div style={{ color: '#666' }}>成功率</div>
                 </div>
-                <div style={{
-                  background: '#fff',
-                  padding: '0.75rem 0.85rem',
+                <div style={{ 
+                  background: '#fff', 
+                  padding: '1rem', 
                   borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.5rem',
-                  minWidth: 0,
+                  textAlign: 'center'
                 }}>
-                  <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold', lineHeight: 1.1 }}>
-                      {simBatchResult.successCount}/{simBatchResult.totalTrials}
-                    </div>
-                    <div style={{ color: '#666', fontSize: '0.8rem' }}>成功/総数</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                    {simBatchResult.successCount}/{simBatchResult.totalTrials}
                   </div>
-                  <div style={lRowStyle}>
-                    {levelKeys.length === 0 ? (
-                      <span style={{ color: '#aaa' }}>（L別なし）</span>
-                    ) : (
-                      levelKeys.map((lv) => {
-                        const arr = byL.get(lv)!;
-                        const ok = arr.filter((x) => x.success).length;
-                        const n = arr.length;
-                        return (
-                          <span key={lv} style={{ whiteSpace: 'nowrap' }}>
-                            L{lv}{' '}
-                            <span style={{ fontWeight: 600 }}>{ok}/{n}</span>
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
+                  <div style={{ color: '#666' }}>成功/総数</div>
                 </div>
-                <div style={{
-                  background: '#fff',
-                  padding: '0.75rem 0.85rem',
+                <div style={{ 
+                  background: '#fff', 
+                  padding: '1rem', 
                   borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.5rem',
-                  minWidth: 0,
+                  textAlign: 'center'
                 }}>
-                  <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold', lineHeight: 1.1 }}>
-                      {simBatchResult.avgQuestions.toFixed(1)}
-                    </div>
-                    <div style={{ color: '#666', fontSize: '0.8rem' }}>平均質問数</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>
+                    {simBatchResult.avgQuestions.toFixed(1)}
                   </div>
-                  <div style={lRowStyle}>
-                    {levelKeys.length === 0 ? (
-                      <span style={{ color: '#aaa' }}>（L別なし）</span>
-                    ) : (
-                      levelKeys.map((lv) => {
-                        const arr = byL.get(lv)!;
-                        const n = arr.length;
-                        const avgQ = n > 0 ? Math.round((arr.reduce((s, x) => s + x.questionCount, 0) / n) * 10) / 10 : 0;
-                        return (
-                          <span key={lv} style={{ whiteSpace: 'nowrap' }}>
-                            L{lv}{' '}
-                            <span style={{ fontWeight: 600 }}>{avgQ}</span>
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
+                  <div style={{ color: '#666' }}>平均質問数</div>
                 </div>
-                <div style={{
-                  background: '#fff',
-                  padding: '0.75rem 0.85rem',
+                <div style={{ 
+                  background: '#fff', 
+                  padding: '1rem', 
                   borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '0.5rem',
-                  minWidth: 0,
+                  textAlign: 'center'
                 }}>
-                  <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
-                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#c62828', lineHeight: 1.1 }}>
-                      {simBatchResult.results.filter(r => !r.success).length}
-                    </div>
-                    <div style={{ color: '#666', fontSize: '0.8rem' }}>失敗数</div>
+                  <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#c62828' }}>
+                    {simBatchResult.results.filter(r => !r.success).length}
                   </div>
-                  <div style={lRowStyle}>
-                    {levelKeys.length === 0 ? (
-                      <span style={{ color: '#aaa' }}>（L別なし）</span>
-                    ) : (
-                      levelKeys.map((lv) => {
-                        const arr = byL.get(lv)!;
-                        const fail = arr.filter((x) => !x.success).length;
-                        return (
-                          <span key={lv} style={{ whiteSpace: 'nowrap' }}>
-                            L{lv}{' '}
-                            <span style={{ color: fail > 0 ? '#c62828' : '#333', fontWeight: 600 }}>{fail}</span>
-                          </span>
-                        );
-                      })
-                    )}
-                  </div>
+                  <div style={{ color: '#666' }}>失敗数</div>
                 </div>
               </div>
-                );
-              })()}
 
               {simBatchResult.failureSummary && Object.keys(simBatchResult.failureSummary).length > 0 && (
                 <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff3e0', borderRadius: '4px', fontSize: '0.9rem' }}>
@@ -4851,9 +4630,6 @@ export default function AdminTagsPage() {
                       </span>
                       <span style={{ color: '#666', fontSize: '0.85rem', flexShrink: 0 }}>
                         {r.outcome} ({r.questionCount}問)
-                        {(r as { ambiguityLevel?: number }).ambiguityLevel != null && (
-                          <span style={{ color: '#555', marginLeft: '0.25rem' }}>L{(r as { ambiguityLevel?: number }).ambiguityLevel}</span>
-                        )}
                         {(r as { errorMessage?: string }).errorMessage && (
                           <span style={{ display: 'block', color: '#c62828', fontSize: '0.75rem', marginTop: '2px' }} title={(r as { errorMessage?: string }).errorMessage}>
                             {(r as { errorMessage?: string }).errorMessage}
@@ -4915,7 +4691,7 @@ export default function AdminTagsPage() {
                                 headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
                                 body: JSON.stringify({
                                   targetWorkId: simResultModal.targetWorkId,
-                                  ambiguityLevel: simSingleAmbiguityLevel,
+                                  ambiguityLevel: simAmbiguityLevel,
                                   aiGateChoice: simAiGateChoice,
                                   includePerf: true,
                                 }),

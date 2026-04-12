@@ -63,7 +63,6 @@ type BackNavEntry = { returnTo: BackStep; undoCount: number };
 
 interface RecommendModeProps {
   onBack: () => void;
-  onLogoClick?: () => void;
 }
 
 type FamousTagItem = { tagKey: string; displayName: string; count: number };
@@ -123,7 +122,7 @@ function RecommendPickedTagsRow({ tags, isMobile }: { tags: SelectedTag[]; isMob
 }
 
 
-export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
+export function RecommendMode({ onBack }: RecommendModeProps) {
   const isMobile = useMediaQuery(768);
   const [step, setStep] = useState<RecommendStep>('ai_gate');
   const [aiGateChoice, setAiGateChoice] = useState<'YES' | 'NO' | 'DONT_CARE' | null>(null);
@@ -677,7 +676,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     return (
       <>
       <Stage
-        onLogoClick={onLogoClick}
         characterVariant="usually"
         mobileExtendWhiteboard={isMobile}
       >
@@ -735,8 +733,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     return (
       <>
         <Stage
-          onLogoClick={onLogoClick}
-          logoClickDisabled={true}
           characterVariant="thinking"
           thinkingSubType="opening"
           characterSpeech={
@@ -1018,7 +1014,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
         </div>
       </div>
       <Stage
-        onLogoClick={onLogoClick}
         characterVariant="usually"
         characterSpeech={
           <p style={{ margin: 0, fontWeight: 700, color: 'var(--color-text)', fontSize: 20 }}>{rc.recommendResultsHeading ?? 'こんな作品なんてどう？'}</p>
@@ -1062,7 +1057,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     return (
       <>
       <Stage
-        onLogoClick={onLogoClick}
         characterVariant="usually"
         mobileExtendWhiteboard={isMobile}
         mobileWhiteboardZoom={isMobile ? 1.3 : undefined}
@@ -1445,7 +1439,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     return (
       <>
         <Stage
-          onLogoClick={onLogoClick}
           characterVariant="usually"
           characterSpeech={isMobile ? undefined : <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>{getSortPromptFront(rcTyped)}</p>}
           mobileHideCharacter={isMobile}
@@ -1747,7 +1740,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     return (
       <>
         <Stage
-          onLogoClick={onLogoClick}
           characterVariant="usually"
           characterSpeech={isMobile ? undefined : <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>{getSortPromptBack(rcTyped)}</p>}
           mobileHideCharacter={isMobile}
@@ -2109,7 +2101,6 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
   return (
     <>
     <Stage
-      onLogoClick={onLogoClick}
       characterVariant="usually"
       characterSpeech={
         isMobile ? undefined : (

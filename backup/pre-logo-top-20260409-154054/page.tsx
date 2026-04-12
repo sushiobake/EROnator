@@ -252,7 +252,6 @@ export default function Home() {
     (typeof process.env.NEXT_PUBLIC_MIN_THINKING_MS !== 'undefined' && Number(process.env.NEXT_PUBLIC_MIN_THINKING_MS)) ||
     (process.env.NODE_ENV === 'development' ? 1000 : 200);
 
-
   useEffect(() => {
     setIsClient(true);
     const params = new URLSearchParams(window.location.search);
@@ -587,17 +586,6 @@ export default function Home() {
     setState('TOP');
   };
 
-  /** ロゴクリック: 考え中は無視、確認後にセッション破棄してトップへ */
-  const handleLogoClickToTop = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    if (isThinking) return;
-    if (!window.confirm('進行を中止してトップに戻りますか？')) return;
-    setSessionId(null);
-    localStorage.removeItem('eronator_sessionId');
-    setState('TOP');
-  }, [isThinking]);
-
-
   /** デバッグ用: 指定画面へ強制遷移（debugUIEnabled時のみ有効） */
   const handleForceNavigate = (screen: ForceNavigateScreen) => {
     const DUMMY_WORK: Work = {
@@ -797,12 +785,7 @@ export default function Home() {
   };
 
   if (state === 'RECOMMEND') {
-    return (
-      <RecommendMode
-        onBack={() => setState('TOP')}
-        onLogoClick={handleLogoClickToTop}
-      />
-    );
+    return <RecommendMode onBack={() => setState('TOP')} />;
   }
 
   if (state === 'TOP') {
@@ -870,8 +853,6 @@ export default function Home() {
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
           thinkingSubType={thinkingSubType}
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             isThinking
               ? thinkingSpeech
@@ -933,8 +914,6 @@ export default function Home() {
         <Stage
           characterVariant={isThinking ? thinkingVariants[confidenceLevel] : questionCharacterVariant}
           thinkingSubType={thinkingSubType}
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             isThinking
               ? thinkingSpeech
@@ -980,8 +959,6 @@ export default function Home() {
         <Stage
           characterVariant={isThinking ? 'thinking' : 'usually'}
           thinkingSubType={thinkingSubType}
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             isThinking
               ? thinkingSpeech
@@ -1014,8 +991,6 @@ export default function Home() {
         )}
         <Stage
           characterVariant="usually"
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
               {(gc?.successSpeech ?? '正解！？やっぱりね！').replace(/\{questionCount\}/g, String(questionCount ?? 0))}
@@ -1057,8 +1032,6 @@ export default function Home() {
         )}
         <Stage
           characterVariant="usually"
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>
               {(gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！').replace(/\{questionCount\}/g, String(questionCount ?? 0))}
@@ -1108,8 +1081,6 @@ export default function Home() {
           thinkingSubType={thinkingSubType}
           hideCharacter={true}
           mobileExtendWhiteboard={true}
-          onLogoClick={handleLogoClickToTop}
-          logoClickDisabled={isThinking}
           characterSpeech={
             isThinking
               ? thinkingSpeech

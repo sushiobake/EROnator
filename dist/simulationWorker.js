@@ -1131,6 +1131,22 @@ function selectConfirmType(confidence, hasSoftConfirmData, config) {
   return "HARD_CONFIRM";
 }
 
+// src/server/game/confirmHardMin.ts
+function getEffectiveHardConfidenceMin(config, nextQuestionIndex1Based, top1PopularityBase) {
+  const base = config.confirm.hardConfidenceMin;
+  const byPhase = config.confirm.hardConfidenceMinByPhase;
+  if (!byPhase?.enabled || !byPhase.phases) return base;
+  const minPop = byPhase.minPopularityBase ?? 50;
+  const pop = top1PopularityBase ?? 0;
+  if (pop < minPop) return base;
+  const { q20, q25, q30 } = byPhase.phases;
+  if (nextQuestionIndex1Based < 20) return base;
+  if (nextQuestionIndex1Based >= 31) return base;
+  if (nextQuestionIndex1Based >= 30) return q30;
+  if (nextQuestionIndex1Based >= 25) return q25;
+  return q20;
+}
+
 // src/server/algo/coverage.ts
 function calculateCoverage(tagWorkCount, totalWorks) {
   if (totalWorks === 0) {
@@ -2456,9 +2472,15 @@ async function selectNextQuestion(weights, probabilities, questionCount, questio
         }
         derivedTags = derivedTags.filter((t2) => !isTagBanned(t2.displayName));
         const hasSoftConfirmData = derivedTags.some((tag) => tag.workTags.length > 0);
+        const top1PopularityForHard = top1WorkId != null ? getSimWorkDataMap()?.get(top1WorkId)?.popularityBase ?? null : null;
+        const effectiveHardMin = getEffectiveHardConfidenceMin(
+          config,
+          questionIndex,
+          top1PopularityForHard
+        );
         const confirmType = selectConfirmType(confidence, hasSoftConfirmData, {
           softConfidenceMin: config.confirm.softConfidenceMin,
-          hardConfidenceMin: config.confirm.hardConfidenceMin
+          hardConfidenceMin: effectiveHardMin
         });
         if (confirmType === "SOFT_CONFIRM" && derivedTags.length > 0) {
           const probMap = new Map(probsForConfirm.map((p) => [p.workId, p.probability]));
@@ -7631,7 +7653,16 @@ var ConfirmSchema = external_exports.object({
   ),
   qForcedIndices: external_exports.array(external_exports.number().int().positive()),
   softConfidenceMin: external_exports.number().min(0).max(1),
-  hardConfidenceMin: external_exports.number().min(0).max(1)
+  hardConfidenceMin: external_exports.number().min(0).max(1),
+  hardConfidenceMinByPhase: external_exports.object({
+    enabled: external_exports.boolean(),
+    minPopularityBase: external_exports.number().min(0).max(100).optional(),
+    phases: external_exports.object({
+      q20: external_exports.number().min(0).max(1),
+      q25: external_exports.number().min(0).max(1),
+      q30: external_exports.number().min(0).max(1)
+    }).strict()
+  }).strict().optional()
 }).strict();
 var AlgoSchema = external_exports.object({
   beta: external_exports.number().positive(),
@@ -7805,11 +7836,14 @@ var GameCopySchema = external_exports.object({
   failListSpeech: external_exports.string(),
   failListSubMobile: external_exports.string(),
   failListSubPc: external_exports.string(),
-  /** 外れ①「リストにない」押下後（作品名入力の上の一文） */
+  /** 外れ① 作品名を直接入力する欄の上の一文（常時表示） */
   failListNotInListPrompt: external_exports.string(),
+  /** 互換のため残す。UIでは未使用 */
   failListBtnNotInList: external_exports.string(),
   failListBtnRecommend: external_exports.string(),
   failListBtnTop: external_exports.string(),
+  /** 外れ① 検索ブロックの見出し */
+  failListSearchHeading: external_exports.string(),
   failListSearchIntro: external_exports.string(),
   failListSearchPlaceholder: external_exports.string(),
   /** 外れ② ALMOST_SUCCESS（惜しかった） */

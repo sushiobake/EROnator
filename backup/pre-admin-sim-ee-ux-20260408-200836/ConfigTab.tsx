@@ -6,7 +6,6 @@
 
 import { JSX, useState, useMemo, type ReactNode } from 'react';
 import { RANK_BG, RANK_TEXT } from '@/app/admin/constants/rankColors';
-import { mergeEarlyExitReview } from '@/app/admin/utils/earlyExitReviewMerged';
 import { DEFAULT_THINKING, DEFAULT_GAME_COPY, DEFAULT_RECOMMEND_COPY } from '@/server/config/schema';
 
 interface ConfigTabProps {
@@ -52,6 +51,55 @@ function parseCommaSeparatedInts(s: string): number[] {
     .split(/[,，\s]+/)
     .map((x) => parseInt(x.trim(), 10))
     .filter((n) => !Number.isNaN(n));
+}
+
+
+const DEFAULT_EARLY_EXIT_REVIEW = {
+  enabled: true,
+  reviewIndices: [25, 30, 35, 40],
+  requiredConditions: 2,
+  thresholds: {
+    q25: { minConfidence: 0.08, maxEffectiveCandidates: 80 },
+    q30: { minConfidence: 0.1, maxEffectiveCandidates: 50 },
+    q35: { minConfidence: 0.12, maxEffectiveCandidates: 30 },
+    q40: { minConfidence: 0.1, maxEffectiveCandidates: 40 },
+  },
+} as const;
+
+type EarlyExitQ = 'q25' | 'q30' | 'q35' | 'q40';
+
+function mergeEarlyExitReview(raw: unknown) {
+  const r = raw as {
+    enabled?: boolean;
+    reviewIndices?: number[];
+    requiredConditions?: number;
+    thresholds?: Partial<
+      Record<EarlyExitQ, { minConfidence?: number; maxEffectiveCandidates?: number; maxConfidenceDelta5?: number }>
+    >;
+  } | null | undefined;
+  const t0 = DEFAULT_EARLY_EXIT_REVIEW.thresholds;
+  const pick = (q: EarlyExitQ) => {
+    const o = r?.thresholds?.[q];
+    return {
+      minConfidence: typeof o?.minConfidence === 'number' ? o.minConfidence : t0[q].minConfidence,
+      maxEffectiveCandidates:
+        typeof o?.maxEffectiveCandidates === 'number' ? o.maxEffectiveCandidates : t0[q].maxEffectiveCandidates,
+    };
+  };
+  return {
+    enabled: r?.enabled !== false,
+    reviewIndices:
+      Array.isArray(r?.reviewIndices) && r.reviewIndices.length > 0
+        ? r.reviewIndices
+        : [...DEFAULT_EARLY_EXIT_REVIEW.reviewIndices],
+    requiredConditions: 2,
+    thresholds: {
+      q25: pick('q25'),
+      q30: pick('q30'),
+      q35: pick('q35'),
+      q40: pick('q40'),
+    },
+  };
 }
 
 function CollapsibleSection({
@@ -269,12 +317,11 @@ export default function ConfigTab({
                 { key: 'failListSpeech', label: '外れ①メイン（全部外してリスト表示になったときのキャラの一言）' },
                 { key: 'failListSubMobile', label: '外れ①サブ・スマホ（リスト画面でスマホ時の2行目）' },
                 { key: 'failListSubPc', label: '外れ①サブ・PC（リスト画面でPC時の2行目）' },
-                { key: 'failListNotInListPrompt', label: '外れ①作品名入力の上の一文（常時表示）' },
-                { key: 'failListBtnNotInList', label: '外れ①互換用（未使用・空でよい）' },
-                { key: 'failListBtnRecommend', label: '外れ①ボタン「推薦してもらう」' },
+                { key: 'failListNotInListPrompt', label: '外れ①「リストにない」押下後（作品名入力の上の一文）' },
+                { key: 'failListBtnNotInList', label: '外れ①ボタン「リストにない」' },
+                { key: 'failListBtnRecommend', label: '外れ①ボタン「推薦で探す」' },
                 { key: 'failListBtnTop', label: '外れ①ボタン「トップに戻る」' },
-                { key: 'failListSearchHeading', label: '外れ①検索ブロック見出し' },
-                { key: 'failListSearchIntro', label: '外れ①検索の説明文（見出しの下）' },
+                { key: 'failListSearchIntro', label: '外れ①検索の説明文（入力欄の上）' },
                 { key: 'failListSearchPlaceholder', label: '外れ①検索プレースホルダ' },
                 { key: 'almostSuccessSpeech', label: '外れ②惜しかった（{questionCount}で質問数に置換）' },
                 { key: 'aiGatePreamble', label: 'AIゲートの前段（最初の「AI生成？」の上の淡い文）' },

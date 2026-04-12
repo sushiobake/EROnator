@@ -16,8 +16,6 @@ const wrap: CSSProperties = {
 
 const row: CSSProperties = { marginTop: '0.08rem' };
 
-const ALL_Q: EarlyExitQ[] = ['q25', 'q30', 'q35', 'q40'];
-
 /** シミュ枠の右余白用。最大3行で横に情報を詰める。 */
 export function SimEarlyExitThresholdsSummary({ flow }: { flow?: { earlyExitReview?: unknown } }) {
   const ee = mergeEarlyExitReview(flow?.earlyExitReview);
@@ -30,7 +28,7 @@ export function SimEarlyExitThresholdsSummary({ flow }: { flow?: { earlyExitRevi
     );
   }
 
-  const qs = ALL_Q.filter((q) => ee.reviewIndices.includes(parseInt(q.slice(1), 10)));
+  const qs: EarlyExitQ[] = ['q25', 'q30', 'q35', 'q40'];
   const line3 = qs
     .map((q) => {
       const t = ee.thresholds[q];
