@@ -9,16 +9,6 @@ export type MvpConfig = ReturnType<typeof getMvpConfig>;
 export function applyParamSetToConfig(baseConfig: MvpConfig, paramSet: ParamSet): MvpConfig {
   const config = JSON.parse(JSON.stringify(baseConfig)) as MvpConfig;
 
-  if (paramSet.applyTopNOnly) {
-    if (paramSet.topNForIG != null) {
-      config.algo.topNForIG = paramSet.topNForIG;
-    }
-    if (paramSet.topNForIGPhases !== undefined) {
-      config.algo.topNForIGPhases = paramSet.topNForIGPhases;
-    }
-    return config;
-  }
-
   config.confirm.confidenceConfirmBand = [
     paramSet.confidenceConfirmBandLower,
     paramSet.confidenceConfirmBandUpper,

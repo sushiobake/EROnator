@@ -21,6 +21,15 @@ export interface ParamSet {
   maxQuestions?: number;
   /** 省略時はベース config の confirm.softConfidenceMin */
   softConfidenceMin?: number;
+  /**
+   * true のとき topNForIG / topNForIGPhases のみ適用し、Confirm・早期失敗はディスクの mvpConfig のまま。
+   * 閾値最適化の ParamSet とは別系統のスイープ用。
+   */
+  applyTopNOnly?: boolean;
+  /** EXPLORE_TAG の IG に使う上位 N 作品（algo.topNForIG） */
+  topNForIG?: number;
+  /** 質問番号フェーズ別 topN（algo.topNForIGPhases） */
+  topNForIGPhases?: Array<{ untilQuestionIndex: number; topN: number }>;
 }
 
 /** Sweep 全体のリクエスト */
@@ -44,6 +53,10 @@ export interface SweepRequest {
   useV2ParamSets?: boolean;
   /** true のとき V3 包括グリッド（45通り＋Phase2/3で解決） */
   useV3ParamSets?: boolean;
+  /** true のとき topNForIG 専用スイープ（有名度3帯×曖昧さ1中心）。他の useV* は無視 */
+  useTopNForIGSweep?: boolean;
+  /** topN スイープ時: 各帯（有名30+ / 中間10〜30未満 / 無名10未満）から何作品サンプルするか。既定 200 */
+  topNForIGSamplePerTier?: number;
   phase1SampleSize?: number;
   phase2SampleSize?: number;
   phase3SampleSize?: number;

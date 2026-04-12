@@ -29,27 +29,7 @@ const ConfirmSchema = z.object({
     })
     .strict()
     .optional(),
-  /**
-   * HARD_CONFIRM で YES のとき、revealThreshold を待たず REVEAL へ進める。
-   * TITLE_INITIAL / CHARACTER は常に即断定。AUTHOR は authorMinConfidence 以上のときのみ。
-   */
-  hardConfirmYesAutoReveal: z
-    .object({
-      enabled: z.boolean().optional(),
-      authorMinConfidence: z.number().min(0).max(1).optional(),
-    })
-    .strict()
-    .optional(),
 }).strict();
-
-const TopNForIGPhaseSchema = z
-  .object({
-    /** この質問番号（1-based・次に出す質問）以下なら topN を使用 */
-    untilQuestionIndex: z.number().int().positive(),
-    /** IG に載せる作品数。0 は全作品（totalWorks） */
-    topN: z.number().int().min(0),
-  })
-  .strict();
 
 const AlgoSchema = z.object({
   beta: z.number().positive(),
@@ -95,16 +75,6 @@ const AlgoSchema = z.object({
     })
     .strict()
     .optional(),
-  /**
-   * EXPLORE_TAG の IG 計算に使う確率先頭 N 件。未設定時は 300（従来）。
-   * 0 は全作品（totalWorks）。大きくすると無名作品の当たりやすさが上がるが計算コスト増。
-   */
-  topNForIG: z.number().int().min(0).optional(),
-  /**
-   * 質問番号ごとに topN を切り替え。untilQuestionIndex 昇順で先にマッチした段を採用。
-   * 未設定または空なら topNForIG のみ使用。
-   */
-  topNForIGPhases: z.array(TopNForIGPhaseSchema).optional(),
 }).strict();
 
 const FlowSchema = z.object({

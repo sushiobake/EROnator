@@ -34,8 +34,7 @@ import type { MvpConfig } from '@/server/config/schema';
 import { getGroupDisplayNames } from '@/server/config/tagIncludeUnify';
 import type { QuestionHistoryEntry, SessionState } from '@/server/session/manager';
 import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
-import { getRevealThresholdForQuestion, getEffectiveMaxQuestions, resolveTopNForIG } from '@/server/config/flowUtils';
-import { shouldForceRevealAfterHardConfirmYes } from '@/server/game/hardConfirmReveal';
+import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import { isTagBanned } from '@/server/admin/bannedTags';
 import { SERIES_TAG_KEYS } from '@/server/algo/types';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
@@ -1567,7 +1566,8 @@ async function selectUnifiedExploreOrSummary(
   const pValueBand = getExplorePValueBand(config);
   let selectedKey: string | null;
 
-  const topNForIG = resolveTopNForIG(config, questionIndex, totalWorks);
+  // 案1: IG計算は常に上位N件のworksのみ使用（序盤の23秒遅延を解消）
+  const topNForIG = 300;
   const probsForIG = (() => {
     const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
     const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
@@ -1830,8 +1830,8 @@ async function selectExploreQuestion(
 
   const pValueBand = getExplorePValueBand(config);
   const useIG = config.algo.useIGForExploreSelection !== false;
-  const nextQuestionIndex1Based = questionIndex > 0 ? questionIndex : questionHistory.length + 1;
-  const topNForIG = resolveTopNForIG(config, nextQuestionIndex1Based, totalWorks);
+  // 案1: IG計算は常に上位N件のworksのみ使用
+  const topNForIG = 300;
   const probsForIG = (() => {
     const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
     const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
@@ -2380,18 +2380,6 @@ export async function handleAnswerResponse(
       state: 'TOP',
       sessionUpdates: baseSessionUpdates,
     };
-  }
-
-  // 0.5 HARD_CONFIRM YES → 即断定（TITLE_INITIAL / CHARACTER、および AUTHOR は確度条件）
-  if (shouldForceRevealAfterHardConfirmYes(lastAnswered, confidence, config)) {
-    const revealWorkId = getTopWorkIdFromProbabilities(probabilities, session.revealRejectedWorkIds ?? []);
-    if (revealWorkId) {
-      return {
-        state: 'REVEAL',
-        revealWorkId,
-        sessionUpdates: revealSessionUpdates,
-      };
-    }
   }
 
   // 1. REVEAL 判定（confidence >= threshold）

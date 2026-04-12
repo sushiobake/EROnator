@@ -1,4 +1,4 @@
-﻿# dependencies
+# dependencies
 node_modules
 
 # build output
@@ -8,8 +8,7 @@ out
 # backups (often has recursive structure - heavy for ripgrep)
 .backup
 
-# simulation results (large JSON files)
-data/simulation-results
+# simulation results: readable for agents (path not ignored)
 
 # prisma DB files
 prisma/*.db

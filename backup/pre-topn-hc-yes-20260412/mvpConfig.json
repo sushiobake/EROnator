@@ -125,10 +125,6 @@
         "q25": 0.75,
         "q30": 0.65
       }
-    },
-    "hardConfirmYesAutoReveal": {
-      "enabled": true,
-      "authorMinConfidence": 0.3
     }
   },
   "algo": {
@@ -149,8 +145,7 @@
       "early": 0.02,
       "mid": 0.05,
       "late": 0.08
-    },
-    "topNForIG": 300
+    }
   },
   "flow": {
     "maxQuestions": 35,

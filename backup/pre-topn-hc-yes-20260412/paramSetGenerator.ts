@@ -304,58 +304,6 @@ export function generateV3ComprehensiveParamSets(): ParamSet[] {
   return sets;
 }
 
-/** applyTopNOnly 時は Confirm/EE は無視されるが、型のため production に近い値を入れる */
-function topNOnlyParamBase(): Omit<ParamSet, 'id' | 'label' | 'topNForIG' | 'topNForIGPhases'> {
-  return {
-    confidenceConfirmBandLower: 0.25,
-    confidenceConfirmBandUpper: 0.5,
-    hardConfidenceMin: 0.6,
-    hardConfirmInjectionRatio: 0,
-    reviewIndices: [25, 30, 35],
-    earlyExitThresholds: {
-      q25: { minConfidence: 0.04, maxEffectiveCandidates: 90 },
-      q30: { minConfidence: 0.06, maxEffectiveCandidates: 60 },
-      q35: { minConfidence: 0.08, maxEffectiveCandidates: 35 },
-    },
-    applyTopNOnly: true,
-  };
-}
-
-/**
- * topNForIG スイープ用 ParamSet（applyTopNOnly のみ有効）。
- * 管理画面「topNForIG スイープ」から 1 ボタン実行。
- */
-export function generateTopNForIGSweepParamSets(): ParamSet[] {
-  const b = topNOnlyParamBase();
-  return [
-    { id: 'ig_300', label: 'topNForIG=300 (既定)', ...b, topNForIG: 300 },
-    { id: 'ig_500', label: 'topNForIG=500', ...b, topNForIG: 500 },
-    { id: 'ig_800', label: 'topNForIG=800', ...b, topNForIG: 800 },
-    { id: 'ig_1200', label: 'topNForIG=1200', ...b, topNForIG: 1200 },
-    { id: 'ig_2000', label: 'topNForIG=2000', ...b, topNForIG: 2000 },
-    {
-      id: 'ig_all',
-      label: 'topNForIG=0（全作品でIG）',
-      ...b,
-      topNForIG: 0,
-    },
-    {
-      id: 'ig_phased_1000_300',
-      label: 'Q15まで1000、以降300',
-      ...b,
-      topNForIG: 300,
-      topNForIGPhases: [{ untilQuestionIndex: 15, topN: 1000 }],
-    },
-    {
-      id: 'ig_phased_1500_500',
-      label: 'Q12まで1500、以降500',
-      ...b,
-      topNForIG: 500,
-      topNForIGPhases: [{ untilQuestionIndex: 12, topN: 1500 }],
-    },
-  ];
-}
-
 export function getBaselineParamSet(): ParamSet {
   return {
     id: 'baseline',

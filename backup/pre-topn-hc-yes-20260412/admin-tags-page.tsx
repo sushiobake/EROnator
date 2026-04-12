@@ -3087,51 +3087,6 @@ export default function AdminTagsPage() {
           >
             {optimizeLoading ? '開始リクエスト送信中…' : 'フルパイプラインを開始（自動）'}
           </button>
-          <p style={{ fontSize: '0.8rem', color: '#555', marginTop: '0.5rem' }}>
-            topNForIG: 有名度3帯×各200作品×曖昧さ1（変更はJSON body）で約7通りのNを比較。結果は data/threshold-optimize-results/topn-ig-*.json
-          </p>
-          <button
-            type="button"
-            disabled={optimizeLoading || !adminToken}
-            onClick={async () => {
-              if (!adminToken) return;
-              setOptimizeLoading(true);
-              setOptimizeMessage(null);
-              try {
-                const res = await fetch('/api/admin/threshold-optimize', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
-                  body: JSON.stringify({
-                    topNForIGSweep: true,
-                    ambiguityLevels: [1],
-                    trialsPerWork: 1,
-                    topNForIGSamplePerTier: 200,
-                    parallelCount: 4,
-                  }),
-                });
-                const j = await res.json();
-                if (!res.ok) throw new Error((j as { error?: string }).error ?? 'failed');
-                setOptimizeMessage('topNForIG スイープを開始しました。');
-              } catch (e) {
-                setOptimizeMessage(e instanceof Error ? e.message : 'エラー');
-              } finally {
-                setOptimizeLoading(false);
-              }
-            }}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: '0.95rem',
-              fontWeight: 600,
-              backgroundColor: optimizeLoading ? '#ccc' : '#6d4c41',
-              color: 'white',
-              border: 'none',
-              borderRadius: 4,
-              cursor: optimizeLoading ? 'not-allowed' : 'pointer',
-              marginTop: '0.5rem',
-            }}
-          >
-            {optimizeLoading ? '送信中…' : 'topNForIG スイープ開始（3帯×200×約7設定）'}
-          </button>
         </section>
       )}
 

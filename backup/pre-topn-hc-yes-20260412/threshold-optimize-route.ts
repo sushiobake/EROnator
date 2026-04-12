@@ -6,12 +6,7 @@ import * as fs from 'fs/promises';
 import path from 'path';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import type { SweepRequest } from '@/types/thresholdOptimizer';
-import {
-  runSweep,
-  runFullOptimizationPipeline,
-  runV3ComprehensivePipeline,
-  runTopNForIGSweep,
-} from '@/server/simulation/thresholdOptimizer';
+import { runSweep, runFullOptimizationPipeline, runV3ComprehensivePipeline } from '@/server/simulation/thresholdOptimizer';
 
 export async function POST(request: NextRequest) {
   if (!isAdminAllowed(request)) {
@@ -28,31 +23,10 @@ export async function POST(request: NextRequest) {
   const fullAuto = body.fullAutoPipeline === true;
   const earlyExitV2 = body.earlyExitV2 === true;
   const comprehensiveV3 = body.comprehensiveV3 === true;
-  const topNForIGSweep = body.topNForIGSweep === true;
 
   void (async () => {
     try {
-      if (topNForIGSweep) {
-        const pc =
-          body.parallelCount != null && !Number.isNaN(Number(body.parallelCount))
-            ? Number(body.parallelCount)
-            : undefined;
-        await runTopNForIGSweep({
-          phase: 1,
-          sampleSize: 0,
-          ambiguityLevels: Array.isArray(body.ambiguityLevels)
-            ? (body.ambiguityLevels as number[])
-            : [1],
-          aiGateChoice: (body.aiGateChoice as string) ?? 'BOTH',
-          trialsPerWork: Math.max(1, Number(body.trialsPerWork) || 1),
-          parallelCount: pc ?? 4,
-          topNForIGSamplePerTier:
-            body.topNForIGSamplePerTier != null && !Number.isNaN(Number(body.topNForIGSamplePerTier))
-              ? Number(body.topNForIGSamplePerTier)
-              : 200,
-          useTopNForIGSweep: true,
-        });
-      } else if (comprehensiveV3) {
+      if (comprehensiveV3) {
         const pc =
           body.parallelCount != null && !Number.isNaN(Number(body.parallelCount))
             ? Number(body.parallelCount)
@@ -121,9 +95,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    message: topNForIGSweep
-      ? 'topNForIG sweep started (3 popularity tiers × param sets; see data/threshold-optimize-results/topn-ig-*.json). Poll GET /api/admin/bulk-job-status for optimizeProgress.'
-      : comprehensiveV3
+    message: comprehensiveV3
       ? 'V3 comprehensive pipeline started (phase1: 45 PS + baseline -> phase2: top-8 -> phase3: top-3, ~5.5h). Poll GET /api/admin/bulk-job-status for optimizeProgress.'
       : earlyExitV2
         ? 'Early-exit v2 sweep started (50 works, 9 param sets + baseline). Poll GET /api/admin/bulk-job-status for optimizeProgress.'

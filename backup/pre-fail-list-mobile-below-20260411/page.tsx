@@ -10,7 +10,7 @@ import { AiGate } from './components/AiGate';
 import { Quiz } from './components/Quiz';
 import { Reveal } from './components/Reveal';
 import { Success, SuccessRecommendationsVertical } from './components/Success';
-import { FailList, FailListVerticalList } from './components/FailList';
+import { FailList } from './components/FailList';
 import { DebugPanel, type ForceNavigateScreen } from './components/DebugPanel';
 import { Stage, type CharacterVariant } from './components/Stage';
 import { useMediaQuery } from './components/useMediaQuery';
@@ -1107,31 +1107,24 @@ export default function Home() {
           characterVariant={isThinking ? 'thinking' : 'usually'}
           thinkingSubType={thinkingSubType}
           hideCharacter={true}
+          mobileExtendWhiteboard={true}
           onLogoClick={handleLogoClickToTop}
           logoClickDisabled={isThinking}
           characterSpeech={
             isThinking
               ? thinkingSpeech
-              : isMobile
-                ? undefined
-                : (
-                <div>
-                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 17 }}>{gc?.failListSpeech ?? 'うーん…ちょっとわからなかったわ。'}</p>
-                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: 15 }}>
-                    {gc?.failListSubPc ?? 'この中に近いものはある？　ないなら右で検索してみて。'}
+              : (
+                <div style={isMobile ? { textAlign: 'center' } : {}}>
+                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: isMobile ? 24 : 17 }}>{gc?.failListSpeech ?? 'うーん…ちょっとわからなかったわ。'}</p>
+                  <p style={{ margin: '6px 0 0 0', color: 'var(--color-text-muted)', fontSize: isMobile ? 20 : 15 }}>
+                    {isMobile
+                      ? (gc?.failListSubMobile ?? 'この中にある？　なければ検索か、作品名を教えてね。')
+                      : (gc?.failListSubPc ?? 'この中に近いものはある？　ないなら右で検索してみて。')}
                   </p>
                 </div>
               )
           }
-          mobileBelowCanvas={
-            isMobile && !isThinking && failListCandidates.length > 0 ? (
-              <FailListVerticalList
-                candidates={failListCandidates}
-                onSelectWork={(workId) => handleFailListSelectWork(workId, 'topCandidates')}
-                streamerMode={streamerMode}
-              />
-            ) : undefined
-          }
+          mobileBelowCanvas={undefined}
           whiteboardWide={true}
           whiteboardFullContentWidth={true}
         >
@@ -1150,10 +1143,7 @@ export default function Home() {
             failListSearchIntro={gc?.failListSearchIntro}
             failListSearchPlaceholder={gc?.failListSearchPlaceholder}
             mobileListBelow={isMobile}
-            hideCandidateGrid={false}
-            introFailListSpeech={gc?.failListSpeech}
-            introFailListSubMobile={gc?.failListSubMobile}
-            candidatesPlacement={isMobile ? 'belowStage' : 'inline'}
+            hideCandidateGrid={isMobile}
             streamerMode={streamerMode}
           />
           )}

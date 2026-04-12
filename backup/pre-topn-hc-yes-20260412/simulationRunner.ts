@@ -6,7 +6,6 @@ import { getMvpConfig } from '../config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '../config/flowUtils';
 import { getTitleSyllableRanges } from '../config/specialQuestionsLoader';
 import { selectNextQuestion, processAnswer, filterWorksByAiGate, getEarlyExitStepSnapshot, type WorkInfoForConfirm } from '../game/engine';
-import { shouldForceRevealAfterHardConfirmYes } from '../game/hardConfirmReveal';
 import { getWorkTagsFromMatrix } from '../game/workTagMatrixLoader';
 import {
   perfStart,
@@ -577,9 +576,7 @@ export async function runSimulation(
       });
 
       const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
-      const lastHistForReveal = questionHistory[questionHistory.length - 1];
-      const forceHcReveal = shouldForceRevealAfterHardConfirmYes(lastHistForReveal, newConfidence, config);
-      if (forceHcReveal || newConfidence >= revealThreshold) {
+      if (newConfidence >= revealThreshold) {
         const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
         if (revealWorkId) {
           const revealWorkTitle = workTitleMap.get(revealWorkId) ?? '(不明)';

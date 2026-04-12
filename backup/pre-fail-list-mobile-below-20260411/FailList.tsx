@@ -30,8 +30,6 @@ const DEFAULT_SEARCH_INTRO = 'タイトルの一部でいいから入れてみ�
 const DEFAULT_SEARCH_PLACEHOLDER = '例: 鬼、学園、寝取られ など';
 const DEFAULT_BTN_RECOMMEND = '推薦してもらう';
 const DEFAULT_BTN_TOP = 'トップに戻る';
-const DEFAULT_INTRO_SPEECH = 'うーん…ちょっとわからなかったわ。';
-const DEFAULT_INTRO_SUB_MOBILE = 'この中にある？　なければ検索か、作品名を教えてね。';
 
 const CARD_GAP = 10;
 
@@ -51,12 +49,6 @@ interface FailListProps {
   /** @deprecated 未使用（互換のため残す） */
   mobileListBelow?: boolean;
   hideCandidateGrid?: boolean;
-  /** スマホで白板先頭に出す主文（candidatesPlacement=belowStage 時） */
-  introFailListSpeech?: string;
-  /** スマホで白板先頭に出す補足 */
-  introFailListSubMobile?: string;
-  /** スマホ: 候補タイルを Stage の mobileBelowCanvas 側に出す */
-  candidatesPlacement?: 'inline' | 'belowStage';
   streamerMode?: boolean;
 }
 
@@ -181,9 +173,6 @@ export function FailList({
   failListSearchPlaceholder = DEFAULT_SEARCH_PLACEHOLDER,
   mobileListBelow: _,
   hideCandidateGrid = false,
-  introFailListSpeech,
-  introFailListSubMobile,
-  candidatesPlacement = 'inline',
   streamerMode,
 }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
@@ -194,7 +183,6 @@ export function FailList({
   const interactionDisabled = useClickGuard([]);
   const isMobile = useMediaQuery(768);
   const chrome = getFailListBottomRowStyles(isMobile);
-  const candidatesRenderedBelow = isMobile && candidatesPlacement === 'belowStage';
 
   const handleSelectWork = (workId: string) => {
     if (interactionDisabled) return;
@@ -258,7 +246,7 @@ export function FailList({
     background: '#fff',
   };
 
-  const candidateGrid = !candidatesRenderedBelow && !hideCandidateGrid ? (
+  const candidateGrid = !hideCandidateGrid ? (
     <div
       style={{
         display: 'grid',
@@ -466,27 +454,16 @@ export function FailList({
   if (isMobile) {
     return (
       <div style={{ padding: '0.75rem 0', maxWidth: '100%', minWidth: 0, width: '100%' }}>
-        {candidatesRenderedBelow ? (
-          <div style={{ textAlign: 'center', marginBottom: '0.45rem' }}>
-            <p style={{ margin: 0, fontWeight: 600, color: 'var(--color-text)', fontSize: 12, lineHeight: 1.35 }}>
-              {introFailListSpeech ?? DEFAULT_INTRO_SPEECH}
-            </p>
-            <p style={{ margin: '4px 0 0 0', color: 'var(--color-text-muted)', fontSize: 11, lineHeight: 1.35 }}>
-              {introFailListSubMobile ?? DEFAULT_INTRO_SUB_MOBILE}
-            </p>
-          </div>
-        ) : null}
-        {!candidatesRenderedBelow &&
-          (hideCandidateGrid ? (
-            <FailListVerticalList
-              candidates={candidates}
-              onSelectWork={(workId) => handleSelectWork(workId)}
-              streamerMode={streamerMode}
-            />
-          ) : (
-            candidateGrid
-          ))}
-        <div style={{ marginTop: candidatesRenderedBelow ? 0 : '0.75rem' }}>{rightColumnStack}</div>
+        {hideCandidateGrid ? (
+          <FailListVerticalList
+            candidates={candidates}
+            onSelectWork={(workId) => handleSelectWork(workId)}
+            streamerMode={streamerMode}
+          />
+        ) : (
+          candidateGrid
+        )}
+        <div style={{ marginTop: '0.75rem' }}>{rightColumnStack}</div>
         {submittedResetBlock}
       </div>
     );

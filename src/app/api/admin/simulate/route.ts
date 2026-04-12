@@ -12,6 +12,7 @@ import { isSqlite } from '@/server/db/is-sqlite';
 import { getMvpConfig } from '@/server/config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
 import { selectNextQuestion, processAnswer, filterWorksByAiGate, setSimWorkDataMap, getEarlyExitStepSnapshot, type WorkInfoForConfirm, type SimWorkData } from '@/server/game/engine';
+import { shouldForceRevealAfterHardConfirmYes } from '@/server/game/hardConfirmReveal';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 import { ensureTagCacheLoaded, getAllCachedTags } from '@/server/game/tagCacheLoader';
 import {
@@ -490,7 +491,9 @@ export async function POST(request: NextRequest) {
 
       // REVEAL判定（既出＝一度不正解だった作品は候補から外す）
       const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
-      if (newConfidence >= revealThreshold) {
+      const lastHistForReveal = questionHistory[questionHistory.length - 1];
+      const forceHcReveal = shouldForceRevealAfterHardConfirmYes(lastHistForReveal, newConfidence, config);
+      if (forceHcReveal || newConfidence >= revealThreshold) {
         const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
         if (revealWorkId) {
           // REVEAL対象の作品タイトルを取得
@@ -1281,7 +1284,9 @@ async function runSimulation(
       });
 
       const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
-      if (newConfidence >= revealThreshold) {
+      const lastHistForReveal2 = questionHistory[questionHistory.length - 1];
+      const forceHcReveal2 = shouldForceRevealAfterHardConfirmYes(lastHistForReveal2, newConfidence, config);
+      if (forceHcReveal2 || newConfidence >= revealThreshold) {
         const revealWorkId = newSorted.find(p => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
         if (revealWorkId) {
           const revealWorkTitle = workTitleMap.get(revealWorkId) ?? '(不明)';
