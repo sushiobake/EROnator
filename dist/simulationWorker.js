@@ -948,7 +948,19 @@ function getTagKeysByType(tagType, options) {
   return results;
 }
 
+// src/server/algo/popularityForGame.ts
+function normalizePopularityBaseForGame(value) {
+  if (value == null || value === 0) return 1;
+  return value;
+}
+
 // src/server/algo/scoring.ts
+var EXP_CLAMP = 700;
+function calculateBasePrior(popularityBase, popularityPlayBonus, alpha) {
+  const popularityTotal = normalizePopularityBaseForGame(popularityBase) + popularityPlayBonus;
+  const arg = Math.max(-EXP_CLAMP, Math.min(EXP_CLAMP, alpha * popularityTotal));
+  return Math.exp(arg);
+}
 function normalizeWeights(weights) {
   const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
   if (totalWeight === 0) {
@@ -1222,11 +1234,11 @@ function updateWeightsForTagQuestionBayesian(weights, workHasFeature, answerChoi
     weight: w.weight * getLikelihood(workHasFeature(w.workId), answerChoice, epsilon)
   }));
 }
-var EXP_CLAMP = 700;
+var EXP_CLAMP2 = 700;
 function updateWeightsForTagQuestion(weights, workHasFeature, answerStrength, beta) {
   return weights.map((w) => {
     const hasFeature = workHasFeature(w.workId);
-    const arg = Math.max(-EXP_CLAMP, Math.min(EXP_CLAMP, hasFeature ? beta * answerStrength : -beta * answerStrength));
+    const arg = Math.max(-EXP_CLAMP2, Math.min(EXP_CLAMP2, hasFeature ? beta * answerStrength : -beta * answerStrength));
     const mult = Math.exp(arg);
     return {
       workId: w.workId,
@@ -1254,7 +1266,7 @@ function getLikelihoodSoft(pYes, answerChoice, epsilon) {
   }
 }
 function sigmoid(x) {
-  const clamped = Math.max(-EXP_CLAMP, Math.min(EXP_CLAMP, x));
+  const clamped = Math.max(-EXP_CLAMP2, Math.min(EXP_CLAMP2, x));
   return 1 / (1 + Math.exp(-clamped));
 }
 function updateWeightsForPopularitySoft(weights, workPopularity, threshold, answerChoice, k = 0.15, epsilon = 0.02) {
@@ -1266,6 +1278,19 @@ function updateWeightsForPopularitySoft(weights, workPopularity, threshold, answ
       workId: w.workId,
       weight: w.weight * likelihood
     };
+  });
+}
+function applyRevealPenalty(weights, topWorkId, penalty, sameSeriesWorkIds) {
+  const seriesSet = sameSeriesWorkIds ? new Set(sameSeriesWorkIds) : /* @__PURE__ */ new Set();
+  const SERIES_PENALTY = Math.sqrt(penalty);
+  return weights.map((w) => {
+    if (w.workId === topWorkId) {
+      return { workId: w.workId, weight: w.weight * penalty };
+    }
+    if (seriesSet.has(w.workId)) {
+      return { workId: w.workId, weight: w.weight * SERIES_PENALTY };
+    }
+    return w;
   });
 }
 
@@ -1643,7 +1668,7 @@ async function selectSpecialQuestion(probabilities, usedSpecialTypes, workIds, s
     });
     const workPopularityMap = /* @__PURE__ */ new Map();
     for (const w of works) {
-      const total = (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
+      const total = normalizePopularityBaseForGame(w.popularityBase) + (w.popularityPlayBonus ?? 0);
       workPopularityMap.set(w.workId, total);
     }
     let pYes = 0;
@@ -1880,6 +1905,45 @@ function getEffectiveMaxQuestions(baseMaxQuestions, _confidence, options) {
   const total = baseMaxQuestions + unknownCount + recoveryBonus;
   return Math.min(MAX_QUESTIONS_CAP, total);
 }
+var DEFAULT_TOP_N_FOR_IG = 300;
+function resolveTopNForIG(config, nextQuestionIndex1Based, totalWorks) {
+  const phases = config.algo.topNForIGPhases;
+  if (phases && phases.length > 0) {
+    const sorted = [...phases].sort((a, b) => a.untilQuestionIndex - b.untilQuestionIndex);
+    for (const p of sorted) {
+      if (nextQuestionIndex1Based <= p.untilQuestionIndex) {
+        const n = p.topN <= 0 ? totalWorks : p.topN;
+        return Math.min(n, totalWorks);
+      }
+    }
+  }
+  const raw = config.algo.topNForIG;
+  let base;
+  if (raw == null) {
+    base = DEFAULT_TOP_N_FOR_IG;
+  } else if (raw <= 0) {
+    base = totalWorks;
+  } else {
+    base = raw;
+  }
+  return Math.min(base, totalWorks);
+}
+
+// src/server/game/hardConfirmReveal.ts
+function shouldForceRevealAfterHardConfirmYes(lastAnswered, confidence, config) {
+  const opt = config.confirm.hardConfirmYesAutoReveal;
+  if (opt?.enabled === false) return false;
+  if (!lastAnswered || lastAnswered.kind !== "HARD_CONFIRM") return false;
+  const ans = lastAnswered.answer;
+  if (ans !== "YES" && ans !== "PROBABLY_YES") return false;
+  const t = lastAnswered.hardConfirmType;
+  if (t === "TITLE_INITIAL" || t === "CHARACTER") return true;
+  if (t === "AUTHOR") {
+    const minC = opt?.authorMinConfidence ?? 0.3;
+    return confidence >= minC;
+  }
+  return false;
+}
 
 // src/server/admin/bannedTags.ts
 var fs4 = __toESM(require("fs"));
@@ -2094,6 +2158,17 @@ function filterWorksByAiGate(works, aiGateChoice) {
     return works.filter((w) => w.isAi === "HAND").map((w) => w.workId);
   }
   return works.map((w) => w.workId);
+}
+function initializeWeightsFromWorks(works, alpha) {
+  const usePlayBonus = process.env.DISABLE_POPULARITY_PLAY_BONUS !== "1";
+  return works.map((w) => ({
+    workId: w.workId,
+    weight: calculateBasePrior(
+      w.popularityBase,
+      usePlayBonus ? w.popularityPlayBonus ?? 0 : 0,
+      alpha
+    )
+  }));
 }
 function shouldOfferNoiseGuideRecommend(questionHistory, nextQIndex, config) {
   if (config.noiseGuideRecommend?.enabled === false) return false;
@@ -3025,7 +3100,7 @@ async function selectUnifiedExploreOrSummary(questionIndex, weights, probabiliti
     const useIG = config.algo.useIGForExploreSelection !== false;
     const pValueBand = getExplorePValueBand(config);
     let selectedKey;
-    const topNForIG = 300;
+    const topNForIG = resolveTopNForIG(config, questionIndex, totalWorks);
     const probsForIG = (() => {
       const sorted = [...probabilities].sort((a, b) => b.probability - a.probability);
       const topN = sorted.slice(0, Math.min(topNForIG, sorted.length));
@@ -3218,7 +3293,8 @@ async function selectExploreQuestion(weights, probabilities, questionHistory, co
     const topWorkId = sorted[0]?.workId ?? null;
     const pValueBand = getExplorePValueBand(config);
     const useIG = config.algo.useIGForExploreSelection !== false;
-    const topNForIG = 300;
+    const nextQuestionIndex1Based = questionIndex > 0 ? questionIndex : questionHistory.length + 1;
+    const topNForIG = resolveTopNForIG(config, nextQuestionIndex1Based, totalWorks);
     const probsForIG = (() => {
       const sorted2 = [...probabilities].sort((a, b) => b.probability - a.probability);
       const topN = sorted2.slice(0, Math.min(topNForIG, sorted2.length));
@@ -3363,7 +3439,7 @@ async function processAnswer(weights, question, answerChoice, config, options) {
       const workPopularity = (workId) => {
         const w = worksMap.get(workId);
         if (!w) return 0;
-        return (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
+        return normalizePopularityBaseForGame(w.popularityBase) + (w.popularityPlayBonus ?? 0);
       };
       return updateWeightsForPopularitySoft(weights, workPopularity, threshold, answerChoice, 0.15, epsilon);
     }
@@ -7662,7 +7738,21 @@ var ConfirmSchema = external_exports.object({
       q25: external_exports.number().min(0).max(1),
       q30: external_exports.number().min(0).max(1)
     }).strict()
+  }).strict().optional(),
+  /**
+   * HARD_CONFIRM で YES のとき、revealThreshold を待たず REVEAL へ進める。
+   * TITLE_INITIAL / CHARACTER は常に即断定。AUTHOR は authorMinConfidence 以上のときのみ。
+   */
+  hardConfirmYesAutoReveal: external_exports.object({
+    enabled: external_exports.boolean().optional(),
+    authorMinConfidence: external_exports.number().min(0).max(1).optional()
   }).strict().optional()
+}).strict();
+var TopNForIGPhaseSchema = external_exports.object({
+  /** この質問番号（1-based・次に出す質問）以下なら topN を使用 */
+  untilQuestionIndex: external_exports.number().int().positive(),
+  /** IG に載せる作品数。0 は全作品（totalWorks） */
+  topN: external_exports.number().int().min(0)
 }).strict();
 var AlgoSchema = external_exports.object({
   beta: external_exports.number().positive(),
@@ -7704,7 +7794,17 @@ var AlgoSchema = external_exports.object({
     early: external_exports.number().min(0).max(0.5),
     mid: external_exports.number().min(0).max(0.5),
     late: external_exports.number().min(0).max(0.5)
-  }).strict().optional()
+  }).strict().optional(),
+  /**
+   * EXPLORE_TAG の IG 計算に使う確率先頭 N 件。未設定時は 300（従来）。
+   * 0 は全作品（totalWorks）。大きくすると無名作品の当たりやすさが上がるが計算コスト増。
+   */
+  topNForIG: external_exports.number().int().min(0).optional(),
+  /**
+   * 質問番号ごとに topN を切り替え。untilQuestionIndex 昇順で先にマッチした段を採用。
+   * 未設定または空なら topNForIG のみ使用。
+   */
+  topNForIGPhases: external_exports.array(TopNForIGPhaseSchema).optional()
 }).strict();
 var FlowSchema = external_exports.object({
   maxQuestions: external_exports.number().int().positive(),
@@ -8063,7 +8163,7 @@ function getCorrectAnswer(question, targetWork, targetTags, targetWorkTags) {
   }
   if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "POPULARITY") {
     const threshold = question.popularityThreshold ?? 30;
-    const pop = (targetWork.popularityBase ?? 0) + (targetWork.popularityPlayBonus ?? 0);
+    const pop = normalizePopularityBaseForGame(targetWork.popularityBase) + (targetWork.popularityPlayBonus ?? 0);
     return pop >= threshold ? "YES" : "NO";
   }
   if (question.kind === "SPECIAL_QUESTION" && question.specialQuestionType === "TITLE_SYLLABLE") {
@@ -8192,10 +8292,15 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
       aiGateChoice
     );
     const workMap = new Map(allWorks.map((w) => [w.workId, w]));
-    let weights = filteredWorks.filter((workId) => workMap.has(workId)).map((workId) => {
-      const work = workMap.get(workId);
-      return { workId, weight: (work.popularityBase ?? 1) + (work.popularityPlayBonus ?? 0) };
+    const worksForInit = filteredWorks.filter((workId) => workMap.has(workId)).map((workId) => {
+      const w = workMap.get(workId);
+      return {
+        workId: w.workId,
+        popularityBase: w.popularityBase,
+        popularityPlayBonus: w.popularityPlayBonus
+      };
     });
+    let weights = initializeWeightsFromWorks(worksForInit, config.algo.alpha ?? 0);
     const steps = [];
     const questionHistory = [];
     let questionCount = 0;
@@ -8359,7 +8464,9 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
           )
         });
         const revealThreshold = getRevealThresholdForQuestion(questionCount - 1, config.confirm.revealThreshold);
-        if (newConfidence >= revealThreshold) {
+        const lastHistForReveal = questionHistory[questionHistory.length - 1];
+        const forceHcReveal = shouldForceRevealAfterHardConfirmYes(lastHistForReveal, newConfidence, config);
+        if (forceHcReveal || newConfidence >= revealThreshold) {
           const revealWorkId = newSorted.find((p) => !revealedWrongWorkIds.has(p.workId))?.workId ?? null;
           if (revealWorkId) {
             const revealWorkTitle = workTitleMap.get(revealWorkId) ?? "(\u4E0D\u660E)";
@@ -8397,10 +8504,7 @@ async function runSimulation(targetWorkId, ambiguityLevel, aiGateChoice, config,
                 finalWorkId = revealWorkId;
                 break;
               }
-              weights = weights.map((w) => ({
-                workId: w.workId,
-                weight: w.workId === revealWorkId ? w.weight * config.algo.revealPenalty : w.weight
-              }));
+              weights = applyRevealPenalty(weights, revealWorkId, config.algo.revealPenalty);
             }
           }
         }

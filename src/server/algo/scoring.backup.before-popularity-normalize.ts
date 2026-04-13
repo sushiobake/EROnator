@@ -1,5 +1,4 @@
 import type { WorkWeight, WorkProbability } from './types';
-import { normalizePopularityBaseForGame } from './popularityForGame';
 
 /**
  * Scoring / Probability Model (Spec §4)
@@ -13,12 +12,11 @@ const EXP_CLAMP = 700;
  * basePrior(w) = exp(alpha * popularityTotal(w))
  */
 export function calculateBasePrior(
-  popularityBase: number | null | undefined,
+  popularityBase: number,
   popularityPlayBonus: number,
   alpha: number
 ): number {
-  const popularityTotal =
-    normalizePopularityBaseForGame(popularityBase) + popularityPlayBonus;
+  const popularityTotal = popularityBase + popularityPlayBonus;
   const arg = Math.max(-EXP_CLAMP, Math.min(EXP_CLAMP, alpha * popularityTotal));
   return Math.exp(arg);
 }

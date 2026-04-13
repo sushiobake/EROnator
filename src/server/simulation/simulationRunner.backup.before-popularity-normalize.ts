@@ -24,7 +24,6 @@ import {
   toPerfSummary,
 } from '../simulationPerf';
 import { normalizeWeights, calculateEffectiveCandidates } from '../algo/scoring';
-import { normalizePopularityBaseForGame } from '../algo/popularityForGame';
 import { normalizeTitleForInitial } from '../utils/normalizeTitle';
 import { getTitleCharType, getTitleReadingInitialFromTitle } from '../utils/titleCharType';
 import { getTitleReadingInitials } from '../utils/titleReadingInitial';
@@ -240,9 +239,7 @@ export function getCorrectAnswer(
   }
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'POPULARITY') {
     const threshold = (question as { popularityThreshold?: number }).popularityThreshold ?? 30;
-    const pop =
-      normalizePopularityBaseForGame(targetWork.popularityBase) +
-      (targetWork.popularityPlayBonus ?? 0);
+    const pop = (targetWork.popularityBase ?? 0) + (targetWork.popularityPlayBonus ?? 0);
     return pop >= threshold ? 'YES' : 'NO';
   }
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE') {

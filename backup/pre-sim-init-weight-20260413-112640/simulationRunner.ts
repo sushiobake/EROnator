@@ -5,15 +5,7 @@
 import { getMvpConfig } from '../config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '../config/flowUtils';
 import { getTitleSyllableRanges } from '../config/specialQuestionsLoader';
-import {
-  selectNextQuestion,
-  processAnswer,
-  filterWorksByAiGate,
-  getEarlyExitStepSnapshot,
-  initializeWeightsFromWorks,
-  type WorkInfoForConfirm,
-} from '../game/engine';
-import { applyRevealPenalty } from '../algo/weightUpdate';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, getEarlyExitStepSnapshot, type WorkInfoForConfirm } from '../game/engine';
 import { shouldForceRevealAfterHardConfirmYes } from '../game/hardConfirmReveal';
 import { getWorkTagsFromMatrix } from '../game/workTagMatrixLoader';
 import {
@@ -24,7 +16,6 @@ import {
   toPerfSummary,
 } from '../simulationPerf';
 import { normalizeWeights, calculateEffectiveCandidates } from '../algo/scoring';
-import { normalizePopularityBaseForGame } from '../algo/popularityForGame';
 import { normalizeTitleForInitial } from '../utils/normalizeTitle';
 import { getTitleCharType, getTitleReadingInitialFromTitle } from '../utils/titleCharType';
 import { getTitleReadingInitials } from '../utils/titleReadingInitial';
@@ -240,9 +231,7 @@ export function getCorrectAnswer(
   }
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'POPULARITY') {
     const threshold = (question as { popularityThreshold?: number }).popularityThreshold ?? 30;
-    const pop =
-      normalizePopularityBaseForGame(targetWork.popularityBase) +
-      (targetWork.popularityPlayBonus ?? 0);
+    const pop = (targetWork.popularityBase ?? 0) + (targetWork.popularityPlayBonus ?? 0);
     return pop >= threshold ? 'YES' : 'NO';
   }
   if (question.kind === 'SPECIAL_QUESTION' && question.specialQuestionType === 'TITLE_SYLLABLE') {
@@ -396,18 +385,12 @@ export async function runSimulation(
     );
 
     const workMap = new Map(allWorks.map(w => [w.workId, w]));
-    const worksForInit = filteredWorks
+    let weights: WorkWeight[] = filteredWorks
       .filter(workId => workMap.has(workId))
       .map(workId => {
-        const w = workMap.get(workId)!;
-        return {
-          workId: w.workId,
-          popularityBase: w.popularityBase,
-          popularityPlayBonus: w.popularityPlayBonus,
-        };
+        const work = workMap.get(workId)!;
+        return { workId, weight: (work.popularityBase ?? 1) + (work.popularityPlayBonus ?? 0) };
       });
-    // 本番（/api/start）と同じ初期化関数を使用（alpha=0 のとき全作品均等先験）
-    let weights: WorkWeight[] = initializeWeightsFromWorks(worksForInit, config.algo.alpha ?? 0);
 
     const steps: SimulationStep[] = [];
     const questionHistory: QuestionHistoryEntry[] = [];
@@ -634,8 +617,10 @@ export async function runSimulation(
               finalWorkId = revealWorkId;
               break;
             }
-            // 本番（handleRevealResponse）と同じ applyRevealPenalty を使用
-            weights = applyRevealPenalty(weights, revealWorkId, config.algo.revealPenalty);
+            weights = weights.map(w => ({
+              workId: w.workId,
+              weight: w.workId === revealWorkId ? w.weight * config.algo.revealPenalty : w.weight,
+            }));
           }
         }
       }

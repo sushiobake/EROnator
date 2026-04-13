@@ -2157,8 +2157,22 @@ export default function AdminTagsPage() {
           >
             シミュレーション
           </button>
-
-          {/* 閾値最適化: タブ非表示（中身は下の activeTab==='optimize' ブロックに保持） */}
+          <button
+            onClick={() => setActiveTab('optimize')}
+            style={{
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'optimize' ? '#6a1b9a' : 'transparent',
+              color: activeTab === 'optimize' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'optimize' ? '2px solid #6a1b9a' : '2px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'optimize' ? 'bold' : 'normal',
+            }}
+          >
+            閾値最適化
+          </button>
           <button
             onClick={() => setActiveTab('config')}
             style={{

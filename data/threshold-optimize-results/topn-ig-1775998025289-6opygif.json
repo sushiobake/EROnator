@@ -1,0 +1,277 @@
+{
+  "kind": "topNForIG",
+  "sweepId": "topn-ig-1775998025289-6opygif",
+  "startedAt": "2026-04-12T12:47:05.289Z",
+  "completedAt": "2026-04-12T17:40:20.574Z",
+  "durationSeconds": 17595,
+  "samplePerTier": 200,
+  "ambiguityLevels": [
+    1
+  ],
+  "trialsPerWork": 1,
+  "aiGateChoice": "BOTH",
+  "paramSetCount": 8,
+  "resultsByParamSet": [
+    {
+      "paramSetId": "ig_300",
+      "label": "topNForIG=300 (既定)",
+      "topNForIG": 300,
+      "tiers": {
+        "famous": {
+          "successCount": 199,
+          "totalTrials": 200,
+          "successRate": 0.995,
+          "avgQuestionsOnSuccess": 19.452261306532662
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.875
+        },
+        "unknown": {
+          "successCount": 76,
+          "totalTrials": 200,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 25.18421052631579
+        }
+      },
+      "overall": {
+        "successCount": 475,
+        "totalTrials": 600,
+        "successRate": 0.7916666666666666,
+        "avgQuestionsOnSuccess": 20.54736842105263
+      }
+    },
+    {
+      "paramSetId": "ig_500",
+      "label": "topNForIG=500",
+      "topNForIG": 500,
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.97
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.19
+        },
+        "unknown": {
+          "successCount": 75,
+          "totalTrials": 200,
+          "successRate": 0.375,
+          "avgQuestionsOnSuccess": 24.253333333333334
+        }
+      },
+      "overall": {
+        "successCount": 475,
+        "totalTrials": 600,
+        "successRate": 0.7916666666666666,
+        "avgQuestionsOnSuccess": 20.73894736842105
+      }
+    },
+    {
+      "paramSetId": "ig_800",
+      "label": "topNForIG=800",
+      "topNForIG": 800,
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.72
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.065
+        },
+        "unknown": {
+          "successCount": 76,
+          "totalTrials": 200,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 24.513157894736842
+        }
+      },
+      "overall": {
+        "successCount": 476,
+        "totalTrials": 600,
+        "successRate": 0.7933333333333333,
+        "avgQuestionsOnSuccess": 20.630252100840337
+      }
+    },
+    {
+      "paramSetId": "ig_1200",
+      "label": "topNForIG=1200",
+      "topNForIG": 1200,
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.595
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.035
+        },
+        "unknown": {
+          "successCount": 75,
+          "totalTrials": 200,
+          "successRate": 0.375,
+          "avgQuestionsOnSuccess": 24.906666666666666
+        }
+      },
+      "overall": {
+        "successCount": 475,
+        "totalTrials": 600,
+        "successRate": 0.7916666666666666,
+        "avgQuestionsOnSuccess": 20.618947368421054
+      }
+    },
+    {
+      "paramSetId": "ig_2000",
+      "label": "topNForIG=2000",
+      "topNForIG": 2000,
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.485
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.21
+        },
+        "unknown": {
+          "successCount": 75,
+          "totalTrials": 200,
+          "successRate": 0.375,
+          "avgQuestionsOnSuccess": 24.373333333333335
+        }
+      },
+      "overall": {
+        "successCount": 475,
+        "totalTrials": 600,
+        "successRate": 0.7916666666666666,
+        "avgQuestionsOnSuccess": 20.562105263157896
+      }
+    },
+    {
+      "paramSetId": "ig_all",
+      "label": "topNForIG=0（全作品でIG）",
+      "topNForIG": 0,
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.89
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.25
+        },
+        "unknown": {
+          "successCount": 76,
+          "totalTrials": 200,
+          "successRate": 0.38,
+          "avgQuestionsOnSuccess": 24.06578947368421
+        }
+      },
+      "overall": {
+        "successCount": 476,
+        "totalTrials": 600,
+        "successRate": 0.7933333333333333,
+        "avgQuestionsOnSuccess": 20.70798319327731
+      }
+    },
+    {
+      "paramSetId": "ig_phased_1000_300",
+      "label": "Q15まで1000、以降300",
+      "topNForIG": 300,
+      "topNForIGPhases": [
+        {
+          "untilQuestionIndex": 15,
+          "topN": 1000
+        }
+      ],
+      "tiers": {
+        "famous": {
+          "successCount": 199,
+          "totalTrials": 200,
+          "successRate": 0.995,
+          "avgQuestionsOnSuccess": 19.85427135678392
+        },
+        "mid": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 20.165
+        },
+        "unknown": {
+          "successCount": 75,
+          "totalTrials": 200,
+          "successRate": 0.375,
+          "avgQuestionsOnSuccess": 24.48
+        }
+      },
+      "overall": {
+        "successCount": 474,
+        "totalTrials": 600,
+        "successRate": 0.79,
+        "avgQuestionsOnSuccess": 20.717299578059073
+      }
+    },
+    {
+      "paramSetId": "ig_phased_1500_500",
+      "label": "Q12まで1500、以降500",
+      "topNForIG": 500,
+      "topNForIGPhases": [
+        {
+          "untilQuestionIndex": 12,
+          "topN": 1500
+        }
+      ],
+      "tiers": {
+        "famous": {
+          "successCount": 200,
+          "totalTrials": 200,
+          "successRate": 1,
+          "avgQuestionsOnSuccess": 19.795
+        },
+        "mid": {
+          "successCount": 199,
+          "totalTrials": 200,
+          "successRate": 0.995,
+          "avgQuestionsOnSuccess": 20.155778894472363
+        },
+        "unknown": {
+          "successCount": 75,
+          "totalTrials": 200,
+          "successRate": 0.375,
+          "avgQuestionsOnSuccess": 25.08
+        }
+      },
+      "overall": {
+        "successCount": 474,
+        "totalTrials": 600,
+        "successRate": 0.79,
+        "avgQuestionsOnSuccess": 20.782700421940927
+      }
+    }
+  ],
+  "resultPath": "data/threshold-optimize-results/topn-ig-1775998025289-6opygif.json"
+}

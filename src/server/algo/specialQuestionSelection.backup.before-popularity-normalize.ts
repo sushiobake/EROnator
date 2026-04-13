@@ -16,7 +16,6 @@ import {
 } from '@/server/config/specialQuestionsLoader';
 import { prisma } from '@/server/db/client';
 import { getSimWorkDataMap, type SimWorkData } from '@/server/game/engine';
-import { normalizePopularityBaseForGame } from './popularityForGame';
 import { getTitleReadingInitials } from '@/server/utils/titleReadingInitial';
 
 export type SpecialQuestionType =
@@ -275,9 +274,7 @@ export async function selectSpecialQuestion(
         });
     const workPopularityMap = new Map<string, number>();
     for (const w of works) {
-      const total =
-        normalizePopularityBaseForGame(w.popularityBase) +
-        (w.popularityPlayBonus ?? 0);
+      const total = (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
       workPopularityMap.set(w.workId, total);
     }
 

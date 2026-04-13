@@ -11,16 +11,7 @@ import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { isSqlite } from '@/server/db/is-sqlite';
 import { getMvpConfig } from '@/server/config/loader';
 import { getRevealThresholdForQuestion, getEffectiveMaxQuestions } from '@/server/config/flowUtils';
-import {
-  selectNextQuestion,
-  processAnswer,
-  filterWorksByAiGate,
-  setSimWorkDataMap,
-  getEarlyExitStepSnapshot,
-  initializeWeightsFromWorks,
-  type WorkInfoForConfirm,
-  type SimWorkData,
-} from '@/server/game/engine';
+import { selectNextQuestion, processAnswer, filterWorksByAiGate, setSimWorkDataMap, getEarlyExitStepSnapshot, type WorkInfoForConfirm, type SimWorkData } from '@/server/game/engine';
 import { shouldForceRevealAfterHardConfirmYes } from '@/server/game/hardConfirmReveal';
 import { getWorkTagMatrix, getWorkTagsFromMatrix } from '@/server/game/workTagMatrixLoader';
 import { ensureTagCacheLoaded, getAllCachedTags } from '@/server/game/tagCacheLoader';
@@ -289,18 +280,16 @@ export async function POST(request: NextRequest) {
       allWorks.map(w => [w.workId, { title: w.title, authorName: w.authorName }])
     );
 
-    // 本番（/api/start）と同じ初期化関数を使用（alpha=0 のとき全作品均等先験）
-    const worksForInit = filteredWorks
+    // 初期重み（filteredWorksはstring[]なのでworkIdそのもの）
+    let weights: WorkWeight[] = filteredWorks
       .filter(workId => workMap.has(workId))
       .map(workId => {
-        const w = workMap.get(workId)!;
+        const work = workMap.get(workId)!;
         return {
-          workId: w.workId,
-          popularityBase: w.popularityBase,
-          popularityPlayBonus: w.popularityPlayBonus,
+          workId,
+          weight: (work.popularityBase ?? 1) + (work.popularityPlayBonus ?? 0),
         };
       });
-    let weights: WorkWeight[] = initializeWeightsFromWorks(worksForInit, config.algo.alpha ?? 0);
 
     // シミュレーション開始
     const steps: SimulationStep[] = [];
@@ -1116,18 +1105,16 @@ async function runSimulation(
     // workIdからWorkへのマップを作成
     const workMap = new Map(allWorks.map(w => [w.workId, w]));
 
-    // 本番（/api/start）と同じ初期化関数を使用（alpha=0 のとき全作品均等先験）
-    const worksForInitInner = filteredWorks
+    // filteredWorksはstring[]なのでworkIdそのもの
+    let weights: WorkWeight[] = filteredWorks
       .filter(workId => workMap.has(workId))
       .map(workId => {
-        const w = workMap.get(workId)!;
+        const work = workMap.get(workId)!;
         return {
-          workId: w.workId,
-          popularityBase: w.popularityBase,
-          popularityPlayBonus: w.popularityPlayBonus,
+          workId,
+          weight: (work.popularityBase ?? 1) + (work.popularityPlayBonus ?? 0),
         };
       });
-    let weights: WorkWeight[] = initializeWeightsFromWorks(worksForInitInner, config.algo.alpha ?? 0);
 
     const steps: SimulationStep[] = [];
     const questionHistory: QuestionHistoryEntry[] = [];

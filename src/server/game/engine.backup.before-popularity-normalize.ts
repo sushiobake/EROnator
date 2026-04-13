@@ -11,7 +11,6 @@ import {
   calculateEffectiveCandidates,
   calculateEffectiveConfirmThreshold,
 } from '@/server/algo/scoring';
-import { normalizePopularityBaseForGame } from '@/server/algo/popularityForGame';
 import {
   selectExploreTag,
   selectExploreTagByIG,
@@ -239,7 +238,7 @@ export function initializeWeightsFromWorks(
   return works.map((w) => ({
     workId: w.workId,
     weight: calculateBasePrior(
-      w.popularityBase,
+      w.popularityBase ?? 0,
       usePlayBonus ? (w.popularityPlayBonus ?? 0) : 0,
       alpha
     ),
@@ -2028,10 +2027,7 @@ export async function processAnswer(
     const workPopularity = (workId: string): number => {
       const w = worksMap.get(workId);
       if (!w) return 0;
-      return (
-        normalizePopularityBaseForGame(w.popularityBase) +
-        (w.popularityPlayBonus ?? 0)
-      );
+      return (w.popularityBase ?? 0) + (w.popularityPlayBonus ?? 0);
     };
     return updateWeightsForPopularitySoft(weights, workPopularity, threshold, answerChoice, 0.15, epsilon);
   }
