@@ -1377,7 +1377,7 @@ var SYMBOL_PATTERNS = [
   /^[！＂＃＄％＆＇（）＊＋，－．／：；＜＝＞？＠［＼］＾＿｀｛｜｝～]/,
   /^[★☆◆◇■□・…〜ー—–]/
 ];
-function getFirstMeaningfulChar(title) {
+function getNormalizedTitleForInitialReading(title) {
   if (title == null || typeof title !== "string") return "";
   let normalized = title.normalize("NFKC");
   for (let i = 0; i < 3; i++) {
@@ -1404,7 +1404,10 @@ function getFirstMeaningfulChar(title) {
     if (!changed) break;
     normalized = normalized.replace(/^[\s\u3000\t]+/, "");
   }
-  const trimmed = normalized.trim();
+  return normalized.trim();
+}
+function getFirstMeaningfulChar(title) {
+  const trimmed = getNormalizedTitleForInitialReading(title);
   if (!trimmed.length) return "";
   return trimmed[0] ?? "";
 }
