@@ -71,96 +71,6 @@ interface ParseResponse {
 type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'optimize' | 'config' | 'recFamous' | 'history' | 'recommendHistory' | 'contact' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
-const ADMIN_REFLECTION_MEMOS: Array<{ title: string; change: string; steps: string[] }> = [
-  {
-    title: '使用作品DB（登録ON/OFF・要注意移動・手動タグ付け）',
-    change: 'DBの作品データが変わります。',
-    steps: [
-      '本番反映は「本番DBへ同期（同等操作）」が必須です。',
-      '本番運用の動作を揃えるため、必要に応じて本番デプロイも実施します。',
-      '反映後は「使用作品DB」一覧と件数を再確認します。',
-    ],
-  },
-  {
-    title: 'タグ＆質問リスト（ランク・カテゴリ・質問文）',
-    change: 'DBのタグ情報が変わります（質問文は同グループにも波及）。',
-    steps: [
-      '本番反映は「本番DBへ同期（同等操作）」を行います。',
-      'キャッシュ反映待ち（最大約1分）または再起動後に再確認します。',
-      '質問文変更後は実プレイ/シミュレーションで表示確認します。',
-    ],
-  },
-  {
-    title: 'タグ＆質問リスト（統合・包括）',
-    change: 'include/unify定義（設定ファイル）と質問選択ロジックに影響します。',
-    steps: [
-      '変更後は「シミュレーション → 行列を再生成」を実行します。',
-      '本番反映はコード変更として本番デプロイが必要です。',
-      '反映後はタグ表示・推薦候補・シミュレーション結果を確認します。',
-    ],
-  },
-  {
-    title: 'まとめ質問・特別質問',
-    change: '質問文や判定条件（設定/DB）が変わり、出題挙動に影響します。',
-    steps: [
-      '本番反映前にシミュレーションで分岐と文面を確認します。',
-      'DB変更を含む場合は本番DB同期、設定変更を含む場合は本番デプロイを行います。',
-      '公開後はプレイ履歴で意図した質問が出ているか確認します。',
-    ],
-  },
-];
-type ReflectionChecklistState = {
-  matrixDone: boolean;
-  dbSynced: boolean;
-  deployed: boolean;
-  required: { matrix: boolean; db: boolean; deploy: boolean };
-  lastChangeType: 'DB_ONLY' | 'CONFIG_ONLY' | 'MIXED_OR_LOGIC' | null;
-  lastChangeLabel: string;
-  updatedAt: string;
-};
-
-const REFLECTION_CHECKLIST_STORAGE_KEY = 'eronator.admin.reflection-checklist.v1';
-const REFLECTION_CHECKLIST_UPDATED_EVENT = 'eronator:reflection-checklist-updated';
-
-const createEmptyReflectionChecklist = (): ReflectionChecklistState => ({
-  matrixDone: false,
-  dbSynced: false,
-  deployed: false,
-  required: { matrix: false, db: false, deploy: false },
-  lastChangeType: null,
-  lastChangeLabel: '',
-  updatedAt: '',
-});
-
-const readReflectionChecklist = (): ReflectionChecklistState => {
-  if (typeof window === 'undefined') return createEmptyReflectionChecklist();
-  try {
-    const raw = localStorage.getItem(REFLECTION_CHECKLIST_STORAGE_KEY);
-    if (!raw) return createEmptyReflectionChecklist();
-    const parsed = JSON.parse(raw) as Partial<ReflectionChecklistState>;
-    return {
-      matrixDone: !!parsed.matrixDone,
-      dbSynced: !!parsed.dbSynced,
-      deployed: !!parsed.deployed,
-      required: {
-        matrix: !!parsed.required?.matrix,
-        db: !!parsed.required?.db,
-        deploy: !!parsed.required?.deploy,
-      },
-      lastChangeType: parsed.lastChangeType ?? null,
-      lastChangeLabel: parsed.lastChangeLabel ?? '',
-      updatedAt: parsed.updatedAt ?? '',
-    };
-  } catch {
-    return createEmptyReflectionChecklist();
-  }
-};
-
-const writeReflectionChecklist = (next: ReflectionChecklistState) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(REFLECTION_CHECKLIST_STORAGE_KEY, JSON.stringify(next));
-  window.dispatchEvent(new CustomEvent(REFLECTION_CHECKLIST_UPDATED_EVENT));
-};
 
 /** 発売日を日付のみ・見やすく表示（時刻は出さない） */
 function formatReleaseDateOnly(value: string | null | undefined): string {
@@ -212,8 +122,6 @@ export default function AdminTagsPage() {
   const [filterIsAi, setFilterIsAi] = useState<'all' | 'AI' | 'HAND' | 'UNKNOWN'>('all');
   const [filterTagCount, setFilterTagCount] = useState<'all' | '0-5' | '5-10' | '11+'>('all');
   const [showOnlyNeedsReview, setShowOnlyNeedsReview] = useState(false);
-  const [reflectionMemoOpen, setReflectionMemoOpen] = useState(false);
-  const [reflectionChecklist, setReflectionChecklist] = useState<ReflectionChecklistState>(() => readReflectionChecklist());
   const [moveSelectedToNeedsReviewLoading, setMoveSelectedToNeedsReviewLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'title' | 'circleName' | 'popularity' | 'createdAt' | 'releaseDate'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -397,24 +305,6 @@ export default function AdminTagsPage() {
     diagnostic?: unknown;
     analysisData?: { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number };
   } | null>(null);
-  const reflectionPendingCount = useMemo(() => {
-    let n = 0;
-    if (reflectionChecklist.required.matrix && !reflectionChecklist.matrixDone) n += 1;
-    if (reflectionChecklist.required.db && !reflectionChecklist.dbSynced) n += 1;
-    if (reflectionChecklist.required.deploy && !reflectionChecklist.deployed) n += 1;
-    return n;
-  }, [reflectionChecklist]);
-
-  const updateReflectionChecklist = (updater: (prev: ReflectionChecklistState) => ReflectionChecklistState) => {
-    const next = updater(readReflectionChecklist());
-    setReflectionChecklist(next);
-    writeReflectionChecklist(next);
-  };
-
-  const toggleReflectionCheck = (key: 'matrixDone' | 'dbSynced' | 'deployed') => {
-    updateReflectionChecklist((prev) => ({ ...prev, [key]: !prev[key], updatedAt: new Date().toISOString() }));
-  };
-
   const toggleSimBatchLevel = (n: number) => {
     setSimBatchAmbiguityLevels((prev) => {
       if (prev.includes(n)) {
@@ -430,36 +320,6 @@ export default function AdminTagsPage() {
     [simBatchAmbiguityLevels]
   );
   const simSingleAmbiguityLevel = simSortedAmbiguityLevels[0] ?? 2;
-
-  /** URL ?tab= または # でタブ直開き（例: /admin?tab=initial / #initial → 作品頭文字） */
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const raw = (params.get('tab') ?? '').trim().toLowerCase();
-    const hash = window.location.hash.replace(/^#/, '').trim().toLowerCase();
-    const key = raw || hash;
-    if (!key) return;
-    const tabMap: Record<string, TabType> = {
-      initial: 'initial',
-      'title-reading': 'initial',
-      head: 'initial',
-      works: 'works',
-      tags: 'tags',
-      summary: 'summary',
-      import: 'import',
-      manual: 'manual',
-      simulate: 'simulate',
-      optimize: 'optimize',
-      config: 'config',
-      recfamous: 'recFamous',
-      history: 'history',
-      recommendhistory: 'recommendHistory',
-      contact: 'contact',
-      changelog: 'changelog',
-    };
-    const next = tabMap[key];
-    if (next) setActiveTab(next);
-  }, []);
 
   useEffect(() => {
     if (!adminToken) return;
@@ -512,7 +372,6 @@ export default function AdminTagsPage() {
     aiGateChoice: string | null;
     resultWorkId: string | null;
     resultWorkTitle?: string | null;
-    resultWorkGameRegistered?: boolean | null;
     submittedTitleText: string | null;
     sessionStartedAt?: string | null;
     clickedFanza?: boolean;
@@ -530,78 +389,8 @@ export default function AdminTagsPage() {
   const [historyDetailRowId, setHistoryDetailRowId] = useState<string | null>(null);
   const [historySelectedIds, setHistorySelectedIds] = useState<Set<string>>(new Set());
   const [historyDeleteLoading, setHistoryDeleteLoading] = useState(false);
-  const [historyReplayCache, setHistoryReplayCache] = useState<Record<string, Array<{
-    qIndex: number;
-    kind: string;
-    question?: {
-      kind: string;
-      displayText: string;
-      tagKey?: string;
-      hardConfirmType?: string;
-      hardConfirmValue?: string;
-      exploreTagKind?: string;
-      specialQuestionType?: string;
-      titleCharType?: string;
-      authorCharType?: string;
-    };
-    displayText?: string;
-    answer?: string;
-    exploreTagKind?: string;
-    specialQuestionType?: string;
-    tagCoverage?: number;
-    confidenceBefore?: number;
-    confidenceAfter?: number;
-    wasNoisy: boolean;
-    missType?: 'clear' | 'weak';
-    revealWorkId?: string;
-    revealWorkTitle?: string;
-    revealResult?: 'SUCCESS' | 'MISS';
-    durationSeconds?: number;
-    effectiveCandidates?: number;
-    earlyExit?: import('@/types/earlyExitStepSnapshot').EarlyExitStepSnapshot;
-    targetWorkRankBefore?: number | null;
-    targetWorkRankAfter?: number | null;
-    targetWorkProbabilityBefore?: number | null;
-    targetWorkProbabilityAfter?: number | null;
-    effectiveCandidatesBefore?: number | null;
-    effectiveCandidatesAfter?: number | null;
-  }>>>({});
-  const [historyReplayMetaCache, setHistoryReplayMetaCache] = useState<Record<string, {
-    analysisTargetWorkId: string | null;
-    analysisTargetTitle: string | null;
-    analysisTargetInPool: boolean;
-    analysisTargetGameRegistered: boolean | null;
-    analysisTargetSource: 'active' | 'reserve' | null;
-    workDetails?: {
-      tags?: Array<{ tagKey?: string; displayName: string; tagType?: string }>;
-    };
-    analysisData?: {
-      wasNoisyCount: number;
-      firstNoisyStepIndex: number;
-      noisyStepIndices: number[];
-      correctRank: number;
-      top1Confidence: number;
-      totalQuestions?: number;
-      noisyRatio?: number;
-    };
-  }>>({});
+  const [historyReplayCache, setHistoryReplayCache] = useState<Record<string, Array<{ qIndex: number; kind: string; displayText?: string; answer?: string; exploreTagKind?: string; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number; wasNoisy: boolean; missType?: 'clear' | 'weak'; revealWorkId?: string; revealWorkTitle?: string; revealResult?: 'SUCCESS' | 'MISS' }>>>({});
   const [historyReplayLoading, setHistoryReplayLoading] = useState(false);
-
-  const historyDetailReplayEarlyExitOk = useMemo(() => {
-    if (!historyDetailRowId) return [] as Array<{ conf: boolean; cand: boolean }>;
-    const replaySteps = historyReplayCache[historyDetailRowId];
-    if (!replaySteps?.length) return [];
-    return buildSimEarlyExitColumnOkList(
-      replaySteps.map((s) => ({
-        question: s.question ?? { kind: s.kind, displayText: s.displayText ?? '' },
-        confidenceBefore: s.confidenceBefore ?? 0,
-        confidenceAfter: s.confidenceAfter ?? 0,
-        earlyExit: s.earlyExit,
-      })),
-      config?.flow
-    );
-  }, [historyDetailRowId, historyReplayCache, config?.flow]);
-
   const [recHistLoading, setRecHistLoading] = useState(false);
   const [recHistItems, setRecHistItems] = useState<
     Array<{
@@ -1550,25 +1339,6 @@ export default function AdminTagsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, adminToken]);
 
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key !== REFLECTION_CHECKLIST_STORAGE_KEY) return;
-      setReflectionChecklist(readReflectionChecklist());
-    };
-    const onCustom = () => setReflectionChecklist(readReflectionChecklist());
-    if (typeof window !== 'undefined') {
-      setReflectionChecklist(readReflectionChecklist());
-      window.addEventListener('storage', onStorage);
-      window.addEventListener(REFLECTION_CHECKLIST_UPDATED_EVENT, onCustom);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('storage', onStorage);
-        window.removeEventListener(REFLECTION_CHECKLIST_UPDATED_EVENT, onCustom);
-      }
-    };
-  }, []);
-
   const handleRegenerateMatrix = async () => {
     if (!adminToken) {
       alert('管理トークンを入力してください');
@@ -1582,11 +1352,6 @@ export default function AdminTagsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        updateReflectionChecklist((prev) => ({
-          ...prev,
-          matrixDone: true,
-          updatedAt: new Date().toISOString(),
-        }));
         alert(data.message || '行列を再生成しました。');
       } else {
         alert(data.error || '行列の再生成に失敗しました。');
@@ -2298,24 +2063,13 @@ export default function AdminTagsPage() {
         questionHistory: Array.isArray(row.questionHistory) ? row.questionHistory : [],
         aiGateChoice: row.aiGateChoice ?? null,
         outcome: row.outcome ?? null,
-        resultWorkId: row.resultWorkId ?? null,
-        analysisTargetWorkId: row.resultWorkId ?? null,
+        resultWorkId: row.outcome === 'SUCCESS' && row.resultWorkId ? row.resultWorkId : null,
       }),
     })
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled && data.success && Array.isArray(data.steps)) {
           setHistoryReplayCache((prev) => ({ ...prev, [row.id]: data.steps }));
-          if (data.meta && typeof data.meta === 'object') {
-            setHistoryReplayMetaCache((prev) => ({
-              ...prev,
-              [row.id]: {
-                ...data.meta,
-                ...(data.workDetails != null ? { workDetails: data.workDetails as { tags?: Array<{ tagKey?: string; displayName: string; tagType?: string }> } } : {}),
-                ...(data.analysisData != null ? { analysisData: data.analysisData as { wasNoisyCount: number; firstNoisyStepIndex: number; noisyStepIndices: number[]; correctRank: number; top1Confidence: number; totalQuestions?: number; noisyRatio?: number } } : {}),
-              },
-            }));
-          }
         }
       })
       .catch(() => {})
@@ -2330,10 +2084,12 @@ export default function AdminTagsPage() {
   return (
     <>
     <div style={{ padding: '2rem', maxWidth: '1680px', margin: '0 auto' }}>
-      <section style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.9rem', color: '#555' }}>
-          <strong>管理画面</strong> — 作品データベース管理、タグ管理、設定変更、作品インポートを行います。
-        </span>
+      <div style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.75rem' }}>
+        <strong>管理画面</strong> — 作品データベース管理、タグ管理、設定変更、作品インポートを行います。
+      </div>
+
+      {/* 管理トークンを入力 */}
+      <section style={{ marginBottom: '1rem', padding: '0.5rem 0.75rem', border: '1px solid #ddd', borderRadius: '4px', backgroundColor: '#f9f9f9', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>アクセス認証</span>
         <input
           type="password"
@@ -2343,121 +2099,7 @@ export default function AdminTagsPage() {
           style={{ flex: '1', minWidth: '200px', maxWidth: '400px', padding: '0.4rem 0.6rem', fontSize: '0.9rem' }}
         />
         <span style={{ fontSize: '0.8rem', color: '#888' }}>.env.local の ERONATOR_ADMIN_TOKEN</span>
-        <button
-          type="button"
-          onClick={() => setReflectionMemoOpen(true)}
-          style={{
-            marginLeft: 'auto',
-            padding: '4px 10px',
-            fontSize: '0.8rem',
-            border: '1px solid #99c5ff',
-            backgroundColor: '#f4f9ff',
-            borderRadius: '999px',
-            cursor: 'pointer',
-            color: '#0b5ed7',
-            fontWeight: 600,
-          }}
-          title="変更内容ごとの安全反映手順を表示"
-        >
-          反映メモ
-          {reflectionPendingCount > 0 ? ` (${reflectionPendingCount})` : ''}
-        </button>
       </section>
-
-      {reflectionMemoOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '16px',
-          }}
-          onClick={() => setReflectionMemoOpen(false)}
-        >
-          <div
-            style={{
-              width: 'min(920px, 96vw)',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              backgroundColor: '#fff',
-              borderRadius: '8px',
-              border: '1px solid #dbe6ff',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-              padding: '14px',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ fontWeight: 700, fontSize: '1rem' }}>管理画面の変更反映メモ（コンフィグ除く）</div>
-              <button
-                type="button"
-                onClick={() => setReflectionMemoOpen(false)}
-                style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', cursor: 'pointer' }}
-              >
-                閉じる
-              </button>
-            </div>
-            <div style={{ fontSize: '0.84rem', color: '#555', marginBottom: '10px' }}>
-              迷ったら「DB変更か／設定ファイル変更か」を先に判定してください。DB変更は本番DB同期、設定ファイル変更は本番デプロイが基本です。
-            </div>
-            <div style={{ border: '1px solid #e3e3e3', borderRadius: '6px', padding: '10px', backgroundColor: '#fff', marginBottom: '10px' }}>
-              <div style={{ fontWeight: 700, marginBottom: '6px' }}>実施チェック（この端末）</div>
-              <div style={{ fontSize: '0.82rem', color: '#666', marginBottom: '6px' }}>
-                未完了: {reflectionPendingCount}件
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={reflectionChecklist.matrixDone}
-                    disabled={!reflectionChecklist.required.matrix}
-                    onChange={() => toggleReflectionCheck('matrixDone')}
-                  />
-                  <span>行列再生成済み</span>
-                  {!reflectionChecklist.required.matrix && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={reflectionChecklist.dbSynced}
-                    disabled={!reflectionChecklist.required.db}
-                    onChange={() => toggleReflectionCheck('dbSynced')}
-                  />
-                  <span>本番DB同期済み</span>
-                  {!reflectionChecklist.required.db && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
-                </label>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={reflectionChecklist.deployed}
-                    disabled={!reflectionChecklist.required.deploy}
-                    onChange={() => toggleReflectionCheck('deployed')}
-                  />
-                  <span>本番デプロイ済み</span>
-                  {!reflectionChecklist.required.deploy && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
-                </label>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {ADMIN_REFLECTION_MEMOS.map((memo) => (
-                <div key={memo.title} style={{ border: '1px solid #e3e3e3', borderRadius: '6px', padding: '10px', backgroundColor: '#fcfcff' }}>
-                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>{memo.title}</div>
-                  <div style={{ fontSize: '0.84rem', color: '#444', marginBottom: '6px' }}>{memo.change}</div>
-                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.84rem', lineHeight: 1.5 }}>
-                    {memo.steps.map((step) => (
-                      <li key={step}>{step}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* タブナビゲーション */}
       <div style={{ borderBottom: '2px solid #ddd', marginBottom: '1rem' }}>
@@ -6013,12 +5655,8 @@ export default function AdminTagsPage() {
             {historyDetailRowId != null && (() => {
               const row = historyItems.find((r) => r.id === historyDetailRowId);
               const replayed = row ? historyReplayCache[row.id] : undefined;
-              const replayMeta = row ? historyReplayMetaCache[row.id] : undefined;
               const steps = replayed ?? (Array.isArray(row?.questionHistory) ? row!.questionHistory as Array<{ qIndex?: number; kind?: string; displayText?: string; answer?: string; exploreTagKind?: string; wasNoisy?: boolean; tagCoverage?: number; confidenceBefore?: number; confidenceAfter?: number; durationSeconds?: number }> : []);
               const hasReplay = replayed != null;
-              const failCtx = row?.failListContext && typeof row.failListContext === 'object' && !Array.isArray(row.failListContext)
-                ? (row.failListContext as Record<string, unknown>)
-                : null;
               return (
                 <div
                   style={{
@@ -6058,222 +5696,10 @@ export default function AdminTagsPage() {
                       </button>
                     </div>
                     <div style={{ overflow: 'auto', padding: '1.25rem', flex: 1, minHeight: 0 }}>
-                      {replayMeta?.analysisTargetWorkId ? (
-                        <div style={{ marginBottom: '1rem', padding: '0.85rem 1rem', background: '#e3f2fd', borderRadius: '6px', border: '1px solid #90caf9', fontSize: '0.92rem' }}>
-                          <strong style={{ display: 'block', marginBottom: '0.4rem' }}>分析対象作品（リプレイ）</strong>
-                          <div>タイトル: {replayMeta.analysisTargetTitle ?? '—'}</div>
-                          <div style={{ marginTop: '0.25rem', fontFamily: 'monospace', fontSize: '0.85rem' }}>workId: {replayMeta.analysisTargetWorkId}</div>
-                          <div style={{ marginTop: '0.35rem' }}>
-                            DB区分:{' '}
-                            <strong>{replayMeta.analysisTargetSource === 'active' ? 'ゲーム登録（active）' : replayMeta.analysisTargetSource === 'reserve' ? 'リザーブ（未登録）' : '—'}</strong>
-                            {' · '}
-                            リプレイ重みプール内: <strong>{replayMeta.analysisTargetInPool ? 'はい' : 'いいえ'}</strong>
-                          </div>
-                          {row?.outcome === 'ALMOST_SUCCESS' && failCtx && (
-                            <div style={{ marginTop: '0.5rem', color: '#1565c0' }}>
-                              候補からの選択: {String(failCtx.selectedFrom ?? '—')}
-                              {failCtx.searchQuery != null && failCtx.searchQuery !== '' ? `（検索語: ${String(failCtx.searchQuery)}）` : ''}
-                            </div>
-                          )}
-                          {row?.resultWorkGameRegistered != null && row.resultWorkId && (
-                            <div style={{ marginTop: '0.35rem', fontSize: '0.88rem', color: '#555' }}>
-                              一覧APIの gameRegistered: {row.resultWorkGameRegistered ? 'true（active）' : 'false（reserve）'}
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
                       {historyReplayLoading && !hasReplay ? (
                         <p style={{ color: '#666', fontSize: '1rem' }}>p値・確度を計算中...</p>
                       ) : steps.length === 0 ? (
                         <p style={{ color: '#666', fontSize: '1rem' }}>記録がありません。</p>
-                      ) : hasReplay && replayed ? (
-                        <>
-                          <div style={{ marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-                            質問数: {row?.questionCount ?? 0}問
-                            {(() => {
-                              const rank = replayMeta?.analysisData?.correctRank;
-                              if (rank == null) return null;
-                              return ` | 正解の順位: ${rank === -1 ? '候補外' : `${rank}位`}`;
-                            })()}
-                          </div>
-                          {replayMeta?.workDetails?.tags && replayMeta.workDetails.tags.length > 0 && (
-                            <div style={{ marginBottom: '0.5rem' }}>
-                              <strong>作品のタグ:</strong>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.25rem' }}>
-                                {[...replayMeta.workDetails.tags]
-                                  .sort((a, b) => {
-                                    const order = { OFFICIAL: 0, DERIVED: 1, STRUCTURAL: 2 };
-                                    return (order[(a.tagType ?? '') as keyof typeof order] ?? 3) - (order[(b.tagType ?? '') as keyof typeof order] ?? 3);
-                                  })
-                                  .map((t, ti) => {
-                                    const wasAsked = replayed.some((s) =>
-                                      (s.question?.tagKey === t.tagKey) || (s.question?.displayText?.includes(t.displayName))
-                                    );
-                                    return (
-                                      <span
-                                        key={t.tagKey ?? t.displayName ?? ti}
-                                        style={{
-                                          padding: '0.15rem 0.4rem',
-                                          borderRadius: '4px',
-                                          fontSize: '0.8rem',
-                                          background: t.tagType === 'OFFICIAL' ? RANK_BG.S : t.tagType === 'DERIVED' ? RANK_BG.B : RANK_BG.X,
-                                          color: t.tagType === 'OFFICIAL' ? RANK_TEXT.S : t.tagType === 'DERIVED' ? RANK_TEXT.B : RANK_TEXT.X,
-                                          border: wasAsked ? '2px solid #4caf50' : '1px solid #ccc',
-                                          fontWeight: wasAsked ? 'bold' : 'normal',
-                                        }}
-                                        title={wasAsked ? '質問で使用' : undefined}
-                                      >
-                                        {t.displayName}{wasAsked && ' ✓'}
-                                      </span>
-                                    );
-                                  })}
-                              </div>
-                            </div>
-                          )}
-                          {replayMeta?.analysisData && (
-                            <div style={{ marginBottom: '0.5rem', padding: '0.5rem', background: '#fff', borderRadius: '4px', fontSize: '0.85rem' }}>
-                              <strong>分析:</strong> wasNoisy={replayMeta.analysisData.wasNoisyCount}回
-                              {replayMeta.analysisData.noisyRatio != null && ` (noisyRatio=${(replayMeta.analysisData.noisyRatio * 100).toFixed(1)}%)`}
-                              , correctRank={replayMeta.analysisData.correctRank}, top1Confidence={(replayMeta.analysisData.top1Confidence * 100).toFixed(1)}%
-                              {replayMeta.analysisData.noisyStepIndices?.length > 0 && `, ノイズ発生Q#=[${replayMeta.analysisData.noisyStepIndices.join(',')}]`}
-                            </div>
-                          )}
-                          <div style={{ marginBottom: '0.5rem', padding: '0.45rem 0.55rem', background: '#fafafa', borderRadius: '4px', fontSize: '0.78rem', color: '#555' }}>
-                            ノイズ列: ログ上の回答が厳密な YES / NO と異なる場合に「!」（シミュの曖昧度ノイズとは定義が異なり、意図的な誤答も含みます）。ミス列: 明確誤答・弱い誤答（従来どおり）。
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '0.65rem', width: '100%', marginBottom: '0.5rem' }}>
-                            <strong style={{ display: 'block' }}>過程</strong>
-                            <SimEarlyExitThresholdsSummary flow={config?.flow} />
-                          </div>
-                          <div style={{
-                            maxHeight: '3200px',
-                            overflowY: 'auto',
-                            overflowX: 'auto',
-                            background: '#fff',
-                            padding: '1rem',
-                            borderRadius: '4px',
-                            fontSize: '0.9rem',
-                          }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
-                              <thead>
-                                <tr style={{ background: '#f0f0f0' }}>
-                                  <th style={{ padding: '0.5rem', textAlign: 'left', width: '2.25rem' }}>Q#</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'left', minWidth: '280px' }}>質問</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'center', width: '3.2rem' }}>回答</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>ノイズ</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.2rem' }}>滞在</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'center', minWidth: '2.5rem' }}>ミス</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'right', width: '3.5rem' }}>p値</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'right', width: '8.5rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>確度（①）</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'right', width: '7.75rem', minWidth: '7.75rem', boxSizing: 'border-box', whiteSpace: 'nowrap' }}>候補（②）</th>
-                                  <th style={{ padding: '0.5rem', textAlign: 'left', width: '10%', minWidth: '5.5rem', maxWidth: '7.5rem', boxSizing: 'border-box' }}>早期失敗判定</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {replayed.map((step, idx) => {
-                                  const q = step.question ?? { kind: step.kind, displayText: step.displayText ?? '' };
-                                  const isReveal = q.kind === 'REVEAL';
-                                  const revealSuccess = (step as { revealResult?: string }).revealResult === 'SUCCESS';
-                                  const revealMiss = (step as { revealResult?: string }).revealResult === 'MISS';
-                                  const ex = step.earlyExit;
-                                  const eeOk = historyDetailReplayEarlyExitOk[idx] ?? { conf: false, cand: false };
-                                  const tagCoverage = step.tagCoverage;
-                                  const pColor = tagCoverage !== undefined
-                                    ? (Math.abs(tagCoverage - 0.5) < 0.1 ? '#2e7d32' : Math.abs(tagCoverage - 0.5) > 0.4 ? '#c62828' : '#666')
-                                    : '#999';
-                                  const pBold = tagCoverage !== undefined && Math.abs(tagCoverage - 0.5) > 0.4;
-                                  return (
-                                    <tr key={idx} style={{ borderBottom: '1px solid #eee', background: isReveal ? (revealSuccess ? '#c8e6c9' : '#ffcdd2') : 'transparent' }}>
-                                      <td style={{ padding: '0.5rem' }}>{step.qIndex ?? idx + 1}</td>
-                                      <td style={{ padding: '0.5rem', minWidth: '280px' }}>
-                                        <span style={{
-                                          display: 'inline-block',
-                                          padding: '0.2rem 0.5rem',
-                                          background: q.kind === 'EXPLORE_TAG' ? RANK_BG.S : q.kind === 'SOFT_CONFIRM' ? RANK_BG.B : q.kind === 'HARD_CONFIRM' ? RANK_BG.X : q.kind === 'SPECIAL_QUESTION' ? '#9c27b0' : q.kind === 'REVEAL' ? '#ffeb3b' : '#e0e0e0',
-                                          borderRadius: '4px',
-                                          fontSize: '0.8rem',
-                                          marginRight: '0.5rem',
-                                        }}>
-                                          {q.kind}
-                                          {q.exploreTagKind && (
-                                            <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                              {EXPLORE_TAG_KIND_LABEL[q.exploreTagKind]}
-                                            </span>
-                                          )}
-                                          {q.kind === 'HARD_CONFIRM' && q.hardConfirmType && (
-                                            <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                              {q.hardConfirmType === 'TITLE_INITIAL' ? '頭文字' : '作者'}
-                                            </span>
-                                          )}
-                                          {q.kind === 'SPECIAL_QUESTION' && q.specialQuestionType && (
-                                            <span style={{ marginLeft: '0.25rem', opacity: 0.9 }}>
-                                              {q.specialQuestionType === 'SERIES' ? 'シリーズ' : q.specialQuestionType === 'TITLE_CHAR_TYPE' ? '文字種' : q.specialQuestionType}
-                                            </span>
-                                          )}
-                                        </span>
-                                        <span style={{ marginLeft: '0.25rem' }}>{q.displayText}</span>
-                                        {revealMiss && <span style={{ marginLeft: '0.5rem', color: '#c62828', fontWeight: 'bold' }}>← 不正解！</span>}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                        <span style={{ color: '#37474f', fontWeight: 600 }}>{step.answer ?? '—'}</span>
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap', minWidth: '3.35rem', boxSizing: 'border-box' }}>
-                                        {step.wasNoisy && <span style={{ color: '#ff6600' }}>!</span>}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                                        {step.durationSeconds != null ? `${step.durationSeconds}秒` : '—'}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'center' }}>
-                                        {step.missType === 'clear' ? (
-                                          <span style={{ color: '#c62828', fontWeight: 'bold' }}>!</span>
-                                        ) : step.missType === 'weak' ? (
-                                          <span style={{ color: '#f57c00' }}>△</span>
-                                        ) : (
-                                          '—'
-                                        )}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'right', color: pColor, fontWeight: pBold ? 'bold' : 'normal' }}>
-                                        {tagCoverage !== undefined ? `${(tagCoverage * 100).toFixed(0)}%` : '-'}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                        <span style={{ color: '#37474f' }}>{((step.confidenceBefore ?? 0) * 100).toFixed(1)}%</span>
-                                        {!isReveal && (
-                                          <>
-                                            {' → '}
-                                            <span
-                                              style={{
-                                                color: eeOk.conf ? EARLY_EXIT_OK_COLOR : '#37474f',
-                                                fontWeight: eeOk.conf ? 600 : 400,
-                                              }}
-                                            >
-                                              {((step.confidenceAfter ?? 0) * 100).toFixed(1)}%
-                                            </span>
-                                          </>
-                                        )}
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'right', verticalAlign: 'top', whiteSpace: 'normal' }}>
-                                        <span style={{
-                                          color: eeOk.cand ? EARLY_EXIT_OK_COLOR : '#37474f',
-                                          fontWeight: eeOk.cand ? 600 : 400,
-                                        }}>
-                                          {(() => {
-                                            const _c = ex?.effectiveCandidates ?? step.effectiveCandidates;
-                                            if (_c == null) return '-';
-                                            const _n = typeof _c === 'number' ? _c : Number(_c);
-                                            return Number.isFinite(_n) ? Math.floor(_n) : '-';
-                                          })()}
-                                        </span>
-                                      </td>
-                                      <td style={{ padding: '0.5rem', textAlign: 'left', verticalAlign: 'top' }}>
-                                        <SimEarlyExitJudgmentColumnCell ex={ex} isReveal={isReveal} />
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </>
                       ) : (
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1rem' }}>
                           <thead>
@@ -6285,9 +5711,6 @@ export default function AdminTagsPage() {
                               <th style={{ padding: '0.6rem', textAlign: 'center' }}>ミス</th>
                               <th style={{ padding: '0.6rem', textAlign: 'right' }}>p値</th>
                               <th style={{ padding: '0.6rem', textAlign: 'right', minWidth: '320px', whiteSpace: 'nowrap' }}>確度</th>
-                              <th style={{ padding: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap' }} title="分析対象の順位（回答後）">正解順位→</th>
-                              <th style={{ padding: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap' }} title="分析対象の確率（回答後）">正解p→</th>
-                              <th style={{ padding: '0.6rem', textAlign: 'right', whiteSpace: 'nowrap' }} title="有効候補数（回答後）">候補数→</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -6367,21 +5790,6 @@ export default function AdminTagsPage() {
                                     : step.confidenceAfter != null
                                       ? `${(step.confidenceAfter * 100).toFixed(1)}%`
                                       : '—'}
-                                </td>
-                                <td style={{ padding: '0.6rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                                  {(step as { targetWorkRankAfter?: number | null }).targetWorkRankAfter != null
-                                    ? String((step as { targetWorkRankAfter: number }).targetWorkRankAfter)
-                                    : '—'}
-                                </td>
-                                <td style={{ padding: '0.6rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                                  {(step as { targetWorkProbabilityAfter?: number | null }).targetWorkProbabilityAfter != null
-                                    ? `${((step as { targetWorkProbabilityAfter: number }).targetWorkProbabilityAfter * 100).toFixed(2)}%`
-                                    : '—'}
-                                </td>
-                                <td style={{ padding: '0.6rem', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                                  {(step as { effectiveCandidatesAfter?: number | null }).effectiveCandidatesAfter != null
-                                    ? String((step as { effectiveCandidatesAfter: number }).effectiveCandidatesAfter)
-                                    : '—'}
                                 </td>
                               </tr>
                               );

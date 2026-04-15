@@ -28,9 +28,9 @@ const SYMBOL_PATTERNS = [
 ];
 
 /**
- * タイトルから先頭の有効な1文字を取得（括弧・記号除去後）
+ * 括弧・先頭記号を除いたあとのタイトル文字列（頭文字プレフィックス用）
  */
-function getFirstMeaningfulChar(title: string): string {
+export function getNormalizedTitleForInitialReading(title: string): string {
   if (title == null || typeof title !== 'string') return '';
   let normalized = title.normalize('NFKC');
   for (let i = 0; i < 3; i++) {
@@ -57,7 +57,47 @@ function getFirstMeaningfulChar(title: string): string {
     if (!changed) break;
     normalized = normalized.replace(/^[\s\u3000\t]+/, '');
   }
-  const trimmed = normalized.trim();
+  return normalized.trim();
+}
+
+/**
+ * Same bracket kinds as BRACKET_PATTERNS (same order): first leading pair yields inner for sub-reading.
+ */
+const LEADING_BRACKET_INNER_PATTERNS = [
+  /^【([^】]*)】/,
+  /^\(([^)]*)\)/,
+  /^\[([^\]]*)\]/,
+  /^\{([^}]*)\}/,
+  /^＜([^＞]*)＞/,
+  /^<([^>]*)>/,
+  /^「([^」]*)」/,
+  /^『([^』]*)』/,
+  /^（([^）]*)）/,
+  /^［([^］]*)］/,
+  /^｛([^｝]*)｝/,
+];
+
+/**
+ * Leading bracket wrapper (【】, 『』, 「」, (), etc.) — inner text for sub titleReadingInitial.
+ * Main title still uses getNormalizedTitleForInitialReading (strips these first).
+ */
+export function extractLeadingBracketInner(rawTitle: string): string | null {
+  if (rawTitle == null || typeof rawTitle !== 'string') return null;
+  const normalized = rawTitle.normalize('NFKC').trim();
+  for (const re of LEADING_BRACKET_INNER_PATTERNS) {
+    const m = normalized.match(re);
+    if (!m) continue;
+    const inner = (m[1] ?? '').trim();
+    if (inner.length > 0) return inner;
+  }
+  return null;
+}
+
+/**
+ * タイトルから先頭の有効な1文字を取得（括弧・記号除去後）
+ */
+function getFirstMeaningfulChar(title: string): string {
+  const trimmed = getNormalizedTitleForInitialReading(title);
   if (!trimmed.length) return '';
   return trimmed[0] ?? '';
 }

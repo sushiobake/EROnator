@@ -18,8 +18,6 @@ export interface PlayHistoryListResponse {
     aiGateChoice: string | null;
     resultWorkId: string | null;
     resultWorkTitle: string | null;
-    /** resultWorkId が指す作品の gameRegistered（検索リザーブ判別用） */
-    resultWorkGameRegistered: boolean | null;
     submittedTitleText: string | null;
     sessionStartedAt: string | null;
     clickedFanza: boolean;
@@ -60,17 +58,14 @@ export async function GET(request: NextRequest) {
     ]);
 
     const workIds = [...new Set(items.map((r) => r.resultWorkId).filter(Boolean) as string[])];
-    const workRows =
+    const workTitles =
       workIds.length > 0
         ? await prisma.work.findMany({
             where: { workId: { in: workIds } },
-            select: { workId: true, title: true, gameRegistered: true },
+            select: { workId: true, title: true },
           })
         : [];
-    const titleByWorkId = Object.fromEntries(workRows.map((w) => [w.workId, w.title]));
-    const gameRegByWorkId = Object.fromEntries(
-      workRows.map((w) => [w.workId, w.gameRegistered ?? null] as const)
-    );
+    const titleByWorkId = Object.fromEntries(workTitles.map((w) => [w.workId, w.title]));
 
     const visitorIds = [...new Set(items.map((r) => r.visitorId).filter(Boolean) as string[])];
     const recPlays = visitorIds.length > 0
@@ -98,8 +93,6 @@ export async function GET(request: NextRequest) {
         aiGateChoice: row.aiGateChoice,
         resultWorkId: row.resultWorkId,
         resultWorkTitle: row.resultWorkId ? (titleByWorkId[row.resultWorkId] ?? null) : null,
-        resultWorkGameRegistered:
-          row.resultWorkId != null ? (gameRegByWorkId[row.resultWorkId] ?? null) : null,
         submittedTitleText: row.submittedTitleText,
         sessionStartedAt: row.sessionStartedAt?.toISOString() ?? null,
         clickedFanza: row.clickedFanza ?? false,

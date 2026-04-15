@@ -2333,8 +2333,7 @@ function getTopWorkIdFromProbabilities(
     if (a.probability !== b.probability) return b.probability - a.probability;
     return a.workId.localeCompare(b.workId);
   });
-  // 未拒否が1件もないときは拒否済みを返さない（同一断定の二重提示を防ぐ）
-  return sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? null;
+  return sorted.find(p => !rejectedSet.has(p.workId))?.workId ?? sorted[0]?.workId ?? null;
 }
 
 /**

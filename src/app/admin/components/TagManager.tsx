@@ -33,8 +33,122 @@ interface Props {
 
 // 統合ランク: S（OFFICIAL）、A/B/C（DERIVED）、X（STRUCTURAL）、N（未分類）
 type UnifiedRank = 'S' | 'A' | 'B' | 'C' | 'X' | 'N' | '';
+type ReflectionChangeType = 'DB_ONLY' | 'CONFIG_ONLY' | 'MIXED_OR_LOGIC';
+type ReflectionChecklistState = {
+  matrixDone: boolean;
+  dbSynced: boolean;
+  deployed: boolean;
+  required: { matrix: boolean; db: boolean; deploy: boolean };
+  lastChangeType: ReflectionChangeType | null;
+  lastChangeLabel: string;
+  updatedAt: string;
+};
 
 const PAGE_SIZE = 200;
+const REFLECTION_CHECKLIST_STORAGE_KEY = 'eronator.admin.reflection-checklist.v1';
+const REFLECTION_CHECKLIST_UPDATED_EVENT = 'eronator:reflection-checklist-updated';
+const REFLECTION_CHANGE_TEMPLATES: Record<ReflectionChangeType, {
+  title: string;
+  whatChanged: string;
+  nextActions: string[];
+  required: { matrix: boolean; db: boolean; deploy: boolean };
+}> = {
+  DB_ONLY: {
+    title: 'DB更新（ランク・カテゴリ・質問文など）',
+    whatChanged: '本番に合わせるには DB 側の同期が必要です。',
+    nextActions: [
+      '本番DBへ同等の変更を反映します。',
+      '質問文変更時は実プレイ/シミュレーションで表示を確認します。',
+      '反映後の件数・対象タグを再確認します。',
+    ],
+    required: { matrix: false, db: true, deploy: false },
+  },
+  CONFIG_ONLY: {
+    title: '設定更新（統合・包括）',
+    whatChanged: 'include/unify 定義が変わり、質問選択や推薦結果に影響します。',
+    nextActions: [
+      'シミュレーションタブで「行列を再生成」を実行します。',
+      '本番反映としてデプロイを実行します。',
+      '反映後にタグ表示・推薦候補・シミュレーション結果を確認します。',
+    ],
+    required: { matrix: true, db: false, deploy: true },
+  },
+  MIXED_OR_LOGIC: {
+    title: 'ロジック/質問系更新（まとめ質問・特別質問）',
+    whatChanged: '質問出題や分岐ロジックに影響するため、DB同期とデプロイの両方を確認します。',
+    nextActions: [
+      '本番DBが関係する変更を同期します。',
+      '本番デプロイを実行します。',
+      '本番相当条件で質問分岐と文面を確認します。',
+    ],
+    required: { matrix: false, db: true, deploy: true },
+  },
+};
+const TAG_MANAGER_REFLECTION_MEMOS: Array<{ title: string; notes: string[] }> = [
+  {
+    title: 'ランク・カテゴリ・質問文を保存したとき',
+    notes: [
+      'DB変更です。本番反映時は本番DB側にも同等変更が必要です。',
+      '質問文は統合/包括グループへ波及するため、意図しないタグまで変わっていないか確認します。',
+      '保存後は実プレイまたはシミュレーションで文面と分岐を確認します。',
+    ],
+  },
+  {
+    title: '統合・包括を保存したとき',
+    notes: [
+      '設定ファイル変更です。行列再生成（シミュレーションタブ）を必ず実行します。',
+      '本番反映はコード変更として本番デプロイが必要です。',
+      '代表タグ・サブタグ表示、推薦候補、シミュレーション結果をセットで確認します。',
+    ],
+  },
+  {
+    title: '特別質問・まとめ質問を変更したとき',
+    notes: [
+      '質問選択ロジックに直接影響するため、実際の出題順を必ず確認します。',
+      'DB変更を含む場合は本番DB同期、設定変更を含む場合は本番デプロイを行います。',
+    ],
+  },
+];
+
+const createEmptyReflectionChecklist = (): ReflectionChecklistState => ({
+  matrixDone: false,
+  dbSynced: false,
+  deployed: false,
+  required: { matrix: false, db: false, deploy: false },
+  lastChangeType: null,
+  lastChangeLabel: '',
+  updatedAt: '',
+});
+
+const readReflectionChecklist = (): ReflectionChecklistState => {
+  if (typeof window === 'undefined') return createEmptyReflectionChecklist();
+  try {
+    const raw = localStorage.getItem(REFLECTION_CHECKLIST_STORAGE_KEY);
+    if (!raw) return createEmptyReflectionChecklist();
+    const parsed = JSON.parse(raw) as Partial<ReflectionChecklistState>;
+    return {
+      matrixDone: !!parsed.matrixDone,
+      dbSynced: !!parsed.dbSynced,
+      deployed: !!parsed.deployed,
+      required: {
+        matrix: !!parsed.required?.matrix,
+        db: !!parsed.required?.db,
+        deploy: !!parsed.required?.deploy,
+      },
+      lastChangeType: parsed.lastChangeType ?? null,
+      lastChangeLabel: parsed.lastChangeLabel ?? '',
+      updatedAt: parsed.updatedAt ?? '',
+    };
+  } catch {
+    return createEmptyReflectionChecklist();
+  }
+};
+
+const writeReflectionChecklist = (next: ReflectionChecklistState) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(REFLECTION_CHECKLIST_STORAGE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(REFLECTION_CHECKLIST_UPDATED_EVENT));
+};
 
 export default function TagManager({ adminToken }: Props) {
   const [tags, setTags] = useState<TagItem[]>([]);
@@ -115,6 +229,71 @@ export default function TagManager({ adminToken }: Props) {
     branch?: 'yesBranch' | 'noBranch';
   } | null>(null);
   const [editingSpecialValue, setEditingSpecialValue] = useState('');
+  const [includeUnifyDialogOpen, setIncludeUnifyDialogOpen] = useState(false);
+  const [includeUnifyMainTagKey, setIncludeUnifyMainTagKey] = useState('');
+  const [includeUnifySaving, setIncludeUnifySaving] = useState(false);
+  const [reflectionModal, setReflectionModal] = useState<{
+    open: boolean;
+    source: 'manual' | 'auto';
+    changeType: ReflectionChangeType | null;
+    triggerLabel: string;
+  }>({ open: false, source: 'manual', changeType: null, triggerLabel: '' });
+  const [reflectionChecklist, setReflectionChecklist] = useState<ReflectionChecklistState>(() => readReflectionChecklist());
+
+  const reflectionPendingCount = useMemo(() => {
+    let n = 0;
+    if (reflectionChecklist.required.matrix && !reflectionChecklist.matrixDone) n += 1;
+    if (reflectionChecklist.required.db && !reflectionChecklist.dbSynced) n += 1;
+    if (reflectionChecklist.required.deploy && !reflectionChecklist.deployed) n += 1;
+    return n;
+  }, [reflectionChecklist]);
+
+  const activeReflectionType = reflectionModal.changeType ?? reflectionChecklist.lastChangeType;
+  const activeReflectionTemplate = activeReflectionType ? REFLECTION_CHANGE_TEMPLATES[activeReflectionType] : null;
+
+  const updateReflectionChecklist = (updater: (prev: ReflectionChecklistState) => ReflectionChecklistState) => {
+    const next = updater(readReflectionChecklist());
+    setReflectionChecklist(next);
+    writeReflectionChecklist(next);
+  };
+
+  const openReflectionForChange = (changeType: ReflectionChangeType, triggerLabel: string) => {
+    const tpl = REFLECTION_CHANGE_TEMPLATES[changeType];
+    updateReflectionChecklist((prev) => ({
+      ...prev,
+      matrixDone: tpl.required.matrix ? false : prev.matrixDone,
+      dbSynced: tpl.required.db ? false : prev.dbSynced,
+      deployed: tpl.required.deploy ? false : prev.deployed,
+      required: { ...tpl.required },
+      lastChangeType: changeType,
+      lastChangeLabel: triggerLabel,
+      updatedAt: new Date().toISOString(),
+    }));
+    setReflectionModal({ open: true, source: 'auto', changeType, triggerLabel });
+  };
+
+  const toggleReflectionCheck = (key: 'matrixDone' | 'dbSynced' | 'deployed') => {
+    updateReflectionChecklist((prev) => ({ ...prev, [key]: !prev[key], updatedAt: new Date().toISOString() }));
+  };
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== REFLECTION_CHECKLIST_STORAGE_KEY) return;
+      setReflectionChecklist(readReflectionChecklist());
+    };
+    const onCustom = () => setReflectionChecklist(readReflectionChecklist());
+    if (typeof window !== 'undefined') {
+      setReflectionChecklist(readReflectionChecklist());
+      window.addEventListener('storage', onStorage);
+      window.addEventListener(REFLECTION_CHECKLIST_UPDATED_EVENT, onCustom);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('storage', onStorage);
+        window.removeEventListener(REFLECTION_CHECKLIST_UPDATED_EVENT, onCustom);
+      }
+    };
+  }, []);
 
   // タグ読み込み
   const fetchTags = async () => {
@@ -315,6 +494,7 @@ export default function TagManager({ adminToken }: Props) {
       const data = await res.json();
       if (data.success) {
         setRanks(data.ranks);
+        openReflectionForChange('DB_ONLY', 'ランクを更新');
       }
     } catch (error) {
       console.error('Failed to update rank:', error);
@@ -351,9 +531,117 @@ export default function TagManager({ adminToken }: Props) {
       if (data.success) {
         setRanks(data.ranks);
         setSelectedTags(new Set());
+        openReflectionForChange('DB_ONLY', 'ランクを一括更新');
       }
     } catch (error) {
       console.error('Failed to bulk update ranks:', error);
+    }
+  };
+
+  const selectedTagItems = useMemo(() => {
+    return tags.filter((t) => selectedTags.has(t.tagKey));
+  }, [tags, selectedTags]);
+
+  const selectedTagItemsSortedForIncludeUnify = useMemo(() => {
+    const rankOrder: Record<UnifiedRank, number> = { S: 0, A: 1, B: 2, C: 3, X: 4, N: 5, '': 6 };
+    const list = [...selectedTagItems];
+    list.sort((a, b) => {
+      const wc = b.workCount - a.workCount;
+      if (wc !== 0) return wc;
+      const ra = rankOrder[getUnifiedRank(a)];
+      const rb = rankOrder[getUnifiedRank(b)];
+      if (ra !== rb) return ra - rb;
+      return a.displayName.localeCompare(b.displayName, 'ja');
+    });
+    return list;
+  }, [selectedTagItems, ranks]);
+
+  const includeUnifyPreview = useMemo(() => {
+    const main = selectedTagItemsSortedForIncludeUnify.find((t) => t.tagKey === includeUnifyMainTagKey);
+    if (!main) return { unifyMembers: [] as TagItem[], includeMembers: [] as TagItem[] };
+    const mainRank = getUnifiedRank(main);
+    const unifyMembers: TagItem[] = [];
+    const includeMembers: TagItem[] = [];
+    for (const t of selectedTagItemsSortedForIncludeUnify) {
+      if (t.tagKey === main.tagKey) continue;
+      if (getUnifiedRank(t) === mainRank && mainRank !== '') unifyMembers.push(t);
+      else includeMembers.push(t);
+    }
+    return { unifyMembers, includeMembers };
+  }, [selectedTagItemsSortedForIncludeUnify, includeUnifyMainTagKey, ranks]);
+
+  const handleOpenIncludeUnifyDialog = () => {
+    if (selectedTagItems.length < 2) {
+      alert('2件以上のタグを選択してください');
+      return;
+    }
+    const preferred = selectedTagItemsSortedForIncludeUnify[0];
+    if (!preferred) return;
+    setIncludeUnifyMainTagKey(preferred.tagKey);
+    setIncludeUnifyDialogOpen(true);
+  };
+
+  const handleSaveIncludeUnify = async () => {
+    const main = selectedTagItemsSortedForIncludeUnify.find((t) => t.tagKey === includeUnifyMainTagKey);
+    if (!main) {
+      alert('メインタグを選択してください');
+      return;
+    }
+    const selectedDisplayNames = selectedTagItemsSortedForIncludeUnify.map((t) => t.displayName);
+    if (selectedDisplayNames.length < 2) {
+      alert('2件以上のタグを選択してください');
+      return;
+    }
+    const rankByDisplayName = Object.fromEntries(
+      selectedTagItemsSortedForIncludeUnify.map((t) => [t.displayName, getUnifiedRank(t)])
+    );
+    const ok = confirm(
+      [
+        'この操作は統合・包括ルールを更新します。',
+        '',
+        '影響範囲:',
+        '- ゲーム中の質問選択・重み更新',
+        '- 推薦モード（有名/無名タグ・スコア）',
+        '- シミュレーション結果',
+        '',
+        '保存後は以下を確認してください:',
+        '- タグ管理表示（代表/サブ行）',
+        '- 推薦の候補と結果',
+        '- シミュレーション',
+      ].join('\n')
+    );
+    if (!ok) return;
+    setIncludeUnifySaving(true);
+    try {
+      const res = await fetch('/api/admin/tags/include-unify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(adminToken ? { 'x-eronator-admin-token': adminToken } : {}),
+        },
+        body: JSON.stringify({
+          mainDisplayName: main.displayName,
+          selectedDisplayNames,
+          rankByDisplayName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || '統合・包括の保存に失敗しました');
+        return;
+      }
+      await fetchIncludeUnifyView();
+      setSelectedTags(new Set());
+      setIncludeUnifyDialogOpen(false);
+      openReflectionForChange('CONFIG_ONLY', '統合・包括を保存');
+      alert(
+        `保存しました（メイン: ${main.displayName}）\n同ランク→統合: ${data.summary?.unifyAdded ?? 0}件\n異ランク→包括: ${data.summary?.includeAdded ?? 0}件`
+      );
+    } catch (error) {
+      console.error('Failed to save include-unify:', error);
+      alert('統合・包括の保存に失敗しました');
+    } finally {
+      setIncludeUnifySaving(false);
     }
   };
 
@@ -452,6 +740,7 @@ export default function TagManager({ adminToken }: Props) {
         await fetchTags();
         setEditingTemplate(null);
         setEditingTemplateValue('');
+        openReflectionForChange('DB_ONLY', `質問文を保存: ${displayName}`);
       } else {
         alert(data.error || '保存に失敗しました');
       }
@@ -472,7 +761,10 @@ export default function TagManager({ adminToken }: Props) {
         body: JSON.stringify({ tagKey, category })
       });
       const data = await res.json();
-      if (data.success) setTags(prev => prev.map(t => t.tagKey === tagKey ? { ...t, category } : t));
+      if (data.success) {
+        setTags(prev => prev.map(t => t.tagKey === tagKey ? { ...t, category } : t));
+        openReflectionForChange('DB_ONLY', 'カテゴリを保存');
+      }
       else alert(data.error || 'カテゴリの保存に失敗しました');
     } catch (error) { console.error('Failed to save category:', error); }
   };
@@ -683,6 +975,7 @@ export default function TagManager({ adminToken }: Props) {
         setSummaryQuestions(data.summaryQuestions);
         setEditingSummaryId(null);
         setEditingSummaryValue('');
+        openReflectionForChange('MIXED_OR_LOGIC', 'まとめ質問を保存');
       }
     } catch (e) { console.error('Failed to save summary question:', e); }
   };
@@ -817,6 +1110,7 @@ export default function TagManager({ adminToken }: Props) {
         });
         setEditingSpecial(null);
         setEditingSpecialValue('');
+        openReflectionForChange('MIXED_OR_LOGIC', '特別質問を保存');
       } else {
         alert(data.error || '保存に失敗しました');
       }
@@ -828,7 +1122,134 @@ export default function TagManager({ adminToken }: Props) {
 
   return (
     <div>
-      <h2 style={{ marginBottom: '1rem', fontSize: '1.1rem', fontWeight: 600 }}>タグ＆質問リスト</h2>
+      <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600 }}>タグ＆質問リスト</h2>
+        <button
+          type="button"
+          onClick={() => setReflectionModal({ open: true, source: 'manual', changeType: reflectionChecklist.lastChangeType, triggerLabel: reflectionChecklist.lastChangeLabel })}
+          style={{
+            padding: '3px 10px',
+            borderRadius: '999px',
+            border: '1px solid #99c5ff',
+            backgroundColor: '#f4f9ff',
+            color: '#0b5ed7',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+          title="タグ編集時の安全反映メモを表示"
+        >
+          反映メモ
+          {reflectionPendingCount > 0 ? ` (${reflectionPendingCount})` : ''}
+        </button>
+      </div>
+
+      {reflectionModal.open && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+          }}
+          onClick={() => setReflectionModal({ open: false, source: reflectionModal.source, changeType: reflectionModal.changeType, triggerLabel: reflectionModal.triggerLabel })}
+        >
+          <div
+            style={{
+              width: 'min(820px, 95vw)',
+              maxHeight: '80vh',
+              overflowY: 'auto',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #dbe6ff',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+              padding: '14px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <div style={{ fontWeight: 700, fontSize: '1rem' }}>タグ＆質問リストの安全反映メモ</div>
+              <button
+                type="button"
+                onClick={() => setReflectionModal({ open: false, source: reflectionModal.source, changeType: reflectionModal.changeType, triggerLabel: reflectionModal.triggerLabel })}
+                style={{ marginLeft: 'auto', padding: '4px 10px', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fff', cursor: 'pointer' }}
+              >
+                閉じる
+              </button>
+            </div>
+            {reflectionModal.source === 'auto' && (
+              <div style={{ marginBottom: '8px', fontSize: '0.84rem', color: '#495057' }}>
+                保存を検知: {reflectionModal.triggerLabel || '変更内容'}
+              </div>
+            )}
+            {activeReflectionTemplate && (
+              <div style={{ border: '1px solid #dbe6ff', borderRadius: '6px', padding: '10px', backgroundColor: '#f4f9ff', marginBottom: '10px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '4px' }}>{activeReflectionTemplate.title}</div>
+                <div style={{ fontSize: '0.84rem', color: '#334155', marginBottom: '6px' }}>{activeReflectionTemplate.whatChanged}</div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.84rem', lineHeight: 1.5 }}>
+                  {activeReflectionTemplate.nextActions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div style={{ border: '1px solid #e3e3e3', borderRadius: '6px', padding: '10px', backgroundColor: '#fff', marginBottom: '10px' }}>
+              <div style={{ fontWeight: 700, marginBottom: '6px' }}>実施チェック（この端末）</div>
+              <div style={{ fontSize: '0.82rem', color: '#666', marginBottom: '6px' }}>
+                未完了: {reflectionPendingCount}件
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={reflectionChecklist.matrixDone}
+                    disabled={!reflectionChecklist.required.matrix}
+                    onChange={() => toggleReflectionCheck('matrixDone')}
+                  />
+                  <span>行列再生成済み</span>
+                  {!reflectionChecklist.required.matrix && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={reflectionChecklist.dbSynced}
+                    disabled={!reflectionChecklist.required.db}
+                    onChange={() => toggleReflectionCheck('dbSynced')}
+                  />
+                  <span>本番DB同期済み</span>
+                  {!reflectionChecklist.required.db && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="checkbox"
+                    checked={reflectionChecklist.deployed}
+                    disabled={!reflectionChecklist.required.deploy}
+                    onChange={() => toggleReflectionCheck('deployed')}
+                  />
+                  <span>本番デプロイ済み</span>
+                  {!reflectionChecklist.required.deploy && <span style={{ color: '#888', fontSize: '0.78rem' }}>（今回の変更では必須ではありません）</span>}
+                </label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {TAG_MANAGER_REFLECTION_MEMOS.map((memo) => (
+                <div key={memo.title} style={{ border: '1px solid #e3e3e3', borderRadius: '6px', padding: '10px', backgroundColor: '#fcfcff' }}>
+                  <div style={{ fontWeight: 700, marginBottom: '6px' }}>{memo.title}</div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.84rem', lineHeight: 1.5 }}>
+                    {memo.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 禁止タグ管理（折りたたみ） */}
       <details style={{ marginBottom: '20px' }}>
@@ -1371,6 +1792,24 @@ export default function TagManager({ adminToken }: Props) {
         <button onClick={handleSelectAll} style={{ padding: '5px 10px' }}>ページ全選択</button>
         <button onClick={handleDeselectAll} style={{ padding: '5px 10px' }}>解除</button>
         <span style={{ color: '#666' }}>選択: {selectedTags.size}件</span>
+        <button
+          onClick={handleOpenIncludeUnifyDialog}
+          disabled={selectedTagItems.length < 2}
+          style={{
+            padding: '5px 10px',
+            marginLeft: '8px',
+            backgroundColor: selectedTagItems.length < 2 ? '#ccc' : '#6f42c1',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: selectedTagItems.length < 2 ? 'not-allowed' : 'pointer',
+            opacity: selectedTagItems.length < 2 ? 0.75 : 1,
+            fontWeight: 600,
+          }}
+          title="選択したタグをメインタグ中心で統合・包括します"
+        >
+          統合・包括する
+        </button>
         
         <span style={{ marginLeft: '20px' }}>一括ランク:</span>
         <button 
@@ -1413,6 +1852,88 @@ export default function TagManager({ adminToken }: Props) {
           </button>
         </span>
       </div>
+
+      {includeUnifyDialogOpen && (
+        <div
+          style={{
+            marginBottom: '15px',
+            padding: '12px',
+            border: '1px solid #d0bfff',
+            backgroundColor: '#f8f4ff',
+            borderRadius: '6px',
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: '8px' }}>統合・包括の設定</div>
+          <p style={{ margin: '0 0 8px 0', color: '#444', fontSize: '0.9rem' }}>
+            やることは同じで、メインタグとのランク差で自動的に振り分けます（同ランク=統合 / 異ランク=包括）。
+          </p>
+          <div style={{ marginBottom: '10px', padding: '8px', backgroundColor: '#fff8e1', border: '1px solid #ffe082', borderRadius: '4px', fontSize: '0.85rem', color: '#5f4b00' }}>
+            注意: この変更はタグ表示だけでなく、ゲーム中の質問選択・推薦結果・シミュレーション結果にも影響します。
+          </div>
+
+          <div style={{ marginBottom: '8px', fontWeight: 600 }}>メインにするタグを1つ選択</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px', marginBottom: '10px' }}>
+            {selectedTagItemsSortedForIncludeUnify.map((t) => {
+              const rank = getUnifiedRank(t);
+              return (
+                <label
+                  key={t.tagKey}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '6px 8px',
+                    border: '1px solid #e5dbff',
+                    borderRadius: '4px',
+                    backgroundColor: includeUnifyMainTagKey === t.tagKey ? '#efe7ff' : '#fff',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="include-unify-main"
+                    checked={includeUnifyMainTagKey === t.tagKey}
+                    onChange={() => setIncludeUnifyMainTagKey(t.tagKey)}
+                  />
+                  <RankBadge rank={rank} />
+                  <span style={{ fontWeight: 600 }}>{t.displayName}</span>
+                  <span style={{ color: '#666', marginLeft: 'auto', fontSize: '0.85rem' }}>{t.workCount}件</span>
+                </label>
+              );
+            })}
+          </div>
+
+          <div style={{ marginBottom: '10px', fontSize: '0.85rem', color: '#444' }}>
+            <div>統合（同ランク）: {includeUnifyPreview.unifyMembers.map((t) => t.displayName).join(' / ') || 'なし'}</div>
+            <div>包括（異ランク）: {includeUnifyPreview.includeMembers.map((t) => t.displayName).join(' / ') || 'なし'}</div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={handleSaveIncludeUnify}
+              disabled={includeUnifySaving || !includeUnifyMainTagKey}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: includeUnifySaving ? '#ccc' : '#6f42c1',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: includeUnifySaving ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              {includeUnifySaving ? '保存中...' : 'この内容で保存'}
+            </button>
+            <button
+              onClick={() => setIncludeUnifyDialogOpen(false)}
+              disabled={includeUnifySaving}
+              style={{ padding: '6px 12px' }}
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* タグテーブル（カテゴリ見出し行＋まとめ質問＋代表タグ＋サブ行） */}
       <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white' }}>

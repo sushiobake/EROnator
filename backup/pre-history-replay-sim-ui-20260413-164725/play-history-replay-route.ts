@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminAllowed } from '@/server/admin/isAdminAllowed';
 import { prisma, ensurePrismaConnected } from '@/server/db/client';
 import { getMvpConfig } from '@/server/config/loader';
-import { filterWorksByAiGate, initializeWeights, processAnswer, getEarlyExitStepSnapshot } from '@/server/game/engine';
+import { filterWorksByAiGate, initializeWeights, processAnswer } from '@/server/game/engine';
 import { normalizeWeights, calculateEffectiveCandidates } from '@/server/algo/scoring';
 import { normalizeTitleForInitial } from '@/server/utils/normalizeTitle';
 import { getTitleCharType } from '@/server/utils/titleCharType';
@@ -16,25 +16,10 @@ import type { WorkWeight, WorkProbability } from '@/server/algo/types';
 import type { QuestionHistoryEntry } from '@/server/session/manager';
 import type { QuestionData } from '@/server/game/engine';
 import type { AiGateChoice } from '@/server/algo/types';
-import type { EarlyExitStepSnapshot } from '@/types/earlyExitStepSnapshot';
-
-export type ReplayQuestionPayload = {
-  kind: string;
-  displayText: string;
-  tagKey?: string;
-  hardConfirmType?: string;
-  hardConfirmValue?: string;
-  exploreTagKind?: string;
-  specialQuestionType?: string;
-  titleCharType?: string;
-  authorCharType?: string;
-};
 
 export interface ReplayStep {
   qIndex: number;
   kind: string;
-  /** シミュ表・タグ帯と整合する質問ペイロード */
-  question: ReplayQuestionPayload;
   displayText?: string;
   answer?: string;
   exploreTagKind?: string;
@@ -48,9 +33,6 @@ export interface ReplayStep {
   revealWorkId?: string;
   revealWorkTitle?: string;
   revealResult?: 'SUCCESS' | 'MISS';
-  /** 回答適用前の実質候補数（シミュ steps.effectiveCandidates と同義） */
-  effectiveCandidates?: number;
-  earlyExit?: EarlyExitStepSnapshot;
   /** 分析対象作品の順位（1始まり）。質問後の分布基準は After */
   targetWorkRankBefore?: number | null;
   targetWorkRankAfter?: number | null;
@@ -69,33 +51,6 @@ export interface ReplayMeta {
   analysisTargetGameRegistered: boolean | null;
   /** UI 用: active = ゲーム登録, reserve = 未登録 */
   analysisTargetSource: 'active' | 'reserve' | null;
-}
-
-export interface ReplayAnalysisData {
-  wasNoisyCount: number;
-  firstNoisyStepIndex: number;
-  noisyStepIndices: number[];
-  correctRank: number;
-  top1Confidence: number;
-  totalQuestions: number;
-  noisyRatio: number;
-}
-
-export interface ReplayWorkDetails {
-  workId: string;
-  title: string;
-  authorName: string | null;
-  isAi: string | null;
-  popularityBase: number | null;
-  reviewCount: number | null;
-  reviewAverage: number | null;
-  commentText: string | null;
-  tags: Array<{
-    tagKey: string;
-    displayName: string;
-    tagType: string;
-    derivedConfidence: number | null;
-  }>;
 }
 
 type TargetWorkRow = {
@@ -221,35 +176,6 @@ function getMissType(userAnswer: string | undefined, correctAnswer: 'YES' | 'NO'
   return null;
 }
 
-function entryToReplayQuestion(entry: QuestionHistoryEntry): ReplayQuestionPayload {
-  return {
-    kind: entry.kind,
-    displayText: entry.displayText ?? '',
-    tagKey: entry.tagKey,
-    hardConfirmType: entry.hardConfirmType,
-    hardConfirmValue: entry.hardConfirmValue,
-    exploreTagKind: entry.exploreTagKind,
-    specialQuestionType: entry.specialQuestionType,
-    titleCharType: entry.titleCharType,
-    authorCharType: entry.authorCharType,
-  };
-}
-
-function replayWasNoisy(
-  entry: QuestionHistoryEntry,
-  canAnalyze: boolean,
-  targetWork: TargetWorkRow | null,
-  targetTagKeys: Set<string>,
-  targetWorkTagDisplayNames: { displayName: string }[]
-): boolean {
-  if (!canAnalyze || entry.kind === 'REVEAL' || entry.kind === 'NOISE_GUIDE_RECOMMEND') return false;
-  if (!targetWork) return false;
-  if (!entry.answer) return false;
-  const correctAnswer = getCorrectAnswerForEntry(entry, targetWork, targetTagKeys, targetWorkTagDisplayNames);
-  if (correctAnswer !== 'YES' && correctAnswer !== 'NO') return false;
-  return entry.answer !== correctAnswer;
-}
-
 function historyEntryToQuestionData(entry: QuestionHistoryEntry): QuestionData {
   return {
     kind: entry.kind,
@@ -305,8 +231,6 @@ export async function POST(request: NextRequest) {
           analysisTargetGameRegistered: null,
           analysisTargetSource: null,
         } satisfies ReplayMeta,
-        workDetails: null,
-        analysisData: null,
       });
     }
 
@@ -320,29 +244,17 @@ export async function POST(request: NextRequest) {
     let targetWorkRow: TargetWorkRow | null = null;
     let correctTagKeys = new Set<string>();
     let correctWorkTagDisplayNames: { displayName: string }[] = [];
-    let workDetails: ReplayWorkDetails | null = null;
 
     if (resolvedAnalysisId) {
       const work = await prisma.work.findUnique({
         where: { workId: resolvedAnalysisId },
         select: {
-          workId: true,
           title: true,
           authorName: true,
           popularityBase: true,
           titleReadingInitial: true,
           gameRegistered: true,
-          isAi: true,
-          reviewCount: true,
-          reviewAverage: true,
-          commentText: true,
-          workTags: {
-            select: {
-              tagKey: true,
-              derivedConfidence: true,
-              tag: { select: { displayName: true, tagType: true } },
-            },
-          },
+          workTags: { select: { tagKey: true, tag: { select: { displayName: true } } } },
         },
       });
       if (work) {
@@ -355,26 +267,8 @@ export async function POST(request: NextRequest) {
         };
         correctTagKeys = new Set(work.workTags.map((wt) => wt.tagKey));
         correctWorkTagDisplayNames = work.workTags.map((wt) => ({ displayName: wt.tag.displayName }));
-        workDetails = {
-          workId: work.workId,
-          title: work.title,
-          authorName: work.authorName,
-          isAi: work.isAi,
-          popularityBase: work.popularityBase,
-          reviewCount: work.reviewCount,
-          reviewAverage: work.reviewAverage,
-          commentText: work.commentText,
-          tags: work.workTags.map((wt) => ({
-            tagKey: wt.tagKey,
-            displayName: wt.tag.displayName,
-            tagType: wt.tag.tagType,
-            derivedConfidence: wt.derivedConfidence,
-          })),
-        };
       }
     }
-
-    const canAnalyzeUserNoise = !!(targetWorkRow && resolvedAnalysisId);
 
     const allWorks = await prisma.work.findMany({
       where: { gameRegistered: true, needsReview: false },
@@ -400,9 +294,7 @@ export async function POST(request: NextRequest) {
     let weights: WorkWeight[] = await initializeWeights(filteredWorkIds, config.algo.alpha);
 
     const sortedEntries = [...questionHistory].sort((a, b) => (a.qIndex ?? 0) - (b.qIndex ?? 0));
-    const quizCount = sortedEntries.filter((e) => e.kind !== 'REVEAL').length;
     const steps: ReplayStep[] = [];
-    let replayQuizAnsweredForEarlyExit = 0;
 
     for (const entry of sortedEntries) {
       const entryKind = (entry as { kind?: string }).kind;
@@ -420,18 +312,15 @@ export async function POST(request: NextRequest) {
           revealWorkTitle?: string;
         };
         const tBefore = rankTargetInProbabilities(probs, resolvedAnalysisId);
-        const qPayload = entryToReplayQuestion(entry as QuestionHistoryEntry);
         steps.push({
           qIndex: entry.qIndex ?? steps.length + 1,
           kind: 'REVEAL',
-          question: { ...qPayload, kind: 'REVEAL', displayText: entry.displayText ?? qPayload.displayText },
           displayText: entry.displayText,
           answer: entry.answer,
           tagCoverage: undefined,
           confidenceBefore: topProb,
           confidenceAfter: topProb,
           wasNoisy: false,
-          effectiveCandidates: eff,
           ...(entry.durationSeconds != null && { durationSeconds: entry.durationSeconds }),
           revealResult: (e.revealResult as 'SUCCESS' | 'MISS') ?? 'SUCCESS',
           revealWorkId: e.revealWorkId,
@@ -488,19 +377,6 @@ export async function POST(request: NextRequest) {
       const effAfter = calculateEffectiveCandidates(newProbabilities);
       const tAfter = rankTargetInProbabilities(newProbabilities, resolvedAnalysisId);
 
-      replayQuizAnsweredForEarlyExit += 1;
-      const qCountForEarlyExit =
-        typeof entry.qIndex === 'number' && entry.qIndex > 0 ? entry.qIndex : replayQuizAnsweredForEarlyExit;
-      const earlyExit = getEarlyExitStepSnapshot(qCountForEarlyExit, confidenceAfter, effAfter, [], config);
-
-      const wasNoisy = replayWasNoisy(
-        entry as QuestionHistoryEntry,
-        canAnalyzeUserNoise,
-        targetWorkRow,
-        correctTagKeys,
-        correctWorkTagDisplayNames
-      );
-
       let missType: 'clear' | 'weak' | undefined;
       if (
         targetWorkRow &&
@@ -510,24 +386,16 @@ export async function POST(request: NextRequest) {
           entry.kind === 'SPECIAL_QUESTION' ||
           entry.kind === 'NEW_TAG_QUESTION')
       ) {
-        const correctAnswer = getCorrectAnswerForEntry(
-          entry as QuestionHistoryEntry,
-          targetWorkRow,
-          correctTagKeys,
-          correctWorkTagDisplayNames
-        );
+        const correctAnswer = getCorrectAnswerForEntry(entry, targetWorkRow, correctTagKeys, correctWorkTagDisplayNames);
         if (correctAnswer) {
           const mt = getMissType(entry.answer, correctAnswer);
           if (mt) missType = mt;
         }
       }
 
-      const qPayload = entryToReplayQuestion(entry as QuestionHistoryEntry);
-
       steps.push({
         qIndex: entry.qIndex ?? steps.length + 1,
         kind: entry.kind,
-        question: qPayload,
         displayText: entry.displayText,
         answer: entry.answer,
         exploreTagKind: entry.exploreTagKind,
@@ -535,9 +403,7 @@ export async function POST(request: NextRequest) {
         tagCoverage,
         confidenceBefore,
         confidenceAfter,
-        wasNoisy,
-        effectiveCandidates: effBefore,
-        earlyExit,
+        wasNoisy: false,
         ...(entry.durationSeconds != null && { durationSeconds: entry.durationSeconds }),
         ...(missType && { missType }),
         targetWorkRankBefore: tBefore.rank,
@@ -566,18 +432,15 @@ export async function POST(request: NextRequest) {
       const revealResult = outcome === 'SUCCESS' ? 'SUCCESS' : 'MISS';
       const tFin = rankTargetInProbabilities(finalProbs, resolvedAnalysisId);
       const effFin = calculateEffectiveCandidates(finalProbs);
-      const displayText = `断定: この作品は「${topWork?.title ?? topWorkId}」ですか？`;
       steps.push({
         qIndex: steps.length + 1,
         kind: 'REVEAL',
-        question: { kind: 'REVEAL', displayText },
-        displayText,
+        displayText: `断定: この作品は「${topWork?.title ?? topWorkId}」ですか？`,
         answer: outcome === 'SUCCESS' ? 'CORRECT' : 'WRONG',
         tagCoverage: undefined,
         confidenceBefore: finalConfidence,
         confidenceAfter: finalConfidence,
         wasNoisy: false,
-        effectiveCandidates: effFin,
         revealWorkId: topWorkId,
         revealWorkTitle: topWork?.title ?? undefined,
         revealResult,
@@ -605,30 +468,10 @@ export async function POST(request: NextRequest) {
               : null,
     };
 
-    const correctRankIdx = resolvedAnalysisId
-      ? finalSorted.findIndex((p) => p.workId === resolvedAnalysisId)
-      : -1;
-    const correctRank = correctRankIdx === -1 ? -1 : correctRankIdx + 1;
-    const top1Confidence = finalSorted[0]?.probability ?? 0;
-
-    const noisySteps = steps.filter((s) => s.wasNoisy);
-    const firstNoisyIdx = noisySteps.length > 0 ? steps.findIndex((s) => s.wasNoisy) : -1;
-    const analysisData: ReplayAnalysisData = {
-      wasNoisyCount: noisySteps.length,
-      firstNoisyStepIndex: firstNoisyIdx,
-      noisyStepIndices: steps.filter((s) => s.wasNoisy).map((s) => s.qIndex),
-      correctRank,
-      top1Confidence,
-      totalQuestions: quizCount,
-      noisyRatio: quizCount > 0 ? noisySteps.length / quizCount : 0,
-    };
-
     return NextResponse.json({
       success: true,
       steps,
       meta,
-      workDetails,
-      analysisData,
     });
   } catch (e) {
     console.error('[admin/play-history-replay]', e);

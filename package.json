@@ -80,6 +80,7 @@
     "puppeteer": "^24.36.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "sudachi": "^0.1.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {
