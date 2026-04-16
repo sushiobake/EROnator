@@ -146,10 +146,3 @@
 ### バックアップ（この変更セットの直前ファイル一式）
 
 - `config/backups/2026-04-16-reveal-earlyexit-probablyyes/*.bak` と `README.txt`
-
-## 2026-04-16 (adminConfigNotes in mvpConfig)
-
-- 目的: 管理画面のコンフィグタブから編集できる短い変更メモ欄を `mvpConfig.json` に正式追加（ゲーム挙動には未使用）。
-- 追加: `adminConfigNotes`（任意文字列、最大 4000 文字）
-- スキーマ: `src/server/config/schema.ts` の `MvpConfigSchema`
-- UI: `src/app/admin/tags/tabs/ConfigTab.tsx` 冒頭のテキストエリア

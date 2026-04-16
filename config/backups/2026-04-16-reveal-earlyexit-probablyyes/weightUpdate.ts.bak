@@ -33,7 +33,7 @@ function getLikelihood(
     case 'NO':
       return workHasFeature ? low : high;
     case 'PROBABLY_YES': {
-      const v = workHasFeature ? 0.6 : 0.4;
+      const v = workHasFeature ? 0.7 : 0.3;
       return Math.max(low, Math.min(high, v));
     }
     case 'PROBABLY_NO': {
@@ -112,7 +112,7 @@ function getLikelihoodSoft(
     case 'NO':
       return Math.max(ep, Math.min(1 - ep, 1 - p));
     case 'PROBABLY_YES':
-      return Math.max(ep, Math.min(1 - ep, 0.6 * p + 0.4 * (1 - p)));
+      return Math.max(ep, Math.min(1 - ep, 0.7 * p + 0.3 * (1 - p)));
     case 'PROBABLY_NO':
       return Math.max(ep, Math.min(1 - ep, 0.3 * p + 0.7 * (1 - p)));
     case 'UNKNOWN':

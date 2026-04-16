@@ -1212,7 +1212,7 @@ function getLikelihood(workHasFeature, answerChoice, epsilon) {
     case "NO":
       return workHasFeature ? low : high;
     case "PROBABLY_YES": {
-      const v = workHasFeature ? 0.7 : 0.3;
+      const v = workHasFeature ? 0.6 : 0.4;
       return Math.max(low, Math.min(high, v));
     }
     case "PROBABLY_NO": {
@@ -1255,7 +1255,7 @@ function getLikelihoodSoft(pYes, answerChoice, epsilon) {
     case "NO":
       return Math.max(ep, Math.min(1 - ep, 1 - p));
     case "PROBABLY_YES":
-      return Math.max(ep, Math.min(1 - ep, 0.7 * p + 0.3 * (1 - p)));
+      return Math.max(ep, Math.min(1 - ep, 0.6 * p + 0.4 * (1 - p)));
     case "PROBABLY_NO":
       return Math.max(ep, Math.min(1 - ep, 0.3 * p + 0.7 * (1 - p)));
     case "UNKNOWN":
@@ -1896,9 +1896,9 @@ function getGroupDisplayNames(displayName) {
 function getRevealThresholdForQuestion(questionCount, baseThreshold) {
   const q = questionCount + 1;
   if (q <= 15) return Math.max(baseThreshold, 0.7);
-  if (q <= 20) return 0.6;
-  if (q <= 25) return 0.5;
-  return 0.4;
+  if (q <= 20) return 0.65;
+  if (q <= 25) return 0.55;
+  return 0.5;
 }
 var MAX_QUESTIONS_CAP = 40;
 function getEffectiveMaxQuestions(baseMaxQuestions, _confidence, options) {
@@ -8146,6 +8146,9 @@ function evaluateSimulationEarlyExitAfterQuizAnswer(args) {
     args.questionHistory,
     args.config
   ).wouldEarlyExit) {
+    if (args.revealMissCount === 0) {
+      return { stop: false };
+    }
     const finalWorkId = args.newSorted.find((p) => !args.revealedWrongWorkIds.has(p.workId))?.workId ?? args.newSorted[0]?.workId ?? null;
     return { stop: true, endedBy: "EARLY_FAIL_REVIEW", finalWorkId };
   }

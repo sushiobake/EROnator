@@ -124,6 +124,34 @@ export default function ConfigTab({
         </div>
       ) : (
         <>
+          <div style={{ marginBottom: '1.25rem', padding: '0.75rem 1rem', background: '#f5f5f5', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#444', marginBottom: '0.35rem' }}>
+              変更メモ（管理画面のみ・挙動に影響しない）
+            </label>
+            <textarea
+              value={typeof config.adminConfigNotes === 'string' ? config.adminConfigNotes : ''}
+              onChange={(e) => updateConfig(['adminConfigNotes'], e.target.value)}
+              placeholder="例: 2026-04-16 REVEAL閾値緩和、PROBABLY_YES弱体化、早期失敗前の強制断定"
+              rows={3}
+              maxLength={4000}
+              style={{
+                width: '100%',
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                fontSize: '0.8rem',
+                lineHeight: 1.45,
+                padding: '0.45rem 0.55rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+            />
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#666' }}>
+              最大 4000 文字。保存すると <code style={{ background: '#eee', padding: '0 0.2rem' }}>config/mvpConfig.json</code> に書き込まれます。
+            </p>
+          </div>
+
           {configMessage && (
             <div
               style={{

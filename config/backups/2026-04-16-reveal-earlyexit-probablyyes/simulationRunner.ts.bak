@@ -83,10 +83,6 @@ export function evaluateSimulationEarlyExitAfterQuizAnswer(args: {
       args.config
     ).wouldEarlyExit
   ) {
-    // 本番 handleAnswerResponse と同様: 断定ミス0のときは早期失敗にせず次周へ（後続で閾値/強制断定へ）
-    if (args.revealMissCount === 0) {
-      return { stop: false };
-    }
     const finalWorkId =
       args.newSorted.find(p => !args.revealedWrongWorkIds.has(p.workId))?.workId ??
       args.newSorted[0]?.workId ??

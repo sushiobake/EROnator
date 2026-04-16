@@ -410,11 +410,7 @@ function shouldEarlyExit(
   ).wouldEarlyExit;
 }
 
-/**
- * 管理画面シミュレーション用。早期失敗レビュー点での「生」条件（getEarlyExitStepSnapshot.wouldEarlyExit）。
- * 本番 `/api/answer` の handleAnswerResponse では、revealMissCount===0 のときはここが真でも
- * 先に強制REVEALへ寄せるため、この関数単体では最終 FAIL_LIST とは一致しない場合がある。
- */
+/** 管理画面シミュレーション用。本番の回答APIが使う早期失敗一覧判定と同一式。 */
 export function shouldEarlyExitToFailList(
   newQuestionCount: number,
   confidence: number,
@@ -2427,23 +2423,7 @@ export async function handleAnswerResponse(
   const effectiveCandidates = calculateEffectiveCandidates(probabilities);
 
   // 2.5 早期分岐（Q25/Q30/Q35/Q40）
-  // 断定ミスがまだ0回（＝本番で断定画面を踏んでいない）のときは、早期失敗の代わりに1回だけ強制断定する（体験改善）。
   if (shouldEarlyExit(newQuestionCount, confidence, effectiveCandidates, historyWithAnswer, config)) {
-    const noRevealMissYet = (session.revealMissCount ?? 0) === 0;
-    if (noRevealMissYet) {
-      const forceRevealBeforeEarlyFailId = getTopWorkIdFromProbabilities(
-        probabilities,
-        session.revealRejectedWorkIds ?? []
-      );
-      if (forceRevealBeforeEarlyFailId) {
-        return {
-          state: 'REVEAL',
-          revealWorkId: forceRevealBeforeEarlyFailId,
-          forcedReveal: true,
-          sessionUpdates: revealSessionUpdates,
-        };
-      }
-    }
     return {
       state: 'FAIL_LIST',
       sessionUpdates: baseSessionUpdates,

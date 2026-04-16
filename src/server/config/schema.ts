@@ -564,6 +564,11 @@ export const DEFAULT_THINKING = {
 
 export const MvpConfigSchema = z.object({
   version: z.literal('v1.5'),
+  /**
+   * 管理画面用の短い変更メモ（本番ゲームロジックでは参照しない）。
+   * 閾値変更の理由・日付などを残す用途。
+   */
+  adminConfigNotes: z.string().max(4000).optional(),
   /** ゲーム文言。未設定時は DEFAULT_GAME_COPY */
   gameCopy: GameCopySchema.optional(),
   /** 推薦モードの文言。未設定時は DEFAULT_RECOMMEND_COPY */
