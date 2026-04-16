@@ -1,7 +1,7 @@
 /**
  * QUIZコンポーネント
  * 右中央ホワイトボード内で質問＋6択。レイアウトは px。
- * - 「どっちでもいい（DONT_CARE）」機能は内部に残し、UI選択肢には表示しない。
+ * - Q1〜Q11: 「どっちでもいい」は非表示。Q12から表示。
  * - 特別質問（SERIES/TITLE_CHAR_TYPE/TITLE_SYLLABLE、POPULARITYは除外）では「たぶんそう」「たぶん違う」「どっちでもいい」をブロック（押すとメッセージ表示・無効化・薄く表示）。わからないは許可。
  */
 
@@ -45,6 +45,9 @@ const ANSWER_CHOICES = [
   { value: 'DONT_CARE', label: 'どっちでもいい' },
 ] as const;
 
+/** Q12から「どっちでもいい」を表示（questionCount は 1始まり） */
+const DONT_CARE_FROM_QUESTION = 12;
+
 /** 特別質問でブロックする選択肢（たぶんそう・たぶん違う・どっちでもいい）。わからないは許可 */
 const SPECIAL_QUESTION_BLOCKED_VALUES = ['PROBABLY_YES', 'PROBABLY_NO', 'DONT_CARE'] as const;
 
@@ -77,8 +80,9 @@ export function Quiz({ question, questionCount, onAnswer, onBack, canGoBack }: Q
 
   const isBlockedDisabled = disallowAmbiguous && ambiguousRejected;
 
-  // DONT_CARE は機能互換のため型/処理側には残しつつ、UI選択肢からは常時除外する。
-  const visibleChoices = ANSWER_CHOICES.filter((c) => c.value !== 'DONT_CARE');
+  const visibleChoices = questionCount >= DONT_CARE_FROM_QUESTION
+    ? ANSWER_CHOICES
+    : ANSWER_CHOICES.filter((c) => c.value !== 'DONT_CARE');
   const finalChoices = question.kind === 'NOISE_GUIDE_RECOMMEND'
     ? visibleChoices.filter((c) => c.value === 'YES' || c.value === 'NO')
     : visibleChoices;

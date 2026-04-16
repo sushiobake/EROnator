@@ -12,7 +12,7 @@ type BaseThreshold = number;
 
 /**
  * 質問数に応じた REVEAL 閾値を返す。
- * Q1-15: 0.7, Q16-20: 0.6, Q21-25: 0.5, Q26-30: 0.4
+ * Q1-15: 0.7, Q16-20: 0.65, Q21-25: 0.6, Q26-30: 0.55
  */
 export function getRevealThresholdForQuestion(
   questionCount: number,
@@ -20,9 +20,9 @@ export function getRevealThresholdForQuestion(
 ): number {
   const q = questionCount + 1; // 1-based（次の質問が何問目か）
   if (q <= 15) return Math.max(baseThreshold, 0.7);
-  if (q <= 20) return 0.6;
-  if (q <= 25) return 0.5;
-  return 0.4;
+  if (q <= 20) return 0.65;
+  if (q <= 25) return 0.6;
+  return 0.55;
 }
 
 /** 動的延長の上限（わからない回復・Q30 recovery のキャップ） */

@@ -121,9 +121,9 @@
       "enabled": true,
       "minPopularityBase": 50,
       "phases": {
-        "q20": 0.85,
-        "q25": 0.75,
-        "q30": 0.65
+        "q20": 0.75,
+        "q25": 0.65,
+        "q30": 0.55
       }
     },
     "hardConfirmYesAutoReveal": {
@@ -135,7 +135,7 @@
     "beta": 1.2,
     "alpha": 0,
     "derivedConfidenceThreshold": 0.5,
-    "revealPenalty": 0.8,
+    "revealPenalty": 0.6,
     "explorePValueMin": 0.05,
     "explorePValueMax": 0.95,
     "explorePValueFallbackEnabled": true,
