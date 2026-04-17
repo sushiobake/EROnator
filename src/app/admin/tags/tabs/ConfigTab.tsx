@@ -294,6 +294,8 @@ export default function ConfigTab({
                 { key: 'successSpeech', label: '正解時のキャラ台詞（{questionCount}で質問数に置換）' },
                 { key: 'successTitle', label: '正解時のタイトル（正解画面の作品上の見出し）' },
                 { key: 'recommendTitle', label: 'おすすめ見出し（正解・惜しかった画面の「おすすめ5件」の上）' },
+                { key: 'postTextSuccess', label: 'X投稿文言（正解時。{questionCount}で質問数に置換）' },
+                { key: 'postTextAlmostSuccess', label: 'X投稿文言（惜しかった時。{questionCount}で質問数に置換）' },
                 { key: 'failListSpeech', label: '外れ①メイン（全部外してリスト表示になったときのキャラの一言）' },
                 { key: 'failListSubMobile', label: '外れ①サブ・スマホ（リスト画面でスマホ時の2行目）' },
                 { key: 'failListSubPc', label: '外れ①サブ・PC（リスト画面でPC時の2行目）' },
@@ -440,6 +442,7 @@ export default function ConfigTab({
                 { key: 'sortPrompt', label: '整理キャラ台詞・共通フォールバック（前半/後半が空のとき）' },
                 { key: 'thinkingText', label: '考え中（あなたにぴったりの作品を探しているわ…）' },
                 { key: 'recommendResultsHeading', label: '推薦・結果画面の見出し（例：こんな作品なんてどう？）' },
+                { key: 'postTextResults', label: 'X投稿文言（推薦結果の「ポストする」）' },
                 { key: 'btnNext', label: 'ボタン：次へ（初期画面など）' },
                 {
                   key: 'btnNextSortFront',

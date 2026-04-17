@@ -269,6 +269,10 @@ const GameCopySchema = z.object({
   successSpeech: z.string(),
   successTitle: z.string(),
   recommendTitle: z.string(),
+  /** 正解時のX投稿文言（{questionCount} を質問数に置換） */
+  postTextSuccess: z.string().optional(),
+  /** 惜しかった時のX投稿文言（{questionCount} を質問数に置換） */
+  postTextAlmostSuccess: z.string().optional(),
   /** 外れ① FAIL_LIST（リスト表示） */
   failListSpeech: z.string(),
   failListSubMobile: z.string(),
@@ -302,6 +306,8 @@ export const DEFAULT_GAME_COPY = {
   successSpeech: '正解！？やっぱりね！',
   successTitle: '正解！？やっぱりね！',
   recommendTitle: 'そんなあなたには…おすすめもあるわ！',
+  postTextSuccess: '【ERONATOR】{questionCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター',
+  postTextAlmostSuccess: '【ERONATOR】{questionCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター',
   failListSpeech: 'うーん…ちょっとわからなかったわ。',
   failListSubMobile: 'この中にある？　なければ検索か、作品名を教えてね。',
   failListSubPc: 'この中に近いものはある？　ないなら右で検索してみて。',
@@ -442,6 +448,8 @@ const RecommendCopySchema = z.object({
   thinkingText: z.string(),
   /** 推薦結果画面の見出し（例：こんな作品なんてどう？） */
   recommendResultsHeading: z.string().optional(),
+  /** 推薦結果画面のX投稿文言 */
+  postTextResults: z.string().optional(),
   /** ボタン文言（初期画面の「次へ」等・整理ボタンのフォールバック） */
   btnNext: z.string().optional(),
   /** 整理ページ（前半・sort1）のメインボタン */
@@ -498,6 +506,7 @@ export const DEFAULT_RECOMMEND_COPY: RecommendCopy = {
   sortPromptBack: '今選んでいる要素を、好きな順に５つ並べて',
   thinkingText: 'あなたにぴったりの作品を探しているわ…',
   recommendResultsHeading: 'こんな作品なんてどう？',
+  postTextResults: '【ERONATOR】おすすめ10件をもらった！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター',
   btnNext: '次へ',
   btnNextSortFront: '次へ',
   btnNextSortBack: '次へ',

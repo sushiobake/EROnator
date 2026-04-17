@@ -180,6 +180,7 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
     btnFixRecommend: 'ひとつ前に戻る',
     btnTopReset: 'トップに戻る',
     recommendResultsHeading: 'こんな作品なんてどう？',
+    postTextResults: '【ERONATOR】おすすめ10件をもらった！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター',
   };
 
   /** 推薦フロー内の「戻る」（やり直しと区別） */
@@ -779,7 +780,10 @@ export function RecommendMode({ onBack, onLogoClick }: RecommendModeProps) {
 
   if (step === 'results') {
     const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}?result=recommend` : '';
-    const shareText = '【ERONATOR】おすすめ10件をもらった！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター';
+    const shareText =
+      (rc.postTextResults && rc.postTextResults.trim() !== ''
+        ? rc.postTextResults
+        : '【ERONATOR】おすすめ10件をもらった！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター');
     const tweetIntent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
 
     const handleSharePC = (withMosaic?: boolean) => {

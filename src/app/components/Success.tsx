@@ -48,6 +48,12 @@ interface SuccessProps {
   mobileListBelow?: boolean;
   sessionId?: string | null;
   questionCount?: number;
+  /** 投稿文言用の画面種別（文字列比較ではなく状態で分岐） */
+  resultType?: 'success' | 'almost_success';
+  /** 正解時のX投稿文言（{questionCount} を置換） */
+  postTextSuccess?: string;
+  /** 惜しかった時のX投稿文言（{questionCount} を置換） */
+  postTextAlmostSuccess?: string;
   /** 配信者モード時はタイトルを部分的伏字 */
   streamerMode?: boolean;
 }
@@ -60,6 +66,10 @@ const CAPTURE_WIDTH_PC = 1200;
 const CAPTURE_WIDTH_MOBILE = 400;
 const CAPTURE_PAD = 16;
 const CAPTURE_CARD_GAP = 10;
+const DEFAULT_POST_TEXT_SUCCESS =
+  '【ERONATOR】{questionCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター';
+const DEFAULT_POST_TEXT_ALMOST_SUCCESS =
+  '【ERONATOR】{questionCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター';
 
 export function Success({
   work,
@@ -72,6 +82,9 @@ export function Success({
   mobileListBelow,
   sessionId,
   questionCount,
+  resultType = 'success',
+  postTextSuccess = DEFAULT_POST_TEXT_SUCCESS,
+  postTextAlmostSuccess = DEFAULT_POST_TEXT_ALMOST_SUCCESS,
   streamerMode,
 }: SuccessProps) {
   const linkText = '読んでみる';
@@ -81,14 +94,13 @@ export function Success({
   const captureRef = useRef<HTMLDivElement>(null);
   const [captureMosaic, setCaptureMosaic] = useState(false);
   const thumbSrc = work.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(work.workId)}`;
-  const isAlmostSuccess = successTitle !== '正解！？やっぱりね！';
+  const isAlmostSuccess = resultType === 'almost_success';
 
   const handlePostToX = () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const qCount = questionCount ?? 0;
-    const text = isAlmostSuccess
-      ? `【ERONATOR】${qCount}問で惜しかった…！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`
-      : `【ERONATOR】${qCount}問で当てられた！ あなたの妄想、エロネイターが当ててみる？\n#エロネイター`;
+    const textTemplate = isAlmostSuccess ? postTextAlmostSuccess : postTextSuccess;
+    const text = textTemplate.replace(/\{questionCount\}/g, String(qCount));
     const resultParam = isAlmostSuccess ? 'fail' : 'success';
     const shareUrl = `${origin}?q=${qCount}&result=${resultParam}`;
     const intent = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;

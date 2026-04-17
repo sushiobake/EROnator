@@ -13,6 +13,8 @@
     "successSpeech": "やったーー！！{questionCount}問でわかっちゃった！！何でもお見通しだもの！！",
     "successTitle": "やったーー！！まあ知ってたわ！！何でもお見通しだもの！",
     "recommendTitle": "なら…そんなあなたにおススメもある！！",
+    "postTextSuccess": "{questionCount}問の質問で当てられた！ あなたの妄想した同人誌、#エロネイター が当ててみる？",
+    "postTextAlmostSuccess": "{questionCount}問での質問で惜しかった…！ あなたの妄想した同人誌、#エロネイター が当ててみる？",
     "failListSpeech": "う～～～ん……ごめん！ちょっと特定しきれなかったわ。",
     "failListSubMobile": "だから一緒に探してくれるかしら。下の候補に近いのはある？　なければ検索か、作品名を教えてね。",
     "failListSubPc": "だから一緒に探してくれるかしら。この候補に近いのはある？　ないなら右で検索してみて。",
@@ -20,12 +22,12 @@
     "failListBtnNotInList": "",
     "failListBtnRecommend": "推薦してもらう",
     "failListBtnTop": "トップに戻る",
+    "failListSearchHeading": "候補にないなら、ここで検索してみて",
     "failListSearchIntro": "タイトルの一部でいいから、入れてみて。",
     "failListSearchPlaceholder": "例: 鬼、学園、寝取られ など",
     "almostSuccessSpeech": "それか～～～！悔しい！！次回は当てるから！！",
     "aiGatePreamble": "最初に教えて！その同人誌は……",
-    "aiGateMain": "AI生成作品？それとも違う？",
-    "failListSearchHeading": "候補にないなら、ここで検索してみて"
+    "aiGateMain": "AI生成作品？それとも違う？"
   },
   "recommendCopy": {
     "aiGatePreamble": "最初に教えて！",
@@ -44,6 +46,7 @@
     "sortPromptBack": "ここまで選んだ「すべての特徴」を、より好きな順に５位まで決めて！",
     "thinkingText": "あなたにぴったりの作品を探しているわ……",
     "recommendResultsHeading": "結果が出たわ！こんな作品はどうかな？",
+    "postTextResults": "おすすめ10件をもらった！ あなたの理想の同人誌、#エロネイター が推薦してあげる！",
     "btnNext": "次へ",
     "btnNextSortFront": "後半へ",
     "btnNextSortBack": "結果へ",

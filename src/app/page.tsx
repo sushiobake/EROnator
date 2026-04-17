@@ -187,6 +187,7 @@ export default function Home() {
   const [gameCopy, setGameCopy] = useState<{
     topLines?: string[]; questionPreamble?: string; revealPreamble?: string; revealMain?: string;
     successSpeech?: string; successTitle?: string; recommendTitle?: string;
+    postTextSuccess?: string; postTextAlmostSuccess?: string;
     failListSpeech?: string; failListSubMobile?: string; failListSubPc?: string; failListNotInListPrompt?: string;
     failListBtnNotInList?: string; failListBtnRecommend?: string; failListBtnTop?: string;
     failListSearchHeading?: string; failListSearchIntro?: string; failListSearchPlaceholder?: string;
@@ -1050,6 +1051,9 @@ export default function Home() {
             mobileListBelow={isMobile}
             sessionId={sessionId}
             questionCount={questionCount}
+            resultType="success"
+            postTextSuccess={gc?.postTextSuccess}
+            postTextAlmostSuccess={gc?.postTextAlmostSuccess}
             successTitle={gc?.successTitle ?? '正解！？やっぱりね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
             streamerMode={streamerMode}
@@ -1098,6 +1102,9 @@ export default function Home() {
             successTitle={gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
             questionCount={questionCount}
+            resultType="almost_success"
+            postTextSuccess={gc?.postTextSuccess}
+            postTextAlmostSuccess={gc?.postTextAlmostSuccess}
             mobileListBelow={isMobile}
             sessionId={sessionId}
             streamerMode={streamerMode}
