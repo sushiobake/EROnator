@@ -152,4 +152,5 @@
 - 目的: 管理画面のコンフィグタブから編集できる短い変更メモ欄を `mvpConfig.json` に正式追加（ゲーム挙動には未使用）。
 - 追加: `adminConfigNotes`（任意文字列、最大 4000 文字）
 - スキーマ: `src/server/config/schema.ts` の `MvpConfigSchema`
-- UI: `src/app/admin/tags/tabs/ConfigTab.tsx` 冒頭のテキストエリア
+- UI: `src/app/admin/tags/tabs/ConfigTab.tsx` …「運用・変更メモ（参照のみ）」開閉セクションで `adminConfigNotes` を表示のみ（編集不可）
+- 追記: `mvpConfig.json` の `adminConfigNotes` に、同日までの調整内容の要約を投入済み（更新はリポジトリ側で反映）。

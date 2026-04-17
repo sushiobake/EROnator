@@ -1435,9 +1435,6 @@ export default function TagManager({ adminToken }: Props) {
               {/* TITLE_SYLLABLE */}
               <div>
                 <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>50音分類（さ～わ行・あ～さ行・か～は行など）</div>
-                <div style={{ color: '#dc2626', fontSize: '11px', marginBottom: '8px', opacity: 0.9 }}>
-                  「゛」や「゜」から始まる→「いいえ」
-                </div>
                 {((specialQuestions.TITLE_SYLLABLE?.ranges ?? []).length ? specialQuestions.TITLE_SYLLABLE!.ranges! : []).map((r) => (
                   <div key={r.id} style={{ marginBottom: '12px', padding: '10px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #ddd' }}>
                     <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>{r.label} (id: {r.id})</div>
@@ -1508,9 +1505,6 @@ export default function TagManager({ adminToken }: Props) {
               {/* TITLE_SYLLABLE_2 */}
               <div>
                 <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>50音2次（1次質問のYES/NO後の絞り込み）</div>
-                <div style={{ color: '#dc2626', fontSize: '11px', marginBottom: '8px', opacity: 0.9 }}>
-                  「゛」や「゜」から始まる→「いいえ」
-                </div>
                 {specialQuestions.TITLE_SYLLABLE_2?.branches && Object.entries(specialQuestions.TITLE_SYLLABLE_2.branches).map(([parentId, branches]) => {
                   const parentRange = specialQuestions.TITLE_SYLLABLE?.ranges?.find(r => r.id === parentId);
                   const parentLabel = parentRange?.label ?? parentId;

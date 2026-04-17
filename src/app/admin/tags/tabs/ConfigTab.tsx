@@ -124,34 +124,6 @@ export default function ConfigTab({
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: '1.25rem', padding: '0.75rem 1rem', background: '#f5f5f5', borderRadius: '6px', border: '1px solid #e0e0e0' }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#444', marginBottom: '0.35rem' }}>
-              変更メモ（管理画面のみ・挙動に影響しない）
-            </label>
-            <textarea
-              value={typeof config.adminConfigNotes === 'string' ? config.adminConfigNotes : ''}
-              onChange={(e) => updateConfig(['adminConfigNotes'], e.target.value)}
-              placeholder="例: 2026-04-16 REVEAL閾値緩和、PROBABLY_YES弱体化、早期失敗前の強制断定"
-              rows={3}
-              maxLength={4000}
-              style={{
-                width: '100%',
-                maxWidth: '100%',
-                boxSizing: 'border-box',
-                fontSize: '0.8rem',
-                lineHeight: 1.45,
-                padding: '0.45rem 0.55rem',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-              }}
-            />
-            <p style={{ margin: '0.35rem 0 0', fontSize: '0.75rem', color: '#666' }}>
-              最大 4000 文字。保存すると <code style={{ background: '#eee', padding: '0 0.2rem' }}>config/mvpConfig.json</code> に書き込まれます。
-            </p>
-          </div>
-
           {configMessage && (
             <div
               style={{
@@ -179,6 +151,34 @@ export default function ConfigTab({
               <span>デバッグパネル表示</span>
             </label>
           </section>
+
+          {/* 運用メモ（mvpConfig.json の adminConfigNotes、参照のみ） */}
+          <CollapsibleSection id="config-admin-notes-readonly" title="運用・変更メモ（参照のみ）" defaultOpen={false}>
+            <p style={{ marginTop: 0, marginBottom: '0.6rem', fontSize: '0.82rem', color: '#666', lineHeight: 1.5 }}>
+              <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>config/mvpConfig.json</code> の{' '}
+              <code style={{ background: '#eee', padding: '0.1rem 0.3rem' }}>adminConfigNotes</code> を表示しています。忘れ防止用（この画面からは編集しません）。
+            </p>
+            <pre
+              style={{
+                margin: 0,
+                padding: '0.65rem 0.75rem',
+                background: '#fafafa',
+                border: '1px solid #e8e8e8',
+                borderRadius: '4px',
+                fontSize: '0.78rem',
+                lineHeight: 1.55,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: '22rem',
+                overflow: 'auto',
+                fontFamily: 'ui-monospace, Consolas, monospace',
+              }}
+            >
+              {typeof config.adminConfigNotes === 'string' && config.adminConfigNotes.trim() !== ''
+                ? config.adminConfigNotes
+                : '（adminConfigNotes 未設定）'}
+            </pre>
+          </CollapsibleSection>
 
           {/* 現在の質問の流れ（開閉・参照用）v1.5 */}
           <CollapsibleSection id="config-question-flow" title="現在の質問の流れ（v1.5）" defaultOpen={false}>

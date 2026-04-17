@@ -919,10 +919,6 @@ export default function Home() {
   }
 
   if (state === 'QUIZ' && question) {
-    const showSyllableSupplement =
-      question.kind === 'SPECIAL_QUESTION' &&
-      (question.specialQuestionType === 'TITLE_SYLLABLE' ||
-        question.specialQuestionType === 'TITLE_SYLLABLE_2');
     return (
       <>
         {debugUIEnabled && debugEnabled && (
@@ -951,18 +947,6 @@ export default function Home() {
                     </span>
                     {streamerMode ? <StreamerCensoredText text={question.displayText} inQuestion /> : question.displayText}
                   </p>
-                  {showSyllableSupplement && (
-                    <p
-                      style={{
-                        margin: isMobile ? '4px 0 0 0' : '3px 0 0 0',
-                        color: '#dc2626',
-                        fontSize: isMobile ? 13 : 12,
-                        fontWeight: 600,
-                      }}
-                    >
-                      「゛」や「゜」から始まる→「いいえ」
-                    </p>
-                  )}
                 </div>
               )
           }

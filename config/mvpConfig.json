@@ -1,6 +1,6 @@
 {
   "version": "v1.5",
-  "adminConfigNotes": "",
+  "adminConfigNotes": "【2026-04-16 反映済みの調整まとめ】（本欄は挙動に未使用・管理用）\n\n■ mvpConfig.json\n- hardConfidenceMinByPhase: q20=0.75, q25=0.65, q30=0.55（旧 0.85/0.75/0.65）\n- revealPenalty: 0.6（旧 0.8）\n\n■ コード（リポジトリ差分で確認）\n- src/server/config/flowUtils.ts … REVEAL閾値: Q1-15=0.7, Q16-20=0.65, Q21-25=0.55, Q26-30=0.5\n- src/server/algo/weightUpdate.ts … PROBABLY_YES 尤度 0.7/0.3→0.6/0.4、有名度ソフト尤度も 0.6/0.4 ブレンド\n- src/server/game/engine.ts … 早期失敗レビュー成立かつ revealMissCount===0 のとき、候補があれば強制REVEAL（forcedReveal）。無ければ従来FAIL_LIST\n- src/server/simulation/simulationRunner.ts … 上記に合わせ early exit 打切りを revealMissCount===0 では抑制\n\n■ 参考\n- 経緯・復元メモ: config/mvpConfig-change-history.md\n- 同日バックアップ一式: config/backups/2026-04-16-reveal-earlyexit-probablyyes/（README.txt 参照）\n",
   "gameCopy": {
     "topLines": [
       "有名な同人誌を妄想してみて。",
