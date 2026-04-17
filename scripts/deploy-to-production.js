@@ -134,6 +134,21 @@ async function main() {
     }
   }
 
+  // ── タグ質問文の差分同期（ローカル SQLite → 本番 Postgres） ──
+  // 管理画面で編集した Tag.questionText を本番へ反映する
+  console.log('\n本番DBへタグ質問文を差分同期中...');
+  try {
+    execSync('node scripts/sync-tag-question-texts-prod.js', {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+      env: process.env,
+    });
+  } catch (error) {
+    console.error('\n❌ タグ質問文の同期に失敗しました。デプロイを中止します。');
+    rl.close();
+    process.exit(1);
+  }
+
   // schema.prisma を PostgreSQL に切り替え（本番環境用）
   try {
     switchToPostgres();
