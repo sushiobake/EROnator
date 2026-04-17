@@ -82,6 +82,7 @@ export default function ManualTagging() {
   const [filter, setFilter] = useState<FilterType>('tagged');
   const [works, setWorks] = useState<WorkListItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [detail, setDetail] = useState<WorkDetail | null>(null);
   const [listLoading, setListLoading] = useState(false);
@@ -136,6 +137,11 @@ export default function ManualTagging() {
   }> | null>(null);
 
   const { setProgress } = useAdminProgress();
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const canPagePrev = page > 0;
+  const canPageNext = (page + 1) * PAGE_SIZE < total;
+  const pageStart = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const pageEnd = Math.min((page + 1) * PAGE_SIZE, total);
 
   // 管理トークンを読み込み
   useEffect(() => {
@@ -197,28 +203,39 @@ export default function ManualTagging() {
     fetchCounts();
   }, [fetchCounts]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [filter]);
+
   const fetchList = useCallback(async () => {
     if (!adminToken) return;
     setListLoading(true);
     try {
+      const offset = page * PAGE_SIZE;
       const res = await fetch(
-        `/api/admin/manual-tagging/works?filter=${filter}&limit=${PAGE_SIZE}&offset=0`,
+        `/api/admin/manual-tagging/works?filter=${filter}&limit=${PAGE_SIZE}&offset=${offset}`,
         { headers: { 'x-eronator-admin-token': adminToken } }
       );
       const data = await res.json();
       if (data.success) {
-        setWorks(data.works || []);
-        setTotal(data.total ?? 0);
+        const nextWorks = data.works || [];
+        const nextTotal = data.total ?? 0;
+        if (nextWorks.length === 0 && nextTotal > 0 && page > 0) {
+          setPage((prev) => Math.max(0, prev - 1));
+          return;
+        }
+        setWorks(nextWorks);
+        setTotal(nextTotal);
         // タグ済・要注意は一覧→選択で詳細のため、初期は未選択
         const isListOnlyTab = filter === 'tagged' || filter === 'needs_review';
         setCurrentIndex(isListOnlyTab ? -1 : 0);
         setDetail(null);
-        setTabCounts((prev) => ({ ...(prev ?? {}), [filter]: data.total ?? 0 }));
+        setTabCounts((prev) => ({ ...(prev ?? {}), [filter]: nextTotal }));
       }
     } finally {
       setListLoading(false);
     }
-  }, [filter, adminToken]);
+  }, [filter, adminToken, page]);
 
   useEffect(() => {
     fetchList();
@@ -1251,6 +1268,27 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
             総数: {total} 件（新しい順）
             {filter === 'tagged' && ' — タグ済みに入れた日時で整列'}
           </p>
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={!canPagePrev || listLoading}
+              style={{ padding: '0.35rem 0.75rem', cursor: canPagePrev && !listLoading ? 'pointer' : 'not-allowed' }}
+            >
+              ← 前へ
+            </button>
+            <span style={{ fontSize: '0.85rem', color: '#555' }}>
+              {page + 1} / {totalPages} ページ（{pageStart}-{pageEnd}件）
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={!canPageNext || listLoading}
+              style={{ padding: '0.35rem 0.75rem', cursor: canPageNext && !listLoading ? 'pointer' : 'not-allowed' }}
+            >
+              次へ →
+            </button>
+          </div>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, border: '1px solid #ddd', borderRadius: '4px', maxHeight: '60vh', overflowY: 'auto' }}>
             {works.map((w, i) => (
               <li
@@ -1288,7 +1326,7 @@ docs/check-instruction.md を読み、以下を順番に全部実行せよ。1�
                 一覧に戻る
               </button>
             )}
-            {currentIndex + 1} / {works.length} 件（総数: {total}）
+            {currentIndex + 1} / {works.length} 件（総数: {total}、ページ: {page + 1}/{totalPages}）
           </p>
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <button
