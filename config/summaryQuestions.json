@@ -370,21 +370,6 @@
       "erotic": false
     },
     {
-      "id": "nakama",
-      "label": "幼馴染・同級生・友達",
-      "questionText": "幼馴染とか、同級生とか、昔からの友達が登場する？",
-      "displayNames": [
-        "幼なじみ",
-        "幼馴染",
-        "同級生",
-        "同級生/同僚",
-        "クラスメイト",
-        "友人",
-        "女友達"
-      ],
-      "erotic": false
-    },
-    {
       "id": "vulnerable",
       "label": "酔い・無防備・睡眠",
       "questionText": "酔っ払いとか、眠ってるとか、無防備なシーン、ある？",

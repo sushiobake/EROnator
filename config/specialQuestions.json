@@ -253,7 +253,7 @@
   },
   "TITLE_LENGTH_STYLE": {
     "questionText": "なろう系みたいに長いタイトル？",
-    "yesMinLength": 10,
+    "yesMinLength": 15,
     "noMaxLength": 20
   }
 }

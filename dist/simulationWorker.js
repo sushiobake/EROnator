@@ -7935,6 +7935,10 @@ var GameCopySchema = external_exports.object({
   successSpeech: external_exports.string(),
   successTitle: external_exports.string(),
   recommendTitle: external_exports.string(),
+  /** 正解時のX投稿文言（{questionCount} を質問数に置換） */
+  postTextSuccess: external_exports.string().optional(),
+  /** 惜しかった時のX投稿文言（{questionCount} を質問数に置換） */
+  postTextAlmostSuccess: external_exports.string().optional(),
   /** 外れ① FAIL_LIST（リスト表示） */
   failListSpeech: external_exports.string(),
   failListSubMobile: external_exports.string(),
@@ -8021,6 +8025,8 @@ var RecommendCopySchema = external_exports.object({
   thinkingText: external_exports.string(),
   /** 推薦結果画面の見出し（例：こんな作品なんてどう？） */
   recommendResultsHeading: external_exports.string().optional(),
+  /** 推薦結果画面のX投稿文言 */
+  postTextResults: external_exports.string().optional(),
   /** ボタン文言（初期画面の「次へ」等・整理ボタンのフォールバック） */
   btnNext: external_exports.string().optional(),
   /** 整理ページ（前半・sort1）のメインボタン */
@@ -8059,6 +8065,7 @@ var DEFAULT_RECOMMEND_COPY = {
   sortPromptBack: "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066",
   thinkingText: "\u3042\u306A\u305F\u306B\u3074\u3063\u305F\u308A\u306E\u4F5C\u54C1\u3092\u63A2\u3057\u3066\u3044\u308B\u308F\u2026",
   recommendResultsHeading: "\u3053\u3093\u306A\u4F5C\u54C1\u306A\u3093\u3066\u3069\u3046\uFF1F",
+  postTextResults: "\u3010ERONATOR\u3011\u304A\u3059\u3059\u308110\u4EF6\u3092\u3082\u3089\u3063\u305F\uFF01 \u3042\u306A\u305F\u306E\u5984\u60F3\u3001\u30A8\u30ED\u30CD\u30A4\u30BF\u30FC\u304C\u5F53\u3066\u3066\u307F\u308B\uFF1F\n#\u30A8\u30ED\u30CD\u30A4\u30BF\u30FC",
   btnNext: "\u6B21\u3078",
   btnNextSortFront: "\u6B21\u3078",
   btnNextSortBack: "\u6B21\u3078",
@@ -8075,6 +8082,11 @@ var DEFAULT_RECOMMEND_COPY = {
 var DEFAULT_SORT_PROMPT_LINE = DEFAULT_RECOMMEND_COPY.sortPrompt ?? "\u4ECA\u9078\u3093\u3067\u3044\u308B\u8981\u7D20\u3092\u3001\u597D\u304D\u306A\u9806\u306B\uFF15\u3064\u4E26\u3079\u3066";
 var MvpConfigSchema = external_exports.object({
   version: external_exports.literal("v1.5"),
+  /**
+   * 管理画面用の短い変更メモ（本番ゲームロジックでは参照しない）。
+   * 閾値変更の理由・日付などを残す用途。
+   */
+  adminConfigNotes: external_exports.string().max(4e3).optional(),
   /** ゲーム文言。未設定時は DEFAULT_GAME_COPY */
   gameCopy: GameCopySchema.optional(),
   /** 推薦モードの文言。未設定時は DEFAULT_RECOMMEND_COPY */
