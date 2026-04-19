@@ -50,6 +50,8 @@ export interface SessionState {
   weightsHistory: WeightsHistoryEntry[]; // 修正機能用
   questionHistory: QuestionHistoryEntry[];
   visitorId?: string | null;
+  /** Session 開始時の流入 JSON（/api/start で保存、以降不変） */
+  trafficAttributionJson?: string | null;
 }
 
 /** 楽観的ロック競合時（他リクエストが先に更新済み） */
@@ -173,7 +175,8 @@ export class SessionManager {
       weights: weightsFromStored(JSON.parse(session.weights || '{}')),
       weightsHistory,
       questionHistory: JSON.parse(session.questionHistory || '[]'),
-      visitorId: (session as { visitorId?: string | null }).visitorId ?? null,
+      visitorId: session.visitorId ?? null,
+      trafficAttributionJson: session.trafficAttributionJson ?? null,
     };
   }
 

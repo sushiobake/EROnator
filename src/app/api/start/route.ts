@@ -27,6 +27,7 @@ import { buildDebugPayload } from '@/server/debug/buildDebugPayload';
 import { ApiError, handleApiError } from '@/server/api/errorHandler';
 import { getWorkTagMatrix } from '@/server/game/workTagMatrixLoader';
 import { randomUUID } from 'crypto';
+import { normalizeTrafficAttributionFromBody } from '@/server/attribution/normalizeTrafficAttribution';
 
 /** 1回の findMany で取得する Work（重み計算用に popularity を含む） */
 type WorkRowFull = { workId: string; isAi: string; popularityBase: number | null; popularityPlayBonus: number | null };
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
         : null;
     /** 未送信時はサーバーで付与（本番で localStorage 不可でも履歴に ID を残す） */
     const visitorId = clientVisitorId ?? randomUUID();
+    const trafficAttributionJson = normalizeTrafficAttributionFromBody(body.trafficAttribution);
 
     if (!aiGateChoice || !['YES', 'NO', 'DONT_CARE'].includes(aiGateChoice)) {
       throw new ApiError(
@@ -171,6 +173,7 @@ export async function POST(request: NextRequest) {
       titleCharType: (firstQuestion as { titleCharType?: 'KANJI' | 'HIRAGANA_OR_KATAKANA' }).titleCharType,
     };
 
+    // trafficAttributionJson は schema 追従のため prisma generate 後に型に載る（生成失敗時も実行時は列があれば保存される）
     await prisma.session.create({
       data: {
         sessionId,
@@ -182,7 +185,8 @@ export async function POST(request: NextRequest) {
         weightsHistory: '[]',
         questionHistory: JSON.stringify([firstQuestionEntry]),
         visitorId,
-      },
+        trafficAttributionJson,
+      } as Parameters<typeof prisma.session.create>[0]['data'],
     });
     await prisma.sessionWeightsSnapshot.create({
       data: {

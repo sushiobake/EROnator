@@ -105,6 +105,7 @@ model Session {
   weightsHistory          String   @default("[]") // 互換用。実体は SessionWeightsSnapshot に格納
   questionHistory         String   @default("[]") // JSON array
   visitorId               String?  // ブラウザ識別用（localStorage由来）
+  trafficAttributionJson  String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -154,6 +155,7 @@ model PlayHistory {
   /// FAIL_LIST 時のみ: 候補スナップショット等（管理画面・分析用 JSON）
   failListContextJson String?
   visitorId           String?   // ブラウザ識別用（localStorage由来）
+  trafficAttributionJson String?
   createdAt           DateTime  @default(now())
 
   @@index([sessionId])

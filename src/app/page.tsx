@@ -18,6 +18,7 @@ import { RecommendMode } from './components/RecommendMode';
 import { StreamerCensoredText } from './components/StreamerCensoredText';
 import { useToast } from './components/ToastContext';
 import { SESSION_NOT_FOUND_CODE } from '@/constants/apiCodes';
+import { readTrafficInternalFromStorage, clearTrafficInternalFromStorage } from './components/TrafficAttributionTracker';
 
 async function parseApiErrorJson(response: Response): Promise<{ error: string; code?: string }> {
   const data = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
@@ -81,6 +82,62 @@ interface Work {
 // デバッグUI有効化判定（クライアント側）
 // ローカル開発 or Vercelプレビューでトークンが設定されていればパネル表示を許可
 // プレビュー判定: layout で注入した window.__ERONATOR_VERCEL_ENV または NEXT_PUBLIC_VERCEL_ENV を使用
+
+/** /api/start 用: ランディング・リファラー・UTM（必ず送信し、サーバで JSON 化して保存） */
+function collectTrafficAttributionForStart(): {
+  landing: string;
+  referrer: string | null;
+  utm?: Record<string, string>;
+  internalFrom?: string;
+} {
+  if (typeof window === "undefined") {
+    return { landing: "", referrer: null };
+  }
+  try {
+    const landing = (window.location.pathname + window.location.search).slice(0, 1500);
+    const refStr = document.referrer ? document.referrer.slice(0, 1500) : "";
+    const sp = new URLSearchParams(window.location.search);
+    const utm: Record<string, string> = {};
+    for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const) {
+      const v = sp.get(key);
+      if (v) {
+        const short = key.replace("utm_", "");
+        utm[short] = v.trim().slice(0, 128);
+      }
+    }
+    const internalRaw = readTrafficInternalFromStorage();
+    let internalFrom: string | undefined;
+    if (internalRaw && internalRaw !== landing) {
+      internalFrom = internalRaw.slice(0, 1500);
+    }
+    let referrerOut: string | null = null;
+    if (refStr) {
+      try {
+        const ru = new URL(refStr);
+        if (ru.origin === window.location.origin) {
+          const p = (ru.pathname + (ru.search || "")).slice(0, 1500);
+          if (p && p !== landing) {
+            internalFrom = p;
+          }
+        } else {
+          referrerOut = refStr;
+        }
+      } catch {
+        referrerOut = refStr.length > 0 ? refStr : null;
+      }
+    }
+    const out: { landing: string; referrer: string | null; utm?: Record<string, string>; internalFrom?: string } = {
+      landing,
+      referrer: referrerOut,
+    };
+    if (Object.keys(utm).length > 0) out.utm = utm;
+    if (internalFrom) out.internalFrom = internalFrom;
+    return out;
+  } catch {
+    return { landing: "", referrer: null };
+  }
+}
+
 function isDebugUIEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   if (!process.env.NEXT_PUBLIC_DEBUG_TOKEN) return false;
@@ -421,6 +478,7 @@ export default function Home() {
           headers,
           body: JSON.stringify({
             aiGateChoice: choice,
+            trafficAttribution: collectTrafficAttributionForStart(),
             visitorId: (() => {
               try {
                 let vid = localStorage.getItem('eronator.visitorId');
@@ -453,6 +511,7 @@ export default function Home() {
           /* ignore */
         }
       }
+      clearTrafficInternalFromStorage();
       questionShownAtRef.current = Date.now();
       setQuestion(data.question);
       setQuestionCharacterVariant(getQuestionCharacterVariant(data.question));

@@ -23,6 +23,7 @@ import RecommendFamousTagsTab from './tabs/RecommendFamousTagsTab';
 import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT, RANK_CHIP } from '../constants/rankColors';
+import { trafficAttributionAdminLabel } from '@/lib/trafficAttributionDisplay';
 
 interface ParsedWork {
   workId: string;
@@ -519,6 +520,7 @@ export default function AdminTagsPage() {
     createdAt: string;
     failListContext?: unknown | null;
     visitorId?: string | null;
+    trafficAttributionJson?: string | null;
     hasRecommendPlay?: boolean;
   }>>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -5969,6 +5971,27 @@ export default function AdminTagsPage() {
                             <span style={{ color: '#bbb' }}>ID未記録（実装前／未送信）</span>
                           )}
                         </div>
+                        {(() => {
+                          const t = trafficAttributionAdminLabel(row.trafficAttributionJson);
+                          const line = t.short || '参照元：この履歴には保存されていません（実装前のデータなど）';
+                          return (
+                            <div
+                              style={{
+                                fontSize: '0.68rem',
+                                color: t.short ? '#37474f' : '#9e9e9e',
+                                marginTop: '0.08rem',
+                                lineHeight: 1.25,
+                                maxWidth: '14rem',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                              title={t.title || (row.trafficAttributionJson ?? undefined) || line}
+                            >
+                              {line}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         {row.sessionStartedAt && row.createdAt

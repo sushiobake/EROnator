@@ -74,6 +74,16 @@ const COLUMNS_TO_ENSURE = [
     column: 'visitorId',
     type: 'TEXT',
   },
+  {
+    table: 'Session',
+    column: 'trafficAttributionJson',
+    type: 'TEXT',
+  },
+  {
+    table: 'PlayHistory',
+    column: 'trafficAttributionJson',
+    type: 'TEXT',
+  },
 ];
 
 async function connect() {

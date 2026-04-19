@@ -46,6 +46,7 @@ export async function createPlayHistory(
       sessionStartedAt,
       failListContextJson,
       visitorId: session.visitorId ?? null,
+      trafficAttributionJson: session.trafficAttributionJson ?? null,
     },
   });
 }
@@ -147,6 +148,7 @@ export async function recordAbandonedPlayHistory(
       sessionStartedAt,
       failListContextJson: null,
       visitorId: session.visitorId ?? null,
+      trafficAttributionJson: session.trafficAttributionJson ?? null,
     },
   });
 

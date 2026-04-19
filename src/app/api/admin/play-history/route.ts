@@ -26,6 +26,8 @@ export interface PlayHistoryListResponse {
     /** FAIL_LIST 時の候補スナップショット（JSON オブジェクト） */
     failListContext: unknown | null;
     visitorId: string | null;
+    /** referrer / landing / utm の JSON 文字列（なければ null） */
+    trafficAttributionJson: string | null;
     hasRecommendPlay: boolean;
     createdAt: string;
   }>;
@@ -113,6 +115,7 @@ export async function GET(request: NextRequest) {
           }
         })(),
         visitorId: row.visitorId ?? null,
+        trafficAttributionJson: row.trafficAttributionJson ?? null,
         hasRecommendPlay: row.visitorId ? recVisitorIds.has(row.visitorId) : false,
         createdAt: row.createdAt.toISOString(),
       })),
