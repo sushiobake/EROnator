@@ -76,42 +76,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(data);
     }
 
-    if (action === 'embedCorrect') {
-      const sessionId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
-      const workId = typeof body.workId === 'string' ? body.workId.trim() : '';
-      const searchQuery =
-        typeof body.searchQuery === 'string'
-          ? body.searchQuery
-          : body.searchQuery == null
-            ? undefined
-            : String(body.searchQuery);
-      if (!sessionId || !workId) {
-        return NextResponse.json(
-          { success: false, error: 'sessionId と workId が必要です' },
-          { status: 400 }
-        );
-      }
-      const embedUrl = appendVercelProtectionBypassQuery(`${base}/api/admin/play-history/embed-correct`);
-      const res = await fetch(embedUrl, {
-        method: 'POST',
-        headers: {
-          ...(remoteAdminFetchHeaders(token) as Record<string, string>),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ sessionId, workId, searchQuery }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        const isHtml = /^\s*</.test(text);
-        const error = isHtml
-          ? `リモートがHTMLを返しました (HTTP ${res.status})。URLは https://ホスト名 だけにしてください。`
-          : `本番埋め込みAPIエラー: ${res.status} ${text.slice(0, 200)}`;
-        return NextResponse.json({ success: false, error }, { status: 502 });
-      }
-      const data = await res.json();
-      return NextResponse.json(data);
-    }
-
     const page = Math.max(1, parseInt(String(body.page ?? 1), 10));
     const limit = Math.min(100, Math.max(10, parseInt(String(body.limit ?? 50), 10)));
     const outcome = typeof body.outcome === 'string' ? body.outcome : undefined;

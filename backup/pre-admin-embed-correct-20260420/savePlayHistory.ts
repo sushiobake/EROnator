@@ -70,61 +70,6 @@ export async function updatePlayHistoryNotInList(
 /**
  * FAIL_LIST のあと候補から作品を選んだときに更新
  */
-/**
- * 管理画面: NOT_IN_LIST / FAIL_LIST かつ resultWorkId 未設定の行に、事後で正解 workId を紐づける。
- * outcome は変更しない。上書き（既に resultWorkId あり）は拒否。
- */
-export async function embedPlayHistoryCorrectWorkByAdmin(
-  sessionId: string,
-  workId: string,
-  meta?: { searchQuery?: string | null }
-): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
-  const row = await prisma.playHistory.findUnique({
-    where: { sessionId },
-    select: { outcome: true, resultWorkId: true, failListContextJson: true },
-  });
-  if (!row) {
-    return { ok: false, error: 'PlayHistory not found', code: 'NOT_FOUND' };
-  }
-  if (row.resultWorkId != null) {
-    return { ok: false, error: 'resultWorkId is already set', code: 'ALREADY_SET' };
-  }
-  if (row.outcome !== 'NOT_IN_LIST' && row.outcome !== 'FAIL_LIST') {
-    return { ok: false, error: 'outcome must be NOT_IN_LIST or FAIL_LIST', code: 'INVALID_OUTCOME' };
-  }
-
-  const work = await prisma.work.findUnique({
-    where: { workId },
-    select: { workId: true },
-  });
-  if (!work) {
-    return { ok: false, error: 'Work not found', code: 'WORK_NOT_FOUND' };
-  }
-
-  let context: Record<string, unknown> = {};
-  try {
-    context = row.failListContextJson ? (JSON.parse(row.failListContextJson) as Record<string, unknown>) : {};
-  } catch {
-    context = {};
-  }
-  const q = meta?.searchQuery?.trim() ?? '';
-  const nextContext = {
-    ...context,
-    adminEmbeddedCorrect: true,
-    adminEmbeddedAt: new Date().toISOString(),
-    adminEmbeddedSearchQuery: q.length > 0 ? q : null,
-  };
-
-  await prisma.playHistory.update({
-    where: { sessionId },
-    data: {
-      resultWorkId: workId,
-      failListContextJson: JSON.stringify(nextContext),
-    },
-  });
-  return { ok: true };
-}
-
 export async function updatePlayHistoryAlmostSuccess(
   sessionId: string,
   resultWorkId: string,

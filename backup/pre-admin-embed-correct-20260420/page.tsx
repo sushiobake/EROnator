@@ -24,12 +24,6 @@ import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT, RANK_CHIP } from '../constants/rankColors';
 import { trafficAttributionAdminLabel } from '@/lib/trafficAttributionDisplay';
-import {
-  adminEmbeddedDetailLine,
-  playHistoryOutcomeAdminLabel,
-  PLAY_HISTORY_EMBED_COPY,
-  playHistoryEmbedConfirmMessage,
-} from '@/lib/playHistoryAdminEmbed';
 
 interface ParsedWork {
   workId: string;
@@ -594,19 +588,6 @@ export default function AdminTagsPage() {
     };
   }>>({});
   const [historyReplayLoading, setHistoryReplayLoading] = useState(false);
-  const [historyEmbedPanelOpen, setHistoryEmbedPanelOpen] = useState(false);
-  const [historyEmbedQuery, setHistoryEmbedQuery] = useState('');
-  const [historyEmbedResults, setHistoryEmbedResults] = useState<
-    Array<{
-      workId: string;
-      title: string;
-      authorName: string;
-      thumbnailUrl?: string | null;
-      source?: string;
-    }>
-  >([]);
-  const [historyEmbedSearchLoading, setHistoryEmbedSearchLoading] = useState(false);
-  const [historyEmbedSaving, setHistoryEmbedSaving] = useState(false);
 
   const historyDetailReplayEarlyExitOk = useMemo(() => {
     if (!historyDetailRowId) return [] as Array<{ conf: boolean; cand: boolean }>;
@@ -2176,110 +2157,6 @@ export default function AdminTagsPage() {
       setHistoryDeleteLoading(false);
     }
   };
-
-  const handleHistoryEmbedPickWork = async (w: { workId: string; title: string; authorName: string }) => {
-    const row = historyItems.find((r) => r.id === historyDetailRowId);
-    if (!row || row.resultWorkId != null) return;
-    if (row.outcome !== 'NOT_IN_LIST' && row.outcome !== 'FAIL_LIST') return;
-    if (!confirm(playHistoryEmbedConfirmMessage(w.title, w.authorName))) return;
-    const token = historyUseRemote ? (productionHistoryToken || adminToken) : adminToken;
-    if (!token) return;
-    if (historyUseRemote && !remoteDeploymentUrl) {
-      alert(PLAY_HISTORY_EMBED_COPY.remoteNeedsUrl);
-      return;
-    }
-    setHistoryEmbedSaving(true);
-    try {
-      if (historyUseRemote) {
-        const res = await fetch('/api/admin/play-history-remote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
-          body: JSON.stringify({
-            action: 'embedCorrect',
-            targetUrl: remoteDeploymentUrl,
-            token: productionHistoryToken || adminToken,
-            sessionId: row.sessionId,
-            workId: w.workId,
-            searchQuery: historyEmbedQuery.trim() || undefined,
-          }),
-        });
-        const data = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(data.error || PLAY_HISTORY_EMBED_COPY.embedFailed);
-      } else {
-        const res = await fetch('/api/admin/play-history/embed-correct', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-eronator-admin-token': adminToken },
-          body: JSON.stringify({
-            sessionId: row.sessionId,
-            workId: w.workId,
-            searchQuery: historyEmbedQuery.trim() || undefined,
-          }),
-        });
-        const data = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(data.error || PLAY_HISTORY_EMBED_COPY.embedFailed);
-      }
-      setHistoryReplayCache((prev) => {
-        const next = { ...prev };
-        delete next[row.id];
-        return next;
-      });
-      setHistoryReplayMetaCache((prev) => {
-        const next = { ...prev };
-        delete next[row.id];
-        return next;
-      });
-      setHistoryEmbedPanelOpen(false);
-      setHistoryEmbedQuery('');
-      setHistoryEmbedResults([]);
-      await fetchPlayHistory(historyPage);
-      alert(PLAY_HISTORY_EMBED_COPY.success);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : PLAY_HISTORY_EMBED_COPY.embedFailed);
-    } finally {
-      setHistoryEmbedSaving(false);
-    }
-  };
-
-  useEffect(() => {
-    if (historyDetailRowId == null) {
-      setHistoryEmbedPanelOpen(false);
-      setHistoryEmbedQuery('');
-      setHistoryEmbedResults([]);
-      setHistoryEmbedSearchLoading(false);
-    }
-  }, [historyDetailRowId]);
-
-  useEffect(() => {
-    if (!historyEmbedPanelOpen || historyDetailRowId == null) return;
-    const q = historyEmbedQuery.trim();
-    if (!q) {
-      setHistoryEmbedResults([]);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        setHistoryEmbedSearchLoading(true);
-        try {
-          const res = await fetch(`/api/works/search?q=${encodeURIComponent(q)}&limit=20`);
-          const data = (await res.json()) as {
-            works?: Array<{
-              workId: string;
-              title: string;
-              authorName: string;
-              thumbnailUrl?: string | null;
-              source?: string;
-            }>;
-          };
-          setHistoryEmbedResults(Array.isArray(data.works) ? data.works : []);
-        } catch {
-          setHistoryEmbedResults([]);
-        } finally {
-          setHistoryEmbedSearchLoading(false);
-        }
-      })();
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [historyEmbedQuery, historyEmbedPanelOpen, historyDetailRowId]);
 
   const downloadAdminHistoryJson = (filename: string, payload: unknown) => {
     const json = JSON.stringify(payload, null, 2);
@@ -6075,7 +5952,7 @@ export default function AdminTagsPage() {
                           color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : row.outcome === 'ABANDONED' ? '#e65100' : '#666',
                           fontWeight: 'bold',
                         }}>
-                          {playHistoryOutcomeAdminLabel(row.outcome, row.resultWorkId)}
+                          {row.outcome}
                         </span>
                       </td>
                       <td style={{ padding: '0.5rem', textAlign: 'right' }}>{row.questionCount}</td>
@@ -6204,158 +6081,6 @@ export default function AdminTagsPage() {
                       </button>
                     </div>
                     <div style={{ overflow: 'auto', padding: '1.25rem', flex: 1, minHeight: 0 }}>
-                      {row ? (
-                        <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.95rem' }}>
-                            <strong>記録上の結果: </strong>
-                            <span
-                              style={{
-                                fontWeight: 700,
-                                color:
-                                  row.outcome === 'SUCCESS'
-                                    ? '#2e7d32'
-                                    : row.outcome === 'FAIL_LIST'
-                                      ? '#c62828'
-                                      : row.outcome === 'ABANDONED'
-                                        ? '#e65100'
-                                        : '#666',
-                              }}
-                            >
-                              {playHistoryOutcomeAdminLabel(row.outcome, row.resultWorkId)}
-                            </span>
-                          </span>
-                        </div>
-                      ) : null}
-                      {failCtx?.adminEmbeddedCorrect === true ? (
-                        <div
-                          style={{
-                            marginBottom: '1rem',
-                            padding: '0.65rem 0.85rem',
-                            background: '#e8f5e9',
-                            borderRadius: '6px',
-                            border: '1px solid #a5d6a7',
-                            fontSize: '0.86rem',
-                          }}
-                        >
-                          <strong>{PLAY_HISTORY_EMBED_COPY.adminBannerTitle}</strong>
-                          <div style={{ marginTop: '0.25rem' }}>
-                            {adminEmbeddedDetailLine(failCtx.adminEmbeddedAt, failCtx.adminEmbeddedSearchQuery)}
-                          </div>
-                        </div>
-                      ) : null}
-                      {(row?.outcome === 'NOT_IN_LIST' || row?.outcome === 'FAIL_LIST') && row?.resultWorkId == null ? (
-                        <div style={{ marginBottom: '1rem' }}>
-                          <button
-                            type="button"
-                            onClick={() => setHistoryEmbedPanelOpen((v) => !v)}
-                            style={{
-                              padding: '0.45rem 0.9rem',
-                              fontSize: '0.9rem',
-                              backgroundColor: historyEmbedPanelOpen ? '#6b7280' : '#0d9488',
-                              color: '#fff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontWeight: 600,
-                            }}
-                          >
-                            {historyEmbedPanelOpen ? PLAY_HISTORY_EMBED_COPY.buttonClosePanel : PLAY_HISTORY_EMBED_COPY.buttonOpen}
-                          </button>
-                        </div>
-                      ) : null}
-                      {historyEmbedPanelOpen && row && (row.outcome === 'NOT_IN_LIST' || row.outcome === 'FAIL_LIST') && row.resultWorkId == null ? (
-                        <div
-                          style={{
-                            marginBottom: '1rem',
-                            padding: '0.85rem 1rem',
-                            border: '1px solid #99f6e4',
-                            borderRadius: '8px',
-                            background: '#f0fdfa',
-                          }}
-                        >
-                          <p style={{ margin: '0 0 6px 0', fontSize: '0.95rem', fontWeight: 700 }}>
-                            {PLAY_HISTORY_EMBED_COPY.heading}
-                          </p>
-                          <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#475569', lineHeight: 1.35 }}>
-                            {PLAY_HISTORY_EMBED_COPY.intro}
-                          </p>
-                          <input
-                            type="text"
-                            value={historyEmbedQuery}
-                            onChange={(e) => setHistoryEmbedQuery(e.target.value)}
-                            placeholder={PLAY_HISTORY_EMBED_COPY.placeholder}
-                            style={{
-                              width: '100%',
-                              maxWidth: '420px',
-                              padding: '0.45rem 0.55rem',
-                              fontSize: '0.9rem',
-                              boxSizing: 'border-box',
-                              border: '1px solid #94a3b8',
-                              borderRadius: '6px',
-                            }}
-                          />
-                          {historyEmbedSearchLoading ? (
-                            <p style={{ margin: '8px 0 0 0', fontSize: '0.82rem', color: '#64748b' }}>{PLAY_HISTORY_EMBED_COPY.searching}</p>
-                          ) : null}
-                          {historyEmbedResults.length > 0 ? (
-                            <div
-                              style={{
-                                marginTop: '10px',
-                                display: 'grid',
-                                gap: '8px',
-                                maxHeight: '220px',
-                                overflowY: 'auto',
-                                maxWidth: '520px',
-                              }}
-                            >
-                              {historyEmbedResults.map((w) => (
-                                <button
-                                  key={`embed-search-${w.workId}`}
-                                  type="button"
-                                  disabled={historyEmbedSaving}
-                                  onClick={() => {
-                                    void handleHistoryEmbedPickWork({
-                                      workId: w.workId,
-                                      title: w.title,
-                                      authorName: w.authorName,
-                                    });
-                                  }}
-                                  style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: '64px 1fr',
-                                    gap: '8px',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    textAlign: 'left',
-                                    border: '1px solid #e5e7eb',
-                                    background: '#fafafa',
-                                    borderRadius: '8px',
-                                    padding: '8px',
-                                    cursor: historyEmbedSaving ? 'not-allowed' : 'pointer',
-                                  }}
-                                >
-                                  <img
-                                    src={w.thumbnailUrl || `/api/thumbnail?workId=${encodeURIComponent(w.workId)}`}
-                                    alt={w.title}
-                                    style={{ width: 64, height: 48, borderRadius: 6, objectFit: 'cover' }}
-                                  />
-                                  <div style={{ minWidth: 0 }}>
-                                    <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: '#111' }}>{w.title}</p>
-                                    <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                                      {w.authorName}
-                                      {w.source === 'reserve' ? ' / reserve' : ''}
-                                    </p>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          ) : null}
-                          <p style={{ margin: '8px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>{PLAY_HISTORY_EMBED_COPY.pickHint}</p>
-                          {historyEmbedSaving ? (
-                            <p style={{ margin: '6px 0 0 0', fontSize: '0.82rem', color: '#0f766e' }}>{PLAY_HISTORY_EMBED_COPY.saving}</p>
-                          ) : null}
-                        </div>
-                      ) : null}
                       {replayMeta?.analysisTargetWorkId ? (
                         <div style={{ marginBottom: '1rem', padding: '0.85rem 1rem', background: '#e3f2fd', borderRadius: '6px', border: '1px solid #90caf9', fontSize: '0.92rem' }}>
                           <strong style={{ display: 'block', marginBottom: '0.4rem' }}>分析対象作品（リプレイ）</strong>
