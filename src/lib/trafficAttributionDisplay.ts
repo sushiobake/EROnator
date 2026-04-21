@@ -2,6 +2,22 @@
  * 管理画面の本番プレイ履歴：参照元 JSON → 一行説明（日本語）
  */
 
+const PAGE_PATH_LABELS: Record<string, string> = {
+  '/': 'トップページ（ゲームメイン）',
+  '/terms': '利用規約',
+  '/privacy': 'プライバシーポリシー',
+  '/contact': 'お問い合わせ',
+  '/affiliate': 'アフィリエイト情報',
+  '/admin': '管理画面',
+  '/admin/tags': '管理画面 - タグ管理',
+  '/admin/whitelist': '管理画面 - ホワイトリスト',
+};
+
+function resolvePathLabel(path: string): string {
+  const cleanPath = (path.split('?')[0] ?? path).replace(/\/$/, '') || '/';
+  return PAGE_PATH_LABELS[cleanPath] ?? path;
+}
+
 export function trafficAttributionAdminLabel(
   json: string | null | undefined
 ): { short: string; title: string } {
@@ -43,9 +59,10 @@ export function trafficAttributionAdminLabel(
 
     const internal = o.internalFrom?.trim() ?? '';
     if (internal !== '') {
-      const shortRaw = `このサイト内の直前のページ：${internal}`;
+      const label = resolvePathLabel(internal);
+      const shortRaw = `このサイト内の直前のページ：${label}`;
       const short = shortRaw.length > 52 ? `${shortRaw.slice(0, 49)}…` : shortRaw;
-      return { short, title: internal };
+      return { short, title: label === internal ? internal : `${label}（${internal}）` };
     }
 
     const land = o.landing?.trim() ?? '';
@@ -56,9 +73,10 @@ export function trafficAttributionAdminLabel(
       };
     }
 
-    const shortRaw = `開いたページ：${land}`;
+    const landLabel = resolvePathLabel(land);
+    const shortRaw = `開いたページ：${landLabel}`;
     const short = shortRaw.length > 52 ? `${shortRaw.slice(0, 49)}…` : shortRaw;
-    return { short, title: land };
+    return { short, title: landLabel === land ? land : `${landLabel}（${land}）` };
   } catch {
     return { short: '参照元データを表示できません', title: json };
   }
