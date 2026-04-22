@@ -50,6 +50,45 @@ function switchToSqlite() {
   console.log('✅ SQLite スキーマに戻しました');
 }
 
+/**
+ * better-sqlite3 のネイティブモジュールが現在の Node.js ABI と一致するかをチェックし、
+ * 不一致なら自動で npm rebuild better-sqlite3 を実行する。
+ * （Node のバージョンが違うターミナルで deploy:prod を実行した事故の再発防止）
+ */
+function ensureBetterSqlite3Abi() {
+  const root = path.join(__dirname, '..');
+  const probe = `try { require('better-sqlite3'); process.exit(0); } catch (e) { process.stderr.write(String(e && e.message || e)); process.exit(1); }`;
+  let needRebuild = false;
+  try {
+    execSync(`node -e "${probe.replace(/"/g, '\"')}"`, { cwd: root, stdio: 'pipe' });
+  } catch (e) {
+    const msg = (e.stderr && e.stderr.toString()) || (e.stdout && e.stdout.toString()) || String(e.message || e);
+    if (/NODE_MODULE_VERSION/i.test(msg) || /ERR_DLOPEN_FAILED/i.test(msg)) {
+      needRebuild = true;
+    } else {
+      console.error('❌ better-sqlite3 の事前チェックで想定外のエラー:', msg);
+      throw e;
+    }
+  }
+  if (needRebuild) {
+    console.log('⚠️  better-sqlite3 の ABI が現在の Node.js と不一致。npm rebuild better-sqlite3 を実行します...');
+    execSync('npm rebuild better-sqlite3', { cwd: root, stdio: 'inherit' });
+    console.log('✅ better-sqlite3 を再ビルドしました');
+  }
+}
+
+/**
+ * コミットメッセージを検証する。
+ * 空、y/n/yes/no（大文字小文字無視）は拒否（過去の「yes」コミット事故再発防止）。
+ */
+function isValidCommitMessage(raw) {
+  const s = (raw || '').trim();
+  if (!s) return false;
+  if (/^(y|n|yes|no)$/i.test(s)) return false;
+  if (s.length < 3) return false;
+  return true;
+}
+
 function question(query) {
   return new Promise(resolve => rl.question(query, resolve));
 }
@@ -85,16 +124,26 @@ async function main() {
       if (diffWork.length) diffWork.forEach((l) => console.log('  M ' + l));
       if (diffCached.length) diffCached.forEach((l) => console.log('  S ' + l));
       const answer = await question('\n変更をコミットしますか？ (y/n): ');
-      if (answer.toLowerCase() === 'y') {
-        const message = await question('コミットメッセージを入力してください: ');
-        execSync('git add .', { stdio: 'inherit' });
-        execSync(`git commit -m "${message}"`, { stdio: 'inherit' });
-        execSync('git push origin develop', { stdio: 'inherit' });
-      } else {
+      if (answer.toLowerCase() !== 'y') {
         console.log('❌ デプロイをキャンセルしました。');
         rl.close();
         process.exit(1);
       }
+      let message = '';
+      for (let attempt = 0; attempt < 3; attempt++) {
+        message = (await question('コミットメッセージを入力してください (y/n/yes/no は不可、3文字以上): ')).trim();
+        if (isValidCommitMessage(message)) break;
+        console.log('⚠️  コミットメッセージが不正です。もう一度入力してください。');
+        message = '';
+      }
+      if (!isValidCommitMessage(message)) {
+        console.log('❌ コミットメッセージが確定できません。デプロイをキャンセルしました。');
+        rl.close();
+        process.exit(1);
+      }
+      execSync('git add -u', { stdio: 'inherit' });
+      execSync('git commit -m ' + JSON.stringify(message), { stdio: 'inherit' });
+      execSync('git push origin develop', { stdio: 'inherit' });
     }
   } catch (error) {
     // エラーは無視
@@ -113,6 +162,15 @@ async function main() {
     console.log('❌ デプロイをキャンセルしました。');
     rl.close();
     process.exit(0);
+  }
+
+  // ── better-sqlite3 ABI チェック（Node バージョン不一致対策） ──
+  try {
+    ensureBetterSqlite3Abi();
+  } catch (e) {
+    console.error('❌ better-sqlite3 の準備に失敗しました:', e.message || e);
+    rl.close();
+    process.exit(1);
   }
 
   // ── 本番 DB の列を自動補完 ──
