@@ -14,6 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { ensureBetterSqlite3Abi, envWithNodeOnPath } = require('./_ensure-better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
 const PRISMA_DIR = path.join(ROOT, 'prisma');
@@ -54,6 +55,15 @@ function run(cmd, args, opts = {}) {
 function main() {
   console.log('📦 SQLite → Supabase 同期（自動）\n');
 
+  // ABI preflight: ensure better-sqlite3 native binary matches the Node.js running now.
+  // If another terminal rebuilt it for a different Node version, this repairs it.
+  try {
+    ensureBetterSqlite3Abi();
+  } catch (e) {
+    console.error('❌ better-sqlite3 の準備に失敗しました:', (e && e.message) || e);
+    process.exit(1);
+  }
+
   const supabaseEnv = loadEnvSupabase();
   const dbUrl = supabaseEnv.DATABASE_URL || '';
   if (!dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://')) {
@@ -70,14 +80,14 @@ function main() {
     process.exit(1);
   }
 
-  const envForSync = { ...process.env, ...supabaseEnv };
+  const envForSync = envWithNodeOnPath({ ...process.env, ...supabaseEnv });
 
   try {
     console.log('1/6 スキーマを Postgres に切り替え...');
     fs.copyFileSync(SCHEMA_POSTGRES, SCHEMA_FILE);
 
     console.log('2/6 Prisma クライアント生成...');
-    run('npx', ['prisma', 'generate']);
+    run('npx', ['prisma', 'generate'], { env: envWithNodeOnPath(process.env) });
 
     console.log('3/6 Supabase へ同期実行...');
     const syncArgs = ['tsx', 'scripts/sync-sqlite-to-supabase.ts', ...process.argv.slice(2)];
@@ -90,37 +100,37 @@ function main() {
     if (sync.status !== 0) {
       console.error('\n⚠️ 同期に失敗しました。スキーマを SQLite に戻します...');
       fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
       process.exit(sync.status ?? 1);
     }
 
     console.log('4/6 WorkTag 行列を再生成...');
-    run('npm', ['run', 'generate:worktag-matrix']);
+    run('npm', ['run', 'generate:worktag-matrix'], { env: envWithNodeOnPath(process.env) });
 
     console.log('5/6 同期結果を検証...');
     const verify = spawnSync('node', ['scripts/verify-sync-result.js'], {
       stdio: 'inherit',
       cwd: ROOT,
       shell: true,
-      env: { ...process.env, ...supabaseEnv },
+      env: envWithNodeOnPath({ ...process.env, ...supabaseEnv }),
     });
     if (verify.status !== 0) {
       console.error('\n⚠️ 検証に失敗しました。workTagMatrix.json を確認し、必要なら sync:supabase を再実行してください。');
       fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
       process.exit(1);
     }
 
     console.log('6/6 スキーマを SQLite に戻して Prisma 再生成...');
     fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
-    run('npx', ['prisma', 'generate']);
+    run('npx', ['prisma', 'generate'], { env: envWithNodeOnPath(process.env) });
 
     console.log('\n✅ 同期完了。手元は SQLite のままです。');
   } catch (e) {
     console.error(e);
     if (fs.existsSync(SCHEMA_SQLITE)) {
       fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'inherit', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
     }
     process.exit(1);
   }

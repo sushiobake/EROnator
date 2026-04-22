@@ -18,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { ensureBetterSqlite3Abi, envWithNodeOnPath } = require('./_ensure-better-sqlite3');
 
 const ROOT = path.join(__dirname, '..');
 const SQLITE_DB = path.join(ROOT, 'prisma', 'dev.db');
@@ -100,7 +101,7 @@ async function getSupabaseCount() {
       fs.copyFileSync(SCHEMA_POSTGRES, SCHEMA_FILE);
       switched = true;
       const { spawnSync } = require('child_process');
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
     } else if (!isPostgres) {
       return {
         ok: false,
@@ -125,7 +126,7 @@ async function getSupabaseCount() {
     if (switched && fs.existsSync(SCHEMA_SQLITE)) {
       fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
       const { spawnSync } = require('child_process');
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
     }
 
     return { ok: true, count };
@@ -133,7 +134,7 @@ async function getSupabaseCount() {
     if (switched && fs.existsSync(SCHEMA_SQLITE)) {
       fs.copyFileSync(SCHEMA_SQLITE, SCHEMA_FILE);
       const { spawnSync } = require('child_process');
-      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true });
+      spawnSync('npx', ['prisma', 'generate'], { stdio: 'pipe', cwd: ROOT, shell: true, env: envWithNodeOnPath(process.env) });
     }
     return { ok: false, count: null, error: e.message };
   }
@@ -141,6 +142,13 @@ async function getSupabaseCount() {
 
 async function main() {
   console.log('\n📋 同期結果の検証\n');
+
+  try {
+    ensureBetterSqlite3Abi();
+  } catch (e) {
+    console.error('❌ better-sqlite3 の準備に失敗しました:', (e && e.message) || e);
+    process.exit(1);
+  }
 
   const sqlite = getSqliteCount();
   const matrix = getMatrixCount();

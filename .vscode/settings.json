@@ -1,4 +1,5 @@
 {
+  "terminal.integrated.cwd": "${workspaceFolder}",
   "search.exclude": {
     "**/node_modules": true,
     "**/.next": true,

@@ -51,31 +51,10 @@ function switchToSqlite() {
 }
 
 /**
- * better-sqlite3 のネイティブモジュールが現在の Node.js ABI と一致するかをチェックし、
- * 不一致なら自動で npm rebuild better-sqlite3 を実行する。
- * （Node のバージョンが違うターミナルで deploy:prod を実行した事故の再発防止）
+ * Delegate to shared helper in scripts/_ensure-better-sqlite3.js.
+ * Also exposes envWithNodeOnPath for child spawns.
  */
-function ensureBetterSqlite3Abi() {
-  const root = path.join(__dirname, '..');
-  const probe = `try { require('better-sqlite3'); process.exit(0); } catch (e) { process.stderr.write(String(e && e.message || e)); process.exit(1); }`;
-  let needRebuild = false;
-  try {
-    execSync(`node -e "${probe.replace(/"/g, '\"')}"`, { cwd: root, stdio: 'pipe' });
-  } catch (e) {
-    const msg = (e.stderr && e.stderr.toString()) || (e.stdout && e.stdout.toString()) || String(e.message || e);
-    if (/NODE_MODULE_VERSION/i.test(msg) || /ERR_DLOPEN_FAILED/i.test(msg)) {
-      needRebuild = true;
-    } else {
-      console.error('❌ better-sqlite3 の事前チェックで想定外のエラー:', msg);
-      throw e;
-    }
-  }
-  if (needRebuild) {
-    console.log('⚠️  better-sqlite3 の ABI が現在の Node.js と不一致。npm rebuild better-sqlite3 を実行します...');
-    execSync('npm rebuild better-sqlite3', { cwd: root, stdio: 'inherit' });
-    console.log('✅ better-sqlite3 を再ビルドしました');
-  }
-}
+const { ensureBetterSqlite3Abi, envWithNodeOnPath } = require('./_ensure-better-sqlite3');
 
 /**
  * コミットメッセージを検証する。
@@ -180,7 +159,7 @@ async function main() {
     execSync('node scripts/ensure-prod-columns.js', {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..'),
-      env: process.env,
+      env: envWithNodeOnPath(process.env),
     });
   } catch {
     console.log('\n⚠️  本番DB列の確認に失敗しました。PROD_DATABASE_URL が未設定の可能性があります。');
@@ -199,7 +178,7 @@ async function main() {
     execSync('node scripts/sync-tag-question-texts-prod.js', {
       stdio: 'inherit',
       cwd: path.join(__dirname, '..'),
-      env: process.env,
+      env: envWithNodeOnPath(process.env),
     });
   } catch (error) {
     console.error('\n❌ タグ質問文の同期に失敗しました。デプロイを中止します。');
