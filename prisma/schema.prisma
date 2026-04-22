@@ -6,8 +6,10 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+  // directUrl は未設定だと Prisma が env を要求して Vercel ビルドが落ちるため省略。
+  // プーラー経由で migrate が失敗する場合は DATABASE_URL を直接接続にするか、ホストの手順に従う。
 }
 
 // Works: 作品データ
@@ -152,7 +154,6 @@ model PlayHistory {
   submittedTitleText  String?   // リスト外入力（NOT_IN_LIST 時）
   sessionStartedAt   DateTime? // セッション開始時刻（総合滞在時間算出用）
   clickedFanza        Boolean   @default(false) // FANZAで見るリンクをクリックしたか
-  /// FAIL_LIST 時のみ: 候補スナップショット等（管理画面・分析用 JSON）
   failListContextJson String?
   visitorId           String?   // ブラウザ識別用（localStorage由来）
   trafficAttributionJson String?
@@ -170,7 +171,6 @@ model RecommendPlayHistory {
   recommendSessionId String    @unique
   sessionStartedAt   DateTime?
   clickedFanza       Boolean   @default(false)
-  /// FANZAで見るを押した作品の workId（未クリック・旧データは null）
   clickedFanzaWorkId String?
   detailJson         String    @default("{}")
   topWorkId          String?
@@ -187,7 +187,7 @@ model ContactInquiry {
   id        String   @id @default(cuid())
   name      String
   email     String?
-  subject   String?
+  subject   String?  // 不具合の報告 | 同人誌の登録要望 | その他 など
   message   String
   createdAt DateTime @default(now())
 
