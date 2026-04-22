@@ -60,6 +60,7 @@ function StageLogoMark({
     <img
       src={LOGO_URL}
       alt="ERONATOR"
+      data-streamer-safe=""
       style={{
         height: 72,
         width: 'auto',
@@ -127,7 +128,7 @@ function CharacterImage({ src, style }: { src: string; style: React.CSSPropertie
   }, [src, currentSrc]);
 
   if (!USE_CHARACTER_CROSSFADE) {
-    return <img src={src} alt="" style={style} />;
+    return <img src={src} alt="" data-streamer-safe="" style={style} />;
   }
 
   const transition = `opacity ${CROSSFADE_DURATION_MS}ms ease-out`;
@@ -151,9 +152,9 @@ function CharacterImage({ src, style }: { src: string; style: React.CSSPropertie
 
   return (
     <div style={wrapperStyle}>
-      <img src={currentSrc} alt="" style={imgStyle} />
+      <img src={currentSrc} alt="" data-streamer-safe="" style={imgStyle} />
       {prevSrc && (
-        <img src={prevSrc} alt="" style={{ ...overlayStyle, opacity: prevVisible ? 1 : 0, zIndex: 1 }} />
+        <img src={prevSrc} alt="" data-streamer-safe="" style={{ ...overlayStyle, opacity: prevVisible ? 1 : 0, zIndex: 1 }} />
       )}
     </div>
   );

@@ -115,10 +115,14 @@ export async function POST(request: NextRequest) {
     const page = Math.max(1, parseInt(String(body.page ?? 1), 10));
     const limit = Math.min(100, Math.max(10, parseInt(String(body.limit ?? 50), 10)));
     const outcome = typeof body.outcome === 'string' ? body.outcome : undefined;
+    const createdAtFrom = typeof body.createdAtFrom === 'string' && body.createdAtFrom.trim()
+      ? body.createdAtFrom.trim()
+      : undefined;
     const params = new URLSearchParams();
     params.set('page', String(page));
     params.set('limit', String(limit));
     if (outcome) params.set('outcome', outcome);
+    if (createdAtFrom) params.set('createdAtFrom', createdAtFrom);
     const listUrl = appendVercelProtectionBypassQuery(
       `${base}/api/admin/play-history?${params.toString()}`
     );

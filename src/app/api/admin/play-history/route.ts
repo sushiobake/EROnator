@@ -29,6 +29,8 @@ export interface PlayHistoryListResponse {
     /** referrer / landing / utm の JSON 文字列（なければ null） */
     trafficAttributionJson: string | null;
     hasRecommendPlay: boolean;
+    /** 同じ visitorId で観測されているプレイの総数（本人含む）。未観測なら null */
+    visitorPlayCount: number | null;
     createdAt: string;
   }>;
   total?: number;
@@ -48,8 +50,17 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') ?? '50', 10)));
     const offset = (page - 1) * limit;
     const outcome = searchParams.get('outcome') ?? undefined; // SUCCESS | FAIL_LIST | ALMOST_SUCCESS | NOT_IN_LIST | ABANDONED
+    // createdAtFrom: ISO8601 / "YYYY-MM-DDTHH:mm" 形式の文字列。指定以降の履歴のみ返す
+    const createdAtFromRaw = searchParams.get('createdAtFrom');
+    const createdAtFrom = (() => {
+      if (!createdAtFromRaw) return null;
+      const d = new Date(createdAtFromRaw);
+      return Number.isFinite(d.getTime()) ? d : null;
+    })();
 
-    const where = outcome ? { outcome } : {};
+    const where: Record<string, unknown> = {};
+    if (outcome) where.outcome = outcome;
+    if (createdAtFrom) where.createdAt = { gte: createdAtFrom };
 
     const [items, total] = await Promise.all([
       prisma.playHistory.findMany({
@@ -82,6 +93,19 @@ export async function GET(request: NextRequest) {
         })
       : [];
     const recVisitorIds = new Set(recPlays.map((r) => r.visitorId).filter(Boolean) as string[]);
+
+    // visitorId ごとの総プレイ数（表示行だけでなく DB 全体で何回プレイしているか）
+    const visitorCountRows = visitorIds.length > 0
+      ? await prisma.playHistory.groupBy({
+          by: ['visitorId'],
+          where: { visitorId: { in: visitorIds } },
+          _count: { _all: true },
+        })
+      : [];
+    const visitorPlayCountMap = new Map<string, number>();
+    for (const r of visitorCountRows) {
+      if (r.visitorId) visitorPlayCountMap.set(r.visitorId, r._count._all);
+    }
 
     return NextResponse.json({
       success: true,
@@ -117,6 +141,7 @@ export async function GET(request: NextRequest) {
         visitorId: row.visitorId ?? null,
         trafficAttributionJson: row.trafficAttributionJson ?? null,
         hasRecommendPlay: row.visitorId ? recVisitorIds.has(row.visitorId) : false,
+        visitorPlayCount: row.visitorId ? (visitorPlayCountMap.get(row.visitorId) ?? 1) : null,
         createdAt: row.createdAt.toISOString(),
       })),
       total,

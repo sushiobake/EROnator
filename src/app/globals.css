@@ -44,29 +44,47 @@ h1, h2, h3 {
   letter-spacing: 0.03em;
 }
 
-/* 配信者モード: サムネイルぼかし */
-.streamer-mode img[alt] {
+/* 配信者モード: 作品サムネ等をぼかす（ロゴ・キャラ等は data-streamer-safe で除外） */
+.streamer-mode img[alt]:not([data-streamer-safe]) {
   filter: blur(16px);
   transition: filter 0.3s;
 }
-.streamer-mode img[alt]:hover {
+.streamer-mode img[alt]:not([data-streamer-safe]):hover {
   filter: blur(4px);
 }
 
-/* 保存画像用オフスクリーン：伏字フォントのみ（全体に .streamer-mode を付けない＝サムネにぼかしがかからない） */
+/* 保存画像用オフスクリーン：伏字部分のスタイル。
+   旧版（丸ゴシック）は下の blockquote 内に退避済み。戻したい場合はこの .streamer-censored を削除してそちらを有効化する */
+.success-share-capture .streamer-censored {
+  color: #b91c1c;
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.15em;
+}
+
+/* 配信者モード: 伏字部分のスタイル（通常フォント＋色＋点線下線） */
+.streamer-mode .streamer-censored {
+  color: #b91c1c;
+  text-decoration: underline dotted 1px;
+  text-underline-offset: 0.15em;
+}
+
+/* 質問文内の伏字：過去は font-size 0.82em だったが、
+   頭3文字質問で読みづらかったため通常サイズに戻し、色のみで識別 */
+.streamer-mode .streamer-censored-in-question {
+  /* 旧: font-size: 0.82em */
+}
+
+/* ---- 旧定義（戻す場合は上記 3 ブロックを消してこれを有効化） ----
 .success-share-capture .streamer-censored {
   font-family: var(--font-censored), 'Kosugi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
   font-size: 0.9em;
 }
-
-/* 配信者モード: 伏字部分のスタイル（丸ゴシック・少し小さめ） */
 .streamer-mode .streamer-censored {
   font-family: var(--font-censored), 'Kosugi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
   font-size: 0.9em;
 }
-
-/* 質問文内の伏字：さらに小さくして区別しやすく */
 .streamer-mode .streamer-censored-in-question {
   font-size: 0.82em;
 }
+------------------------------------------------------------- */
 

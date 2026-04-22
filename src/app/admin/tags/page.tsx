@@ -23,13 +23,23 @@ import RecommendFamousTagsTab from './tabs/RecommendFamousTagsTab';
 import TitleReadingInitialTab from './tabs/TitleReadingInitialTab';
 import { AdminProgressProvider, useAdminProgress } from '../context/AdminProgressContext';
 import { RANK_BG, RANK_TEXT, RANK_CHIP } from '../constants/rankColors';
-import { trafficAttributionAdminLabel } from '@/lib/trafficAttributionDisplay';
+import { trafficAttributionAdminLabel, trafficAttributionSnsColumnLabel } from '@/lib/trafficAttributionDisplay';
 import {
   adminEmbeddedDetailLine,
   playHistoryOutcomeAdminLabel,
   PLAY_HISTORY_EMBED_COPY,
   playHistoryEmbedConfirmMessage,
 } from '@/lib/playHistoryAdminEmbed';
+import { PromoTrackingLinkPanel } from '../components/PromoTrackingLinkPanel';
+import {
+  classifyPlayHistoryRow,
+  computeDurationSeconds,
+  computeMaxConfidence,
+  matchesQualityFilter,
+  PLAY_QUALITY_FILTER_OPTIONS,
+  type PlayQualityCategory,
+  resolveVisitorBadge,
+} from '@/lib/playHistoryClassification';
 
 interface ParsedWork {
   workId: string;
@@ -75,7 +85,7 @@ interface ParseResponse {
   error?: string;
 }
 
-type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'optimize' | 'config' | 'recFamous' | 'history' | 'recommendHistory' | 'contact' | 'changelog';
+type TabType = 'works' | 'tags' | 'summary' | 'import' | 'manual' | 'initial' | 'simulate' | 'optimize' | 'config' | 'recFamous' | 'history' | 'recommendHistory' | 'promoLinks' | 'contact' | 'changelog';
 
 const EXPLORE_TAG_KIND_LABEL: Record<string, string> = { summary: 'まとめ', erotic: 'エロ', abstract: '抽象', normal: '通常' };
 const ADMIN_REFLECTION_MEMOS: Array<{ title: string; change: string; steps: string[] }> = [
@@ -461,6 +471,7 @@ export default function AdminTagsPage() {
       recfamous: 'recFamous',
       history: 'history',
       recommendhistory: 'recommendHistory',
+      promolinks: 'promoLinks',
       contact: 'contact',
       changelog: 'changelog',
     };
@@ -528,11 +539,17 @@ export default function AdminTagsPage() {
     visitorId?: string | null;
     trafficAttributionJson?: string | null;
     hasRecommendPlay?: boolean;
+    /** 同じ visitorId の総プレイ数（本人含む） */
+    visitorPlayCount?: number | null;
   }>>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyLimit] = useState(50);
   const [historyOutcome, setHistoryOutcome] = useState<string>('');
+  // datetime-local 形式（'YYYY-MM-DDTHH:mm'）。この時刻以降のプレイを取得する
+  const [historyFromDate, setHistoryFromDate] = useState<string>('');
+  // 品質フィルタ（表示側クライアント絞り込み）
+  const [historyQualityFilter, setHistoryQualityFilter] = useState<'' | PlayQualityCategory | 'validOrReview'>('');
   const [historyUseRemote, setHistoryUseRemote] = useState(true);
   const [historyRemoteSettingsOpen, setHistoryRemoteSettingsOpen] = useState(false);
   const [historyDetailRowId, setHistoryDetailRowId] = useState<string | null>(null);
@@ -608,7 +625,23 @@ export default function AdminTagsPage() {
   const [historyEmbedSearchLoading, setHistoryEmbedSearchLoading] = useState(false);
   const [historyEmbedSaving, setHistoryEmbedSaving] = useState(false);
 
-  const historyDetailReplayEarlyExitOk = useMemo(() => {
+  // 表示行に品質バッジを付与し、フィルタに応じて絞る
+  const historyFilteredItems = useMemo(() => {
+    return historyItems
+      .map((row) => ({ row, badge: classifyPlayHistoryRow(row) }))
+      .filter(({ badge }) => matchesQualityFilter(badge, historyQualityFilter));
+  }, [historyItems, historyQualityFilter]);
+
+  // 現在ロード済み履歴の品質別カウント（サマリ表示用）
+  const historyQualityCounts = useMemo(() => {
+    const counts: Record<PlayQualityCategory, number> = { valid: 0, review: 0, short: 0, noise: 0 };
+    for (const r of historyItems) {
+      counts[classifyPlayHistoryRow(r).category] += 1;
+    }
+    return counts;
+  }, [historyItems]);
+
+    const historyDetailReplayEarlyExitOk = useMemo(() => {
     if (!historyDetailRowId) return [] as Array<{ conf: boolean; cand: boolean }>;
     const replaySteps = historyReplayCache[historyDetailRowId];
     if (!replaySteps?.length) return [];
@@ -1949,6 +1982,7 @@ export default function AdminTagsPage() {
             page,
             limit: historyLimit,
             outcome: historyOutcome || undefined,
+            createdAtFrom: historyFromDate || undefined,
           }),
         });
         if (!response.ok) {
@@ -1966,6 +2000,7 @@ export default function AdminTagsPage() {
         params.set('page', String(page));
         params.set('limit', String(historyLimit));
         if (historyOutcome) params.set('outcome', historyOutcome);
+        if (historyFromDate) params.set('createdAtFrom', historyFromDate);
         const response = await fetch(`/api/admin/play-history?${params.toString()}`, {
           headers: { 'x-eronator-admin-token': adminToken },
         });
@@ -2317,6 +2352,81 @@ export default function AdminTagsPage() {
       items,
     });
   };
+
+  const handleHistoryExportFilteredCsv = () => {
+    if (historyFilteredItems.length === 0) {
+      alert('CSV に保存できる行がありません。フィルタを緩めてから実行してください。');
+      return;
+    }
+    const escapeCell = (value: unknown): string => {
+      if (value == null) return '';
+      const s = typeof value === 'string' ? value : String(value);
+      if (/[",\r\n]/.test(s)) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    };
+    const header = [
+      'id',
+      'createdAt',
+      'outcome',
+      'questionCount',
+      'maxConfidence',
+      'resultWorkId',
+      'resultWorkTitle',
+      'submittedTitleText',
+      'sessionStartedAt',
+      'durationSec',
+      'visitorId',
+      'visitorPlayCount',
+      'hasRecommendPlay',
+      'clickedFanza',
+      'inflowChannel',
+      'trafficAttributionShort',
+      'qualityCategory',
+      'qualityReasons',
+    ];
+    const lines = [header.join(',')];
+    for (const { row, badge } of historyFilteredItems) {
+      const durationSec = computeDurationSeconds(row);
+      const maxConf = computeMaxConfidence(row);
+      const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson);
+      const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson);
+      const cells: Array<unknown> = [
+        row.id,
+        row.createdAt ?? '',
+        row.outcome,
+        row.questionCount,
+        maxConf == null ? '' : Math.round(maxConf),
+        row.resultWorkId ?? '',
+        row.resultWorkTitle ?? '',
+        row.submittedTitleText ?? '',
+        row.sessionStartedAt ?? '',
+        durationSec == null ? '' : durationSec,
+        row.visitorId ?? '',
+        row.visitorPlayCount ?? '',
+        row.hasRecommendPlay ? '1' : '0',
+        row.clickedFanza ? '1' : '0',
+        sns.cell !== 'ー' ? sns.cell : '',
+        traffic.short,
+        badge.category,
+        badge.reasons.join(' / '),
+      ];
+      lines.push(cells.map(escapeCell).join(','));
+    }
+    const csv = '\ufeff' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `eronator-play-history-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
 
   const handleRecHistDeleteSelected = async () => {
     const ids = Array.from(recHistSelectedIds);
@@ -2779,6 +2889,23 @@ export default function AdminTagsPage() {
             }}
           >
             推薦プレイ履歴
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('promoLinks')}
+            style={{
+              padding: '0.26rem 0.42rem',
+              fontSize: '0.78rem',
+              flexShrink: 0,
+              backgroundColor: activeTab === 'promoLinks' ? '#0369a1' : 'transparent',
+              color: activeTab === 'promoLinks' ? 'white' : '#666',
+              border: 'none',
+              borderBottom: activeTab === 'promoLinks' ? '2px solid #0369a1' : '2px solid transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === 'promoLinks' ? 'bold' : 'normal',
+            }}
+          >
+            配布用URL
           </button>
           <button
             onClick={() => setActiveTab('contact')}
@@ -5822,24 +5949,48 @@ export default function AdminTagsPage() {
       {/* サービスプレイ履歴タブ */}
       {activeTab === 'history' && (
         <section style={{ marginTop: '1rem' }}>
-          <div style={{ marginBottom: '0.35rem', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.45rem' }}>
-            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>本番プレイ履歴</h2>
-            <span style={{ color: '#666', fontSize: '0.78rem' }}>1プレイ＝1レコード。FANZAクリック等は本番デプロイ後。</span>
-          </div>
-          <div style={{ marginBottom: '0.5rem', padding: '0.35rem 0.55rem', background: '#f0f4ff', borderRadius: '6px', border: '1px solid #c5d4f0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.35rem', rowGap: '0.2rem' }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', margin: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+              flexWrap: 'wrap',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 600 }}>本番プレイ履歴</h2>
+              <span style={{ color: '#666', fontSize: '0.78rem' }}>
+                1プレイ＝1レコード。FANZAクリック等は本番デプロイ後。
+              </span>
+            </div>
+            {/* 右上：本番の履歴接続先。基本使わないので畳んで配置 */}
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                flexWrap: 'wrap',
+                padding: '0.25rem 0.5rem',
+                background: '#f0f4ff',
+                borderRadius: '6px',
+                border: '1px solid #c5d4f0',
+                fontSize: '0.78rem',
+              }}
+            >
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', margin: 0 }}>
                 <input
                   type="checkbox"
                   checked={historyUseRemote}
                   onChange={(e) => setHistoryUseRemote(e.target.checked)}
                 />
-                <strong>本番の履歴</strong>
-                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>（デプロイ先DB）</span>
+                <strong style={{ fontSize: '0.78rem' }}>本番の履歴</strong>
+                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>（デプロイ先DB）</span>
               </label>
               {historyUseRemote ? (
                 <>
-                  <span style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 600 }}>
+                  <span style={{ fontSize: '0.72rem', color: '#0f766e', fontWeight: 600 }}>
                     {previewHistoryUrl.trim()
                       ? (() => {
                           try {
@@ -5863,136 +6014,289 @@ export default function AdminTagsPage() {
                     onClick={() => setHistoryRemoteSettingsOpen((o) => !o)}
                     style={{
                       padding: '0.15rem 0.45rem',
-                      fontSize: '0.72rem',
+                      fontSize: '0.7rem',
                       backgroundColor: '#fff',
                       border: '1px solid #94a3b8',
                       borderRadius: '4px',
                       cursor: 'pointer',
-                      marginLeft: 'auto',
                     }}
                   >
-                    {historyRemoteSettingsOpen ? '設定を閉じる' : 'URL・トークン・診断を開く'}
+                    {historyRemoteSettingsOpen ? '設定を閉じる' : 'URL・トークン・診断'}
                   </button>
                 </>
               ) : null}
             </div>
-            {historyUseRemote && historyRemoteSettingsOpen ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.45rem', paddingTop: '0.45rem', borderTop: '1px solid #c5d4f0' }}>
-                <label>
-                  本番URL（いつもここは本番のまま）:
-                  <input
-                    type="url"
-                    value={productionHistoryUrl}
-                    onChange={(e) => setProductionHistoryUrl(e.target.value)}
-                    placeholder="https://eronator.vercel.app"
-                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 360px)' }}
-                  />
-                </label>
-                <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.35rem' }}>
-                  <span>プレビューURL（任意・空なら本番URLを使用）:</span>
-                  <input
-                    type="url"
-                    value={previewHistoryUrl}
-                    onChange={(e) => setPreviewHistoryUrlPersisted(e.target.value)}
-                    placeholder="https://〜〜.vercel.app（試したいデプロイを貼る。消せば本番に戻る）"
-                    style={{ padding: '0.35rem', width: 'min(100%, 420px)' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setPreviewHistoryUrlPersisted('')}
-                    disabled={!previewHistoryUrl.trim()}
-                    style={{
-                      padding: '0.3rem 0.6rem',
-                      fontSize: '0.8rem',
-                      cursor: previewHistoryUrl.trim() ? 'pointer' : 'not-allowed',
-                      opacity: previewHistoryUrl.trim() ? 1 : 0.5,
-                    }}
-                  >
-                    プレビューをクリア
-                  </button>
-                </label>
-                <p style={{ fontSize: '0.85rem', color: '#0f766e', margin: 0, fontWeight: 600 }}>
-                  いまの取得先:{' '}
-                  {previewHistoryUrl.trim()
-                    ? (() => {
-                        try {
-                          return `プレビュー（${new URL(previewHistoryUrl.trim()).host}）`;
-                        } catch {
-                          return 'プレビュー（URL形式を確認）';
-                        }
-                      })()
-                    : productionHistoryUrl.trim()
-                      ? (() => {
-                          try {
-                            return `本番（${new URL(productionHistoryUrl.trim()).host}）`;
-                          } catch {
-                            return '本番（URL形式を確認）';
-                          }
-                        })()
-                      : '未設定（本番URLかプレビューURLを入力）'}
-                </p>
-                <RemoteAdminDiagnosticPanel
-                  adminToken={adminToken}
-                  remoteDeploymentUrl={remoteDeploymentUrl}
-                  tokenForRemote={productionHistoryToken.trim() || adminToken}
-                />
-                <label>
-                  本番用管理トークン:（未入力なら上の「管理トークン」を使用）
-                  <input
-                    type="password"
-                    value={productionHistoryToken}
-                    onChange={(e) => setProductionHistoryToken(e.target.value)}
-                    placeholder="本番の ERONATOR_ADMIN_TOKEN"
-                    style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 240px)' }}
-                  />
-                </label>
-                <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
-                  プレビューURLはブラウザの localStorage に保存されます（リロードしても残る）。Vercel
-                  プレビューを触るときは .env.local に{' '}
-                  <code>ERONATOR_REMOTE_ADMIN_TRUST_VERCEL_APP=1</code>（ローカル開発のみ）。本番サーバー上ではこの取得APIは無効です。
-                </p>
-              </div>
-            ) : null}
           </div>
-          <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label>
-              結果で絞る:
-              <select
-                value={historyOutcome}
-                onChange={(e) => setHistoryOutcome(e.target.value)}
-                style={{ marginLeft: '0.5rem', padding: '0.35rem 0.5rem' }}
-              >
-                <option value="">すべて</option>
-                <option value="SUCCESS">SUCCESS（正解）</option>
-                <option value="FAIL_LIST">FAIL_LIST（候補から未選択）</option>
-                <option value="ALMOST_SUCCESS">ALMOST_SUCCESS（候補から選択）</option>
-                <option value="NOT_IN_LIST">NOT_IN_LIST（リスト外入力）</option>
-                <option value="ABANDONED">ABANDONED（途中離脱）</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              onClick={() => fetchPlayHistory(1)}
-              disabled={historyLoading}
+          {historyUseRemote && historyRemoteSettingsOpen ? (
+            <div
               style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: historyLoading ? '#ccc' : '#6b21a8',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: historyLoading ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                marginBottom: '0.5rem',
+                padding: '0.5rem 0.65rem',
+                background: '#f0f4ff',
+                borderRadius: '6px',
+                border: '1px solid #c5d4f0',
               }}
             >
-              {historyLoading ? '読込中...' : '再読み込み'}
-            </button>
-            <span style={{ color: '#666', fontSize: '0.9rem' }}>
-              全 {historyTotal} 件 {historyPage > 1 && `（ページ ${historyPage}）`}
-            </span>
+              <label>
+                本番URL（いつもここは本番のまま）:
+                <input
+                  type="url"
+                  value={productionHistoryUrl}
+                  onChange={(e) => setProductionHistoryUrl(e.target.value)}
+                  placeholder="https://eronator.vercel.app"
+                  style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 360px)' }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.35rem' }}>
+                <span>プレビューURL（任意・空なら本番URLを使用）:</span>
+                <input
+                  type="url"
+                  value={previewHistoryUrl}
+                  onChange={(e) => setPreviewHistoryUrlPersisted(e.target.value)}
+                  placeholder="https://〜〜.vercel.app（試したいデプロイを貼る。消せば本番に戻る）"
+                  style={{ padding: '0.35rem', width: 'min(100%, 420px)' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setPreviewHistoryUrlPersisted('')}
+                  disabled={!previewHistoryUrl.trim()}
+                  style={{
+                    padding: '0.3rem 0.6rem',
+                    fontSize: '0.8rem',
+                    cursor: previewHistoryUrl.trim() ? 'pointer' : 'not-allowed',
+                    opacity: previewHistoryUrl.trim() ? 1 : 0.5,
+                  }}
+                >
+                  プレビューをクリア
+                </button>
+              </label>
+              <p style={{ fontSize: '0.85rem', color: '#0f766e', margin: 0, fontWeight: 600 }}>
+                いまの取得先:{' '}
+                {previewHistoryUrl.trim()
+                  ? (() => {
+                      try {
+                        return `プレビュー（${new URL(previewHistoryUrl.trim()).host}）`;
+                      } catch {
+                        return 'プレビュー（URL形式を確認）';
+                      }
+                    })()
+                  : productionHistoryUrl.trim()
+                    ? (() => {
+                        try {
+                          return `本番（${new URL(productionHistoryUrl.trim()).host}）`;
+                        } catch {
+                          return '本番（URL形式を確認）';
+                        }
+                      })()
+                    : '未設定（本番URLかプレビューURLを入力）'}
+              </p>
+              <RemoteAdminDiagnosticPanel
+                adminToken={adminToken}
+                remoteDeploymentUrl={remoteDeploymentUrl}
+                tokenForRemote={productionHistoryToken.trim() || adminToken}
+              />
+              <label>
+                本番用管理トークン:（未入力なら上の「管理トークン」を使用）
+                <input
+                  type="password"
+                  value={productionHistoryToken}
+                  onChange={(e) => setProductionHistoryToken(e.target.value)}
+                  placeholder="本番の ERONATOR_ADMIN_TOKEN"
+                  style={{ marginLeft: '0.5rem', padding: '0.35rem', width: 'min(100%, 240px)' }}
+                />
+              </label>
+              <p style={{ fontSize: '0.85rem', color: '#666', margin: 0 }}>
+                プレビューURLはブラウザの localStorage に保存されます（リロードしても残る）。Vercel
+                プレビューを触るときは .env.local に{' '}
+                <code>ERONATOR_REMOTE_ADMIN_TRUST_VERCEL_APP=1</code>（ローカル開発のみ）。本番サーバー上ではこの取得APIは無効です。
+              </p>
+            </div>
+          ) : null}
+          {/* フィルタカード：再読み込みを右側に目立たせ、結果／日時／品質をまとめて配置 */}
+          <div
+            style={{
+              marginBottom: '0.75rem',
+              padding: '0.6rem 0.7rem',
+              background: '#fafafa',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            {/* 上段：再読み込み（目立つ大きめ）＋件数 */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                flexWrap: 'wrap',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => fetchPlayHistory(1)}
+                disabled={historyLoading}
+                style={{
+                  padding: '0.55rem 1.2rem',
+                  fontSize: '0.95rem',
+                  fontWeight: 700,
+                  backgroundColor: historyLoading ? '#ccc' : '#6b21a8',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: historyLoading ? 'not-allowed' : 'pointer',
+                  boxShadow: historyLoading ? 'none' : '0 2px 6px rgba(107,33,168,0.25)',
+                }}
+              >
+                {historyLoading ? '読込中...' : '🔄 再読み込み'}
+              </button>
+              <span style={{ color: '#475569', fontSize: '0.9rem' }}>
+                全 <strong>{historyTotal}</strong> 件 {historyPage > 1 && `（ページ ${historyPage}）`}
+                {historyQualityFilter && (
+                  <> / 表示 <strong>{historyFilteredItems.length}</strong> 件</>
+                )}
+              </span>
+            </div>
+
+            {/* 中段：結果 / 品質 / 日時フィルタ（1 行に整理・折返しあり） */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.6rem 0.9rem',
+                padding: '0.45rem 0.55rem',
+                background: '#fff',
+                borderRadius: '6px',
+                border: '1px solid #e5e7eb',
+              }}
+            >
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                <strong>結果:</strong>
+                <select
+                  value={historyOutcome}
+                  onChange={(e) => setHistoryOutcome(e.target.value)}
+                  style={{ padding: '0.3rem 0.45rem', fontSize: '0.85rem' }}
+                >
+                  <option value="">すべて</option>
+                  <option value="SUCCESS">SUCCESS（正解）</option>
+                  <option value="FAIL_LIST">FAIL_LIST（候補から未選択）</option>
+                  <option value="ALMOST_SUCCESS">ALMOST_SUCCESS（候補から選択）</option>
+                  <option value="NOT_IN_LIST">NOT_IN_LIST（リスト外入力）</option>
+                  <option value="ABANDONED">ABANDONED（途中離脱）</option>
+                </select>
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                <strong>品質:</strong>
+                <select
+                  value={historyQualityFilter}
+                  onChange={(e) => setHistoryQualityFilter(e.target.value as '' | PlayQualityCategory | 'validOrReview')}
+                  style={{ padding: '0.3rem 0.45rem', fontSize: '0.85rem' }}
+                >
+                  {PLAY_QUALITY_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value} title={opt.description}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '0.72rem', color: '#475569' }}>（即時）</span>
+              </label>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  marginLeft: 'auto',
+                  fontSize: '0.78rem',
+                  color: '#166534',
+                }}
+              >
+                <span>✅ 有効 <strong>{historyQualityCounts.valid}</strong></span>
+                <span>🔍 要確認 <strong>{historyQualityCounts.review}</strong></span>
+                <span>⏱ 短時間 <strong>{historyQualityCounts.short}</strong></span>
+                <span>💤 ノイズ <strong>{historyQualityCounts.noise}</strong></span>
+              </span>
+            </div>
+
+            {/* 下段：日時フィルタ（createdAtFrom）＋クイック選択 */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+                padding: '0.45rem 0.55rem',
+                background: '#eef2ff',
+                borderRadius: '6px',
+                border: '1px solid #c7d2fe',
+              }}
+            >
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem' }}>
+                <strong>この日時以降:</strong>
+                <input
+                  type="datetime-local"
+                  value={historyFromDate}
+                  onChange={(e) => setHistoryFromDate(e.target.value)}
+                  style={{ padding: '0.3rem 0.45rem', fontSize: '0.85rem' }}
+                />
+              </label>
+              {(() => {
+                const fmt = (d: Date) => {
+                  const pad = (n: number) => String(n).padStart(2, '0');
+                  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                };
+                const quick = (hours: number) => () => {
+                  const d = new Date(Date.now() - hours * 60 * 60 * 1000);
+                  setHistoryFromDate(fmt(d));
+                };
+                const today0 = () => {
+                  const d = new Date();
+                  d.setHours(0, 0, 0, 0);
+                  setHistoryFromDate(fmt(d));
+                };
+                const btn = {
+                  padding: '0.25rem 0.5rem',
+                  fontSize: '0.75rem',
+                  border: '1px solid #94a3b8',
+                  background: '#fff',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                } as const;
+                return (
+                  <>
+                    <button type="button" style={btn} onClick={today0}>今日から</button>
+                    <button type="button" style={btn} onClick={quick(24)}>直近24h</button>
+                    <button type="button" style={btn} onClick={quick(24 * 3)}>直近3日</button>
+                    <button type="button" style={btn} onClick={quick(24 * 7)}>直近7日</button>
+                    <button
+                      type="button"
+                      style={{ ...btn, background: '#fee2e2', borderColor: '#fca5a5' }}
+                      onClick={() => setHistoryFromDate('')}
+                      disabled={!historyFromDate}
+                    >
+                      クリア
+                    </button>
+                    <span style={{ fontSize: '0.72rem', color: '#475569', marginLeft: 'auto' }}>
+                      ＊日時を変えたら「🔄 再読み込み」を押してね
+                    </span>
+                  </>
+                );
+              })()}
+            </div>
           </div>
           {historyLoading && historyItems.length === 0 ? (
             <p>読み込み中...</p>
           ) : historyItems.length === 0 ? (
-            <p style={{ color: '#666' }}>履歴がありません。</p>
+            <p style={{ color: '#666' }}>
+              履歴がありません。
+              {historyFromDate && <>（「{historyFromDate}」以降で検索中。日時フィルタを緩めてください）</>}
+            </p>
           ) : (
             <>
             <div style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -6011,6 +6315,23 @@ export default function AdminTagsPage() {
                 }}
               >
                 {`選択をJSONで保存（${historySelectedIds.size}件）`}
+              </button>
+              <button
+                type="button"
+                onClick={handleHistoryExportFilteredCsv}
+                disabled={historyFilteredItems.length === 0}
+                style={{
+                  padding: '0.4rem 0.75rem',
+                  backgroundColor: historyFilteredItems.length === 0 ? '#ccc' : '#0369a1',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: historyFilteredItems.length === 0 ? 'not-allowed' : 'pointer',
+                  fontSize: '0.9rem',
+                }}
+                title="現在フィルタ後の全行を CSV（UTF-8, BOM 付）で保存"
+              >
+                {`表示中をCSV保存（${historyFilteredItems.length}件）`}
               </button>
               <button
                 type="button"
@@ -6044,20 +6365,48 @@ export default function AdminTagsPage() {
                 <thead>
                   <tr style={{ borderBottom: '2px solid #ddd', background: '#f5f5f5' }}>
                     <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>選択</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }}>結果</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'right', width: '1%' }}>質問数</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }} title="このプレイを見るべきかの判定">品質</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }} title="結果＋質問数（合算表示）">結果</th>
                     <th style={{ padding: '0.5rem', textAlign: 'left' }}>作品</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }} title="同じ visitorId の総プレイ数">訪問者</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'left', width: '1%' }} title="どの媒体から来たか（r= / utm / referrer）">流入</th>
                     <th style={{ padding: '0.5rem', textAlign: 'left', whiteSpace: 'nowrap', width: '1%' }}>日時</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="総合滞在時間">滞在</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="FANZAで見るクリック">FANZA</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="リピート">★リピ</th>
-                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="SNS投稿">★SNS</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="セッション開始〜結果までの滞在時間">滞在</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'right', width: '1%' }} title="questionHistory 中の confidenceAfter 最大値（0-100）">確信度</th>
+                    <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }} title="FANZAで見るをクリックしたか">FA</th>
                     <th style={{ padding: '0.5rem', textAlign: 'center', width: '1%' }}>詳細</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {historyItems.map((row) => (
-                    <tr key={row.id} style={{ borderBottom: '1px solid #eee' }}>
+                  {historyFilteredItems.length === 0 && (
+                    <tr>
+                      <td colSpan={11} style={{ padding: '1rem', textAlign: 'center', color: '#94a3b8' }}>
+                        この条件に一致するプレイはありません（絞り込みを緩めるか、サーバ側再読込を試してください）
+                      </td>
+                    </tr>
+                  )}
+                  {historyFilteredItems.map(({ row, badge }) => {
+                    const visitorBadge = resolveVisitorBadge(row.visitorPlayCount ?? (row.visitorId ? 1 : null));
+                    const maxConfidence = computeMaxConfidence(row);
+                    const durationSec = computeDurationSeconds(row);
+                    const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson);
+                    const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson);
+                    const inflowLabel = sns.cell !== 'ー'
+                      ? sns.cell
+                      : traffic.short
+                        ? traffic.short.replace(/^計測（短縮）：/, '').replace(/^別サイトから：/, '').replace(/^開いたページ：/, '').replace(/^このサイト内の直前のページ：/, '')
+                        : '直接';
+                    const inflowTitle = sns.title || traffic.title || traffic.short || '直接アクセス（参照元なし）';
+                    return (
+                    <tr
+                      key={row.id}
+                      onClick={(e) => {
+                        const t = e.target as HTMLElement;
+                        if (t.closest('button,input,a,select,textarea,label')) return;
+                        setHistoryDetailRowId(row.id);
+                      }}
+                      style={{ borderBottom: '1px solid #eee', cursor: 'pointer' }}
+                    >
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                         <input
                           type="checkbox"
@@ -6070,77 +6419,127 @@ export default function AdminTagsPage() {
                           })}
                         />
                       </td>
-                      <td style={{ padding: '0.5rem' }}>
+                      <td style={{ padding: '0.4rem 0.5rem' }} title={badge.reasons.join(' / ')}>
                         <span style={{
-                          color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : row.outcome === 'ABANDONED' ? '#e65100' : '#666',
-                          fontWeight: 'bold',
+                          display: 'inline-block',
+                          padding: '0.15rem 0.5rem',
+                          borderRadius: '999px',
+                          backgroundColor: badge.bg,
+                          color: badge.color,
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          whiteSpace: 'nowrap',
                         }}>
-                          {playHistoryOutcomeAdminLabel(row.outcome, row.resultWorkId)}
+                          {badge.label}
                         </span>
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'right' }}>{row.questionCount}</td>
+                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap' }}>
+                        <div style={{
+                          color: row.outcome === 'SUCCESS' ? '#2e7d32' : row.outcome === 'FAIL_LIST' ? '#c62828' : row.outcome === 'ABANDONED' ? '#e65100' : '#666',
+                          fontWeight: 700,
+                          fontSize: '0.85rem',
+                        }}>
+                          {playHistoryOutcomeAdminLabel(row.outcome, row.resultWorkId)}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.1rem' }}>
+                          {row.questionCount}問
+                        </div>
+                      </td>
                       <td style={{ padding: '0.5rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={row.resultWorkTitle ?? row.submittedTitleText ?? undefined}>
                         {row.resultWorkId != null ? (row.resultWorkTitle ?? '—') : (row.submittedTitleText ?? '—')}
                       </td>
-                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.85rem' }}>
-                        <div>{row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#888', marginTop: '0.1rem' }}>
-                          {row.visitorId ? (
-                            <>
-                              #{row.visitorId.slice(-8)}
-                              {row.hasRecommendPlay && <span style={{ marginLeft: '0.3rem', color: '#7c3aed', fontWeight: 'bold', fontSize: '0.7rem' }}>推薦◎</span>}
-                            </>
-                          ) : (
-                            <span style={{ color: '#bbb' }}>ID未記録（実装前／未送信）</span>
-                          )}
-                        </div>
-                        {(() => {
-                          const t = trafficAttributionAdminLabel(row.trafficAttributionJson);
-                          const line = t.short || '参照元：この履歴には保存されていません（実装前のデータなど）';
-                          return (
-                            <div
-                              style={{
-                                fontSize: '0.68rem',
-                                color: t.short ? '#37474f' : '#9e9e9e',
-                                marginTop: '0.08rem',
-                                lineHeight: 1.25,
-                                maxWidth: '14rem',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                              }}
-                              title={t.title || (row.trafficAttributionJson ?? undefined) || line}
-                            >
-                              {line}
-                            </div>
-                          );
-                        })()}
+                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.1rem 0.45rem',
+                            borderRadius: '999px',
+                            backgroundColor: visitorBadge.bg,
+                            color: visitorBadge.color,
+                            fontWeight: 700,
+                            fontSize: '0.74rem',
+                          }}
+                          title={
+                            row.visitorId
+                              ? `visitor ${row.visitorId.slice(-8)}${row.visitorPlayCount ? ` / 総プレイ ${row.visitorPlayCount}回` : ''}`
+                              : 'ID未記録（実装前／未送信）'
+                          }
+                        >
+                          {visitorBadge.label}
+                        </span>
+                        {row.hasRecommendPlay && (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              marginLeft: '0.3rem',
+                              color: '#7c3aed',
+                              fontWeight: 'bold',
+                              fontSize: '0.68rem',
+                            }}
+                            title="おすすめ推薦を受けたプレイが visitor 履歴にあります"
+                          >
+                            推薦◎
+                          </span>
+                        )}
+                        {row.visitorId && (
+                          <div style={{ fontSize: '0.64rem', color: '#94a3b8', marginTop: '0.08rem' }}>
+                            #{row.visitorId.slice(-8)}
+                          </div>
+                        )}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
-                        {row.sessionStartedAt && row.createdAt
-                          ? (() => {
-                              const start = new Date(row.sessionStartedAt).getTime();
-                              const end = new Date(row.createdAt).getTime();
-                              const sec = Math.round((end - start) / 1000);
-                              if (sec < 60) return `${sec}秒`;
-                              const m = Math.floor(sec / 60);
-                              const s = sec % 60;
-                              return s > 0 ? `${m}分${s}秒` : `${m}分`;
-                            })()
-                          : '—'}
+                      <td
+                        style={{
+                          padding: '0.5rem',
+                          fontSize: '0.78rem',
+                          maxWidth: '9rem',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          color: sns.cell !== 'ー' ? '#075985' : '#475569',
+                          fontWeight: sns.cell !== 'ー' ? 700 : 400,
+                        }}
+                        title={inflowTitle}
+                      >
+                        {inflowLabel}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center' }} title={row.clickedFanza ? 'FANZAで見るをクリック済み' : ''}>
-                        {row.clickedFanza ? '◎' : 'ー'}
+                      <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                        {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}
                       </td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
-                      <td style={{ padding: '0.5rem', textAlign: 'center', color: '#999' }}>ー</td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                        {durationSec == null
+                          ? '—'
+                          : durationSec < 60
+                            ? `${durationSec}秒`
+                            : (() => {
+                                const m = Math.floor(durationSec / 60);
+                                const s = durationSec % 60;
+                                return s > 0 ? `${m}分${s}秒` : `${m}分`;
+                              })()}
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.82rem', whiteSpace: 'nowrap' }} title="questionHistory 中の最大 confidenceAfter">
+                        {maxConfidence == null ? (
+                          <span style={{ color: '#cbd5f5' }}>—</span>
+                        ) : (
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              color: maxConfidence >= 80 ? '#047857' : maxConfidence >= 50 ? '#b45309' : '#64748b',
+                            }}
+                          >
+                            {Math.round(maxConfidence)}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.5rem', textAlign: 'center' }} title={row.clickedFanza ? 'FANZAで見るをクリック済み' : 'クリックなし'}>
+                        {row.clickedFanza ? <span style={{ color: '#b91c1c', fontWeight: 700 }}>◎</span> : <span style={{ color: '#cbd5f5' }}>ー</span>}
+                      </td>
                       <td style={{ padding: '0.5rem', textAlign: 'center' }}>
                         <button
                           type="button"
                           onClick={() => setHistoryDetailRowId(row.id)}
                           style={{
                             padding: '0.25rem 0.5rem',
-                            fontSize: '0.85rem',
+                            fontSize: '0.82rem',
                             backgroundColor: '#6b21a8',
                             color: 'white',
                             border: 'none',
@@ -6152,7 +6551,8 @@ export default function AdminTagsPage() {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -6980,6 +7380,8 @@ export default function AdminTagsPage() {
           )}
         </section>
       )}
+
+      {activeTab === 'promoLinks' && <PromoTrackingLinkPanel />}
 
       {activeTab === 'contact' && (
         <section style={{ marginTop: '1rem' }}>

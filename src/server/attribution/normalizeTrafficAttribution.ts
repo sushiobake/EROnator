@@ -4,6 +4,8 @@
 
 const MAX_URL = 1500;
 const MAX_UTM = 128;
+const MAX_R = 32;
+const MAX_CT = 128;
 const MAX_JSON = 4000;
 
 function trimStr(value: unknown, max: number): string | null {
@@ -39,11 +41,15 @@ export function normalizeTrafficAttributionFromBody(body: unknown): string | nul
 
   /** SPA 遷移の直前パス（pathname + search）。document.referrer だけでは取れない */
   const internalFrom = trimStr(o.internalFrom, MAX_URL);
+  const r = trimStr(o.r, MAX_R);
+  const ct = trimStr(o.ct, MAX_CT);
 
   const payload: Record<string, unknown> = { landing };
   if (referrer) payload.referrer = referrer;
   if (utm) payload.utm = utm;
   if (internalFrom) payload.internalFrom = internalFrom;
+  if (r) payload.r = r;
+  if (ct) payload.ct = ct;
 
   let json = JSON.stringify(payload);
   if (json.length > MAX_JSON) {
@@ -52,6 +58,8 @@ export function normalizeTrafficAttributionFromBody(body: unknown): string | nul
       referrer: referrer ? referrer.slice(0, 400) : undefined,
       internalFrom: internalFrom ? internalFrom.slice(0, 400) : undefined,
       utm,
+      r,
+      ct,
     };
     json = JSON.stringify(shrink);
     if (json.length > MAX_JSON) {

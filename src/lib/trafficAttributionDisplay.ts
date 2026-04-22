@@ -4,10 +4,10 @@
 
 const PAGE_PATH_LABELS: Record<string, string> = {
   '/': 'トップページ（ゲームメイン）',
-  '/terms': '利用規約',
-  '/privacy': 'プライバシーポリシー',
+  '/terms': '利用規約経由',
+  '/privacy': 'プライバシー経由',
   '/contact': 'お問い合わせ',
-  '/affiliate': 'アフィリエイト情報',
+  '/affiliate': 'アフィリ表示経由',
   '/admin': '管理画面',
   '/admin/tags': '管理画面 - タグ管理',
   '/admin/whitelist': '管理画面 - ホワイトリスト',
@@ -16,6 +16,45 @@ const PAGE_PATH_LABELS: Record<string, string> = {
 function resolvePathLabel(path: string): string {
   const cleanPath = (path.split('?')[0] ?? path).replace(/\/$/, '') || '/';
   return PAGE_PATH_LABELS[cleanPath] ?? path;
+}
+
+/** SNS短縮コード r → 主ラベル・バリアント（x1/x2 は X に丸め、バリアントで区別） */
+export function resolveTrafficShortCodeDisplay(code: string): { label: string; variant?: string } {
+  const c = code.trim().toLowerCase();
+  if (c === 'c') return { label: 'ci-en' };
+  if (c === 'p') return { label: 'pommu' };
+  if (c === 'x') return { label: 'X' };
+  if (c === 'x1' || c === 'x2') return { label: 'X', variant: c };
+  if (c === 'n') return { label: 'note' };
+  if (c === '5ch') return { label: '5ch' };
+  return { label: code.trim() };
+}
+
+export function trafficAttributionSnsColumnLabel(
+  json: string | null | undefined
+): { cell: string; title: string } {
+  if (!json || typeof json !== 'string') {
+    return { cell: 'ー', title: '' };
+  }
+  try {
+    const o = JSON.parse(json) as { r?: string | null; ct?: string | null };
+    const raw = typeof o.r === 'string' ? o.r.trim() : '';
+    if (!raw) {
+      return { cell: 'ー', title: '' };
+    }
+    const { label, variant } = resolveTrafficShortCodeDisplay(raw);
+    const ct = typeof o.ct === 'string' ? o.ct.trim() : '';
+    const cell = label;
+    let title = label;
+    if (variant) {
+      title = ct ? `${label}（${variant}: ${ct}）` : `${label}（${variant}）`;
+    } else if (ct) {
+      title = `${label}（${ct}）`;
+    }
+    return { cell, title: title || cell };
+  } catch {
+    return { cell: 'ー', title: '' };
+  }
 }
 
 export function trafficAttributionAdminLabel(
@@ -30,7 +69,21 @@ export function trafficAttributionAdminLabel(
       landing?: string | null;
       utm?: Record<string, string>;
       internalFrom?: string | null;
+      r?: string | null;
+      ct?: string | null;
     };
+
+    const rawR = typeof o.r === 'string' ? o.r.trim() : '';
+    if (rawR) {
+      const { label, variant } = resolveTrafficShortCodeDisplay(rawR);
+      const ct = typeof o.ct === 'string' ? o.ct.trim() : '';
+      const main = variant ? `${label}（${variant}）` : label;
+      const shortBase = `計測（短縮）：${main}`;
+      const short = shortBase.length > 52 ? `${shortBase.slice(0, 49)}…` : shortBase;
+      let title = main;
+      if (ct) title = `${main} / キャンペーン：${ct}`;
+      return { short, title: title.length > 0 ? title : json };
+    }
 
     const utm = o.utm;
     if (utm?.source) {

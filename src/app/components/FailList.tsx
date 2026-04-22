@@ -31,7 +31,7 @@ const DEFAULT_SEARCH_PLACEHOLDER = '例: 鬼、学園、寝取られ など';
 const DEFAULT_BTN_RECOMMEND = '推薦してもらう';
 const DEFAULT_BTN_TOP = 'トップに戻る';
 const DEFAULT_INTRO_SPEECH = 'うーん…ちょっとわからなかったわ。';
-const DEFAULT_INTRO_SUB_MOBILE = 'この中にある？　なければ検索か、作品名を教えてね。';
+const DEFAULT_INTRO_SUB_MOBILE = 'この中にある？　ないなら検索で探してみて！';
 
 const CARD_GAP = 10;
 
@@ -258,6 +258,32 @@ export function FailList({
     background: '#fff',
   };
 
+  // 検索UIを目立たせる（琥珀色の淡いトーン）
+  const searchPanelStyle: CSSProperties = {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '3px solid #f59e0b',
+    borderLeft: '8px solid #d97706',
+    borderRadius: 12,
+    padding: isMobile ? '14px 14px' : '18px 20px',
+    background: '#fff8e1',
+    boxShadow: '0 3px 10px rgba(245,158,11,0.25)',
+  };
+
+  // 自由入力（NOT_IN_LIST）を目立たせる（淡い緑＝協力お願いのトーン）
+  const notInListPanelStyle: CSSProperties = {
+    width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
+    border: '2px solid #86efac',
+    borderLeft: '6px solid #16a34a',
+    borderRadius: 10,
+    padding: isMobile ? '10px 10px' : '12px 14px',
+    background: '#f0fdf4',
+    boxShadow: '0 2px 6px rgba(22,163,74,0.12)',
+  };
+
   const candidateGrid = !candidatesRenderedBelow && !hideCandidateGrid ? (
     <div
       style={{
@@ -282,23 +308,44 @@ export function FailList({
 
   const searchBlock = (
     <>
-      <p
+      <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
           margin: '0 0 6px 0',
-          fontSize: chrome.fontBody + 1,
-          fontWeight: 700,
-          color: 'var(--color-text)',
         }}
       >
-        {failListSearchHeading}
-      </p>
+        <span
+          aria-hidden
+          style={{
+            display: 'inline-block',
+            fontSize: chrome.fontBody + 8,
+            lineHeight: 1,
+          }}
+        >
+          🔍
+        </span>
+        <p
+          style={{
+            margin: 0,
+            fontSize: chrome.fontBody + 6,
+            fontWeight: 900,
+            color: '#92400e',
+            letterSpacing: '0.02em',
+            lineHeight: 1.2,
+          }}
+        >
+          {failListSearchHeading}
+        </p>
+      </div>
       <p
         style={{
-          margin: '0 0 8px 0',
-          fontSize: Math.max(11, chrome.fontBody - 1),
-          fontWeight: 500,
-          color: 'var(--color-text-muted)',
-          lineHeight: 1.35,
+          margin: '0 0 12px 0',
+          fontSize: Math.max(12, chrome.fontBody + 1),
+          fontWeight: 600,
+          color: '#78350f',
+          lineHeight: 1.4,
         }}
       >
         {failListSearchIntro}
@@ -307,7 +354,17 @@ export function FailList({
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
-        style={{ ...inputStyle, width: '100%' }}
+        style={{
+          ...inputStyle,
+          width: '100%',
+          border: '2.5px solid #d97706',
+          background: '#fff',
+          fontSize: chrome.fontBody + 3,
+          fontWeight: 600,
+          padding: isMobile ? '12px 14px' : '14px 18px',
+          minHeight: chrome.minH + 10,
+          boxShadow: '0 2px 4px rgba(217,119,6,0.12) inset',
+        }}
         placeholder={failListSearchPlaceholder}
       />
       {searchLoading && (
@@ -368,14 +425,41 @@ export function FailList({
   /** 常時表示の作品名入力（送信後は非表示） */
   const titleBlock =
     !submittedNotInList && (
-      <div style={{ ...panelStyle, textAlign: 'left' }}>
+      <div style={{ ...notInListPanelStyle, textAlign: 'left' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            margin: '0 0 4px 0',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{ fontSize: chrome.fontBody + 2, lineHeight: 1 }}
+          >
+            💬
+          </span>
+          <p
+            style={{
+              margin: 0,
+              fontSize: chrome.fontBody + 1,
+              fontWeight: 800,
+              color: '#14532d',
+              lineHeight: 1.3,
+              wordBreak: 'break-word',
+            }}
+          >
+            候補になかった？作品名を教えて！
+          </p>
+        </div>
         <p
           style={{
-            margin: `0 0 ${chrome.gap}px 0`,
-            fontSize: chrome.fontBody,
-            fontWeight: 600,
-            color: 'var(--color-text)',
-            lineHeight: 1.35,
+            margin: `0 0 ${chrome.gap + 2}px 0`,
+            fontSize: Math.max(11, chrome.fontBody - 1),
+            fontWeight: 500,
+            color: '#166534',
+            lineHeight: 1.4,
             wordBreak: 'break-word',
           }}
         >
@@ -396,21 +480,34 @@ export function FailList({
             type="text"
             value={submittedText}
             onChange={(e) => setSubmittedText(e.target.value)}
-            style={{ ...inputStyle, flex: '1 1 180px', minWidth: 0 }}
-            placeholder="作品名"
+            style={{
+              ...inputStyle,
+              flex: '1 1 180px',
+              minWidth: 0,
+              border: '2px solid #16a34a',
+              background: '#fff',
+              fontSize: chrome.fontBody + 1,
+              padding: isMobile ? '10px 12px' : '12px 14px',
+              minHeight: chrome.minH + 4,
+            }}
+            placeholder="作品名（一部・作者名でもOK）"
           />
           <button
             type="button"
             onClick={handleNotInList}
-            disabled={interactionDisabled}
+            disabled={interactionDisabled || !submittedText.trim()}
             style={{
               ...chrome.btnPrimaryInline,
               flex: '0 0 auto',
-              opacity: interactionDisabled ? 0.7 : 1,
-              cursor: interactionDisabled ? 'not-allowed' : 'pointer',
+              background: '#16a34a',
+              borderColor: '#16a34a',
+              color: '#fff',
+              opacity: interactionDisabled || !submittedText.trim() ? 0.6 : 1,
+              cursor: interactionDisabled || !submittedText.trim() ? 'not-allowed' : 'pointer',
+              fontWeight: 700,
             }}
           >
-            送信
+            教える
           </button>
         </div>
       </div>
@@ -430,8 +527,24 @@ export function FailList({
         }}
       >
         {onGoRecommend && (
-          <button type="button" onClick={onGoRecommend} style={chrome.btnWhite}>
-            {failListBtnRecommend}
+          <button
+            type="button"
+            onClick={onGoRecommend}
+            style={{
+              ...chrome.btnWhite,
+              display: 'inline-flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1.15,
+              paddingTop: isMobile ? 4 : 6,
+              paddingBottom: isMobile ? 4 : 6,
+            }}
+          >
+            <span style={{ fontSize: Math.max(10, chrome.fontBody - 3), fontWeight: 500, opacity: 0.78 }}>
+              好みの同人誌を
+            </span>
+            <span style={{ fontWeight: 700 }}>{failListBtnRecommend}</span>
           </button>
         )}
         <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
@@ -457,8 +570,7 @@ export function FailList({
         width: '100%',
       }}
     >
-      <div style={{ ...panelStyle, textAlign: isMobile ? 'left' : 'right' }}>{searchBlock}</div>
-      {titleBlock}
+      <div style={{ ...searchPanelStyle, textAlign: 'left' }}>{searchBlock}</div>
       {actionButtonsRow}
     </div>
   );
