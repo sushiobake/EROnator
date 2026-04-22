@@ -51,6 +51,8 @@ next-env.d.ts
 
 # project backups (use backup:project for local backups)
 /backups/
+# snapshot backups under /backup (singular) used by manual point-in-time backups
+/backup/
 
 # sync timestamp (各環境で個別に管理)
 /data/last-sync.json
