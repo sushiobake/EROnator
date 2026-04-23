@@ -64,3 +64,6 @@ next-env.d.ts
 /data/simulation-results/
 /data/*.bak*
 /data/untagged-*.json
+
+# ファイルバックアップ（deploy:prod 前の安全コピー。Git 履歴には不要）
+*.backup.*

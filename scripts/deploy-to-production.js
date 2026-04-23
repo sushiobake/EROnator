@@ -93,16 +93,37 @@ async function main() {
     }
   }
 
-  // 追跡済みファイルの未コミット変更があるか確認（未追跡＝backups等は無視。prismaの一時ファイルも除外）
+  // 追跡済みの変更 + Untracked なソースファイルを検出してコミット
+  // （git add -u だと新規ファイルが漏れて Vercel ビルド失敗するため両方チェック）
   try {
-    const filter = (names) => names.filter((n) => !/^prisma\/.*\.db-(shm|wal)$/.test(n));
-    const diffWork = filter((execSync('git diff --name-only', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)));
-    const diffCached = filter((execSync('git diff --cached --name-only', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean)));
-    if (diffWork.length > 0 || diffCached.length > 0) {
-      console.log('⚠️  追跡済みファイルに未コミットの変更があります:');
-      if (diffWork.length) diffWork.forEach((l) => console.log('  M ' + l));
-      if (diffCached.length) diffCached.forEach((l) => console.log('  S ' + l));
-      const answer = await question('\n変更をコミットしますか？ (y/n): ');
+    const ignorePrismaTemp = (n) => !/^prisma\/.*\.db-(shm|wal)$/.test(n);
+
+    // 変更済み追跡ファイル
+    const diffWork   = execSync('git diff --name-only',          { encoding: 'utf-8' }).trim().split('\n').filter(Boolean).filter(ignorePrismaTemp);
+    const diffCached = execSync('git diff --cached --name-only', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean).filter(ignorePrismaTemp);
+
+    // Untracked（未追跡）かつ .gitignore に含まれないソースファイル
+    // git ls-files --others --exclude-standard がその一覧を返す
+    const untrackedRaw = execSync('git ls-files --others --exclude-standard', { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    // ソースディレクトリ配下に限定（data/ scripts/ src/ config/ prisma/ public/ lib/）
+    const sourceRe = /^(src|config|scripts|prisma|public|lib)\//;
+    const untracked = untrackedRaw.filter((n) => sourceRe.test(n));
+
+    const hasChanges   = diffWork.length > 0 || diffCached.length > 0;
+    const hasUntracked = untracked.length > 0;
+
+    if (hasChanges || hasUntracked) {
+      if (hasChanges) {
+        console.log('⚠️  追跡済みファイルに未コミットの変更があります:');
+        diffWork.forEach((l)   => console.log('  M ' + l));
+        diffCached.forEach((l) => console.log('  S ' + l));
+      }
+      if (hasUntracked) {
+        console.log('⚠️  新規ファイル（未追跡）があります（コミットしないと Vercel でビルドエラーになります）:');
+        untracked.forEach((l) => console.log('  + ' + l));
+      }
+
+      const answer = await question('\nこれらをコミットしますか？ (y/n): ');
       if (answer.toLowerCase() !== 'y') {
         console.log('❌ デプロイをキャンセルしました。');
         rl.close();
@@ -120,7 +141,13 @@ async function main() {
         rl.close();
         process.exit(1);
       }
+      // 追跡済み変更 + 新規ソースファイルを両方ステージ
       execSync('git add -u', { stdio: 'inherit' });
+      if (untracked.length > 0) {
+        // 新規ファイルは個別に add（ディレクトリ丸ごと add だとゴミが入る恐れがある）
+        const quotedFiles = untracked.map((f) => JSON.stringify(f)).join(' ');
+        execSync(`git add -- ${quotedFiles}`, { stdio: 'inherit' });
+      }
       execSync('git commit -m ' + JSON.stringify(message), { stdio: 'inherit' });
       execSync('git push origin develop', { stdio: 'inherit' });
     }
