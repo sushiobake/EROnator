@@ -263,6 +263,8 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
   const [failListCandidates, setFailListCandidates] = useState<Work[]>([]);
   const [almostSuccessWork, setAlmostSuccessWork] = useState<Work | null>(null);
   const [almostSuccessRecommendedWorks, setAlmostSuccessRecommendedWorks] = useState<(Work & { matchRate?: number })[]>([]);
+  // β: 検索経由で 惜しかった画面 に来た場合にお礼バナーを出す
+  const [almostSuccessCameFromSearch, setAlmostSuccessCameFromSearch] = useState(false);
   const [debugData, setDebugData] = useState<DebugPayload | null>(null);
   const [revealAnalysis, setRevealAnalysis] = useState<any>(null);
   const [debugEnabled, setDebugEnabled] = useState(false);
@@ -855,6 +857,7 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
       const data = await response.json();
       setAlmostSuccessWork(data.work);
       setAlmostSuccessRecommendedWorks(data.recommendedWorks ?? []);
+      setAlmostSuccessCameFromSearch(selectedFrom === 'search');
       setState('ALMOST_SUCCESS');
     } catch (error) {
       console.error('Error loading selected work:', error);
@@ -1146,7 +1149,8 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
             shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
             work={successWork}
             recommendedWorks={successRecommendedWorks}
-            onBackToTop={() => setState('TOP')}
+            onBackToTop={() => { setAlmostSuccessCameFromSearch(false); setState('TOP'); }}
+            onGoRecommend={() => { setAlmostSuccessCameFromSearch(false); setState('RECOMMEND'); }}
             mobileListBelow={isMobile}
             sessionId={sessionId}
             questionCount={questionCount}
@@ -1197,7 +1201,8 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
             shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
             work={almostSuccessWork}
             recommendedWorks={almostSuccessRecommendedWorks}
-            onBackToTop={() => setState('TOP')}
+            onBackToTop={() => { setAlmostSuccessCameFromSearch(false); setState('TOP'); }}
+            onGoRecommend={() => { setAlmostSuccessCameFromSearch(false); setState('RECOMMEND'); }}
             successTitle={gc?.almostSuccessSpeech ?? 'それか～～～！次回は当てるからね！'}
             recommendTitle={gc?.recommendTitle ?? 'そんなあなたには…おすすめもあるわ！'}
             questionCount={questionCount}
@@ -1207,6 +1212,7 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
             mobileListBelow={isMobile}
             sessionId={sessionId}
             streamerMode={streamerMode}
+            showBetaThanks={almostSuccessCameFromSearch}
           />
         </Stage>
       </>

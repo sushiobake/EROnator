@@ -2,6 +2,13 @@
  * 管理画面の本番プレイ履歴：参照元 JSON → 一行説明（日本語）
  */
 
+import {
+  formatTrafficInflowLines,
+  resolveTrafficShortCodeDisplay,
+  PROMO_CHANNELS,
+  type PromoChannelDef,
+} from '@/lib/promoChannelRegistry';
+
 const PAGE_PATH_LABELS: Record<string, string> = {
   '/': 'トップページ（ゲームメイン）',
   '/terms': '利用規約経由',
@@ -18,47 +25,32 @@ function resolvePathLabel(path: string): string {
   return PAGE_PATH_LABELS[cleanPath] ?? path;
 }
 
-/** SNS短縮コード r → 主ラベル・バリアント（x1/x2 は X に丸め、バリアントで区別） */
-export function resolveTrafficShortCodeDisplay(code: string): { label: string; variant?: string } {
-  const c = code.trim().toLowerCase();
-  if (c === 'c') return { label: 'ci-en' };
-  if (c === 'p') return { label: 'pommu' };
-  if (c === 'x') return { label: 'X' };
-  if (c === 'x1' || c === 'x2') return { label: 'X', variant: c };
-  if (c === 'n') return { label: 'note' };
-  if (c === '5ch') return { label: '5ch' };
-  return { label: code.trim() };
-}
+export { resolveTrafficShortCodeDisplay };
 
 export function trafficAttributionSnsColumnLabel(
-  json: string | null | undefined
-): { cell: string; title: string } {
+  json: string | null | undefined,
+  channels: PromoChannelDef[] = PROMO_CHANNELS
+): { cell: string; title: string; line1: string; line2: string | null } {
   if (!json || typeof json !== 'string') {
-    return { cell: 'ー', title: '' };
+    return { cell: 'ー', title: '', line1: 'ー', line2: null };
   }
   try {
     const o = JSON.parse(json) as { r?: string | null; ct?: string | null };
     const raw = typeof o.r === 'string' ? o.r.trim() : '';
     if (!raw) {
-      return { cell: 'ー', title: '' };
+      return { cell: 'ー', title: '', line1: 'ー', line2: null };
     }
-    const { label, variant } = resolveTrafficShortCodeDisplay(raw);
     const ct = typeof o.ct === 'string' ? o.ct.trim() : '';
-    const cell = label;
-    let title = label;
-    if (variant) {
-      title = ct ? `${label}（${variant}: ${ct}）` : `${label}（${variant}）`;
-    } else if (ct) {
-      title = `${label}（${ct}）`;
-    }
-    return { cell, title: title || cell };
+    const { line1, line2, title, cell } = formatTrafficInflowLines(raw, ct || null, channels);
+    return { cell, title, line1, line2 };
   } catch {
-    return { cell: 'ー', title: '' };
+    return { cell: 'ー', title: '', line1: 'ー', line2: null };
   }
 }
 
 export function trafficAttributionAdminLabel(
-  json: string | null | undefined
+  json: string | null | undefined,
+  channels: PromoChannelDef[] = PROMO_CHANNELS
 ): { short: string; title: string } {
   if (!json || typeof json !== 'string') {
     return { short: '', title: '' };
@@ -75,13 +67,11 @@ export function trafficAttributionAdminLabel(
 
     const rawR = typeof o.r === 'string' ? o.r.trim() : '';
     if (rawR) {
-      const { label, variant } = resolveTrafficShortCodeDisplay(rawR);
       const ct = typeof o.ct === 'string' ? o.ct.trim() : '';
-      const main = variant ? `${label}（${variant}）` : label;
+      const { line1, line2, title } = formatTrafficInflowLines(rawR, ct || null, channels);
+      const main = line2 ? `${line1} / ${line2}` : line1;
       const shortBase = `計測（短縮）：${main}`;
       const short = shortBase.length > 52 ? `${shortBase.slice(0, 49)}…` : shortBase;
-      let title = main;
-      if (ct) title = `${main} / キャンペーン：${ct}`;
       return { short, title: title.length > 0 ? title : json };
     }
 

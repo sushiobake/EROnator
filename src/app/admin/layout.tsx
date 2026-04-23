@@ -5,6 +5,7 @@
 
 import { notFound } from 'next/navigation';
 import { AdminProgressProvider } from './context/AdminProgressContext';
+import { PromoChannelsProvider } from './context/PromoChannelsContext';
 import ProgressPanel from './components/ProgressPanel';
 
 export default function AdminLayout({
@@ -17,8 +18,10 @@ export default function AdminLayout({
   }
   return (
     <AdminProgressProvider>
-      {children}
-      <ProgressPanel />
+      <PromoChannelsProvider>
+        {children}
+        <ProgressPanel />
+      </PromoChannelsProvider>
     </AdminProgressProvider>
   );
 }

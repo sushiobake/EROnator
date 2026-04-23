@@ -26,6 +26,16 @@ export interface ResultScreenFourButtonsProps {
   onBackToTop?: () => void;
   /** true: 保存行とポスト行を分ける（各行情報は横並び） */
   isMobile: boolean;
+  /** 「ポストする」ボタンのラベル上書き（例: '推薦してもらう'） */
+  postLabel?: string;
+  /** true: Xロゴを非表示（ポスト以外の用途に使う時） */
+  postHideIcon?: boolean;
+  /** 「ポストする」相当の背景色上書き（省略時は黒） */
+  postBackground?: string;
+  /** true: 「ポスト」ボタンを先頭に出し、PC は [post, save, mosaic, top]、モバイルは post=フル幅→保存/モザイク→top=フル幅 */
+  postFirst?: boolean;
+  /** 「ポスト」ボタンのメインラベル上に小さく出す文字（例: '好みの同人誌を'） */
+  postLabelPrefix?: string;
 }
 
 export function ResultScreenFourButtons({
@@ -34,6 +44,11 @@ export function ResultScreenFourButtons({
   onPost,
   onBackToTop,
   isMobile,
+  postLabel,
+  postHideIcon,
+  postBackground,
+  postFirst,
+  postLabelPrefix,
 }: ResultScreenFourButtonsProps) {
   const pad = isMobile ? '5px 8px' : '10px 16px';
   const fontSize = isMobile ? 11 : 13;
@@ -62,7 +77,7 @@ export function ResultScreenFourButtons({
     padding: pad,
     fontSize,
     fontWeight: 600,
-    backgroundColor: '#000',
+    backgroundColor: postBackground ?? '#000',
     color: '#fff',
     border: 'none',
     borderRadius: radius,
@@ -73,6 +88,33 @@ export function ResultScreenFourButtons({
     gap: isMobile ? 4 : 6,
     boxShadow: '0 1px 4px rgba(0, 0, 0, 0.25)',
   };
+
+  // post ボタン中身（prefix があれば 2 行レイアウト）
+  const postIconSize = isMobile ? 12 : 16;
+  const postPrefixFs = Math.max(10, fontSize - 3);
+  const postInner = postLabelPrefix ? (
+    <>
+      {!postHideIcon && <XLogo size={postIconSize} />}
+      <span
+        style={{
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          lineHeight: 1.15,
+        }}
+      >
+        <span style={{ fontSize: postPrefixFs, fontWeight: 500, opacity: 0.85 }}>
+          {postLabelPrefix}
+        </span>
+        <span style={{ fontWeight: 700 }}>{postLabel ?? 'ポストする'}</span>
+      </span>
+    </>
+  ) : (
+    <>
+      {!postHideIcon && <XLogo size={postIconSize} />}
+      {postLabel ?? 'ポストする'}
+    </>
+  );
 
   const btnTop: CSSProperties = {
     flex: 1,
@@ -122,6 +164,41 @@ export function ResultScreenFourButtons({
       };
 
   if (isMobile) {
+    if (postFirst) {
+      // レイアウト: [推薦フル幅] / [保存・モザイク] / [トップフル幅]
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP_MOBILE, width: '100%' }}>
+          <button
+            type="button"
+            onClick={onPost}
+            style={{ ...btnPost, flex: '1 1 100%', maxWidth: '100%' }}
+          >
+            {postInner}
+          </button>
+          {(onSavePlain || onSaveMosaic) && (
+            <div style={{ ...row, gap: ROW_GAP_MOBILE }}>
+              {onSavePlain && (
+                <button type="button" onClick={onSavePlain} style={btnSave}>
+                  結果を保存
+                </button>
+              )}
+              {onSaveMosaic && (
+                <button type="button" onClick={onSaveMosaic} style={saveMosaicStyle}>
+                  <span>結果を</span>
+                  <span>「モザイクで」</span>
+                  <span>保存</span>
+                </button>
+              )}
+            </div>
+          )}
+          {onBackToTop && (
+            <button type="button" onClick={onBackToTop} style={{ ...btnTop, flex: '1 1 100%', maxWidth: '100%' }}>
+              トップに戻る
+            </button>
+          )}
+        </div>
+      );
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP_MOBILE, width: '100%' }}>
         <div style={{ ...row, gap: ROW_GAP_MOBILE }}>
@@ -147,8 +224,7 @@ export function ResultScreenFourButtons({
               ...(onBackToTop ? {} : { flex: '1 1 100%', maxWidth: '100%' }),
             }}
           >
-            <XLogo size={12} />
-            ポストする
+            {postInner}
           </button>
           {onBackToTop && (
             <button type="button" onClick={onBackToTop} style={btnTop}>
@@ -160,29 +236,46 @@ export function ResultScreenFourButtons({
     );
   }
 
+  const postButton = (
+    <button type="button" onClick={onPost} style={btnPost}>
+      {postInner}
+    </button>
+  );
+  const saveButton = onSavePlain ? (
+    <button type="button" onClick={onSavePlain} style={btnSave}>
+      結果を保存
+    </button>
+  ) : null;
+  const mosaicButton = onSaveMosaic ? (
+    <button type="button" onClick={onSaveMosaic} style={saveMosaicStyle}>
+      <span>結果を</span>
+      <span>「モザイクで」</span>
+      <span>保存</span>
+    </button>
+  ) : null;
+  const topButton = onBackToTop ? (
+    <button type="button" onClick={onBackToTop} style={btnTop}>
+      トップに戻る
+    </button>
+  ) : null;
+
+  if (postFirst) {
+    return (
+      <div style={row}>
+        {postButton}
+        {saveButton}
+        {mosaicButton}
+        {topButton}
+      </div>
+    );
+  }
+
   return (
     <div style={row}>
-      {onSavePlain && (
-        <button type="button" onClick={onSavePlain} style={btnSave}>
-          結果を保存
-        </button>
-      )}
-      {onSaveMosaic && (
-        <button type="button" onClick={onSaveMosaic} style={saveMosaicStyle}>
-          <span>結果を</span>
-          <span>「モザイクで」</span>
-          <span>保存</span>
-        </button>
-      )}
-      <button type="button" onClick={onPost} style={btnPost}>
-        <XLogo size={16} />
-        ポストする
-      </button>
-      {onBackToTop && (
-        <button type="button" onClick={onBackToTop} style={btnTop}>
-          トップに戻る
-        </button>
-      )}
+      {saveButton}
+      {mosaicButton}
+      {postButton}
+      {topButton}
     </div>
   );
 }

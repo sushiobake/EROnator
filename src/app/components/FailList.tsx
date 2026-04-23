@@ -14,6 +14,12 @@ import {
 import { useMediaQuery } from './useMediaQuery';
 import { useClickGuard } from './useClickGuard';
 import { StreamerCensoredText } from './StreamerCensoredText';
+import {
+  BETA_SUPPORT_ENABLED,
+  FailListDevMessageBanner,
+  RetentionModal,
+  RETENTION_MODAL_SKIP_BTN_DEFAULT,
+} from './betaSupport';
 
 interface FailListCandidateItem {
   workId: string;
@@ -188,6 +194,10 @@ export function FailList({
 }: FailListProps) {
   const [submittedText, setSubmittedText] = useState('');
   const [submittedNotInList, setSubmittedNotInList] = useState(false);
+  // β: 「推薦してもらう」「トップに戻る」押下時の引き留めモーダル
+  const [retentionModalOpen, setRetentionModalOpen] = useState(false);
+  const [retentionModalTarget, setRetentionModalTarget] = useState<'recommend' | 'top' | null>(null);
+  const [retentionShown, setRetentionShown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchCandidateItem[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -226,6 +236,41 @@ export function FailList({
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const handleGoRecommendWithRetention = () => {
+    if (interactionDisabled) return;
+    if (BETA_SUPPORT_ENABLED && !retentionShown) {
+      setRetentionModalTarget('recommend');
+      setRetentionModalOpen(true);
+      setRetentionShown(true);
+      return;
+    }
+    onGoRecommend?.();
+  };
+
+  const handleBackToTopWithRetention = () => {
+    if (interactionDisabled) return;
+    if (BETA_SUPPORT_ENABLED && !retentionShown) {
+      setRetentionModalTarget('top');
+      setRetentionModalOpen(true);
+      setRetentionShown(true);
+      return;
+    }
+    onBackToTop();
+  };
+
+  const proceedAfterRetention = () => {
+    setRetentionModalOpen(false);
+    if (retentionModalTarget === 'recommend') onGoRecommend?.();
+    else if (retentionModalTarget === 'top') onBackToTop();
+  };
+
+  const retentionSkipLabel =
+    retentionModalTarget === 'recommend'
+      ? failListBtnRecommend
+      : retentionModalTarget === 'top'
+        ? failListBtnTop
+        : RETENTION_MODAL_SKIP_BTN_DEFAULT;
 
   const handleNotInList = () => {
     if (interactionDisabled || !submittedText.trim()) return;
@@ -529,7 +574,7 @@ export function FailList({
         {onGoRecommend && (
           <button
             type="button"
-            onClick={onGoRecommend}
+            onClick={handleGoRecommendWithRetention}
             style={{
               ...chrome.btnWhite,
               display: 'inline-flex',
@@ -547,7 +592,7 @@ export function FailList({
             <span style={{ fontWeight: 700 }}>{failListBtnRecommend}</span>
           </button>
         )}
-        <button type="button" onClick={onBackToTop} style={chrome.btnTop}>
+        <button type="button" onClick={handleBackToTopWithRetention} style={chrome.btnTop}>
           {failListBtnTop}
         </button>
       </div>
@@ -570,6 +615,7 @@ export function FailList({
         width: '100%',
       }}
     >
+      <FailListDevMessageBanner />
       <div style={{ ...searchPanelStyle, textAlign: 'left' }}>{searchBlock}</div>
       {actionButtonsRow}
     </div>
@@ -577,6 +623,13 @@ export function FailList({
 
   if (isMobile) {
     return (
+      <>
+      <RetentionModal
+        open={retentionModalOpen}
+        onClose={() => setRetentionModalOpen(false)}
+        onProceed={proceedAfterRetention}
+        skipLabel={retentionSkipLabel}
+      />
       <div style={{ padding: '0.75rem 0', maxWidth: '100%', minWidth: 0, width: '100%' }}>
         {candidatesRenderedBelow ? (
           <div style={{ textAlign: 'center', marginBottom: '0.45rem' }}>
@@ -601,10 +654,18 @@ export function FailList({
         <div style={{ marginTop: candidatesRenderedBelow ? 0 : '0.75rem' }}>{rightColumnStack}</div>
         {submittedResetBlock}
       </div>
+      </>
     );
   }
 
   return (
+    <>
+    <RetentionModal
+      open={retentionModalOpen}
+      onClose={() => setRetentionModalOpen(false)}
+      onProceed={proceedAfterRetention}
+      skipLabel={retentionSkipLabel}
+    />
     <div style={{ padding: '0.25rem 0 0 0', maxWidth: '100%', minWidth: 0, width: '100%', boxSizing: 'border-box' }}>
       <div
         style={{
@@ -622,5 +683,6 @@ export function FailList({
         <div style={{ minWidth: 0 }}>{rightColumnStack}</div>
       </div>
     </div>
+    </>
   );
 }

@@ -1,107 +1,16 @@
 'use client';
 
 /**
- * SNS 等への配布用トラッキング URL（?r= / &ct= / 任意 UTM）を組み立てる管理画面用パネル。
- * - 投稿テンプレート自動生成（X / ci-en / note / 汎用）
- * - 直近で作った URL の履歴（localStorage）＋ ct プリセット
- * - QR コード生成（外部 API を <img> で読むだけ）
- * - 新しいタブで開くボタン
- * - UTM 併記モード（twitter/ci-en/note/pommu/5ch へマッピング）
+ * 配布用トラッキング URL の組み立てと、配布先マスタの編集（このブラウザのローカルストレージに保存）。
  */
 
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-
-type ChannelId = 'c' | 'p' | 'x' | 'x1' | 'x2' | 'n' | '5ch';
-
-const CHANNELS: Array<{ id: ChannelId; label: string; hint?: string }> = [
-  { id: 'c', label: 'ci-en', hint: 'r=c' },
-  { id: 'p', label: 'pommu', hint: 'r=p' },
-  { id: 'x', label: 'X（一般）', hint: 'r=x' },
-  { id: 'x1', label: 'X（キャンペーン枠1）', hint: 'r=x1' },
-  { id: 'x2', label: 'X（キャンペーン枠2）', hint: 'r=x2' },
-  { id: 'n', label: 'note', hint: 'r=n' },
-  { id: '5ch', label: '5ch', hint: 'r=5ch' },
-];
-
-// r コード → UTM source/medium のマッピング
-const UTM_MAP: Record<ChannelId, { source: string; medium: string }> = {
-  c:  { source: 'ci-en',  medium: 'blog' },
-  p:  { source: 'pommu',  medium: 'community' },
-  x:  { source: 'twitter', medium: 'sns' },
-  x1: { source: 'twitter', medium: 'sns' },
-  x2: { source: 'twitter', medium: 'sns' },
-  n:  { source: 'note',   medium: 'blog' },
-  '5ch': { source: '5ch', medium: 'forum' },
-};
-
-// 投稿テンプレート。{url} を生成 URL に置換する
-interface PostTemplate {
-  id: string;
-  label: string;
-  body: string;
-}
-
-const POST_TEMPLATES: Record<ChannelId | 'generic', PostTemplate[]> = {
-  x: [
-    {
-      id: 'x-standard',
-      label: '標準フック（140字前後）',
-      body: '【同人誌クイズ】あなたが頭に思い浮かべた同人誌、エロネイターが30問以内に当ててみせる🔮\n#エロネイター #同人誌\n{url}',
-    },
-    {
-      id: 'x-challenge',
-      label: '挑戦状タイプ',
-      body: 'エロネイターを困らせろ選手権。外せば君の勝ち。\n30問までに同人誌を当てます。\n#エロネイター\n{url}',
-    },
-    {
-      id: 'x-result',
-      label: '結果シェア想定',
-      body: '妄想した同人誌、AI にバレた…\nあなたも試してみる？\n#エロネイター\n{url}',
-    },
-  ],
-  x1: [],
-  x2: [],
-  c: [
-    {
-      id: 'cien-intro',
-      label: '記事用（挨拶あり）',
-      body: 'こんにちは、エロネイターです🔮\n\nあなたが頭に思い浮かべた同人誌を、30問以内に当ててみせます。\n遊んでみた感想や「これも当ててほしい！」というお題を、ぜひコメントで教えてください。\n\n▼ プレイはこちら\n{url}',
-    },
-    {
-      id: 'cien-short',
-      label: '短文・お知らせ用',
-      body: '【更新情報】エロネイター、今週も質問チューニング中です。\n30問以内でどれだけ当てられるか試してもらえると嬉しいです。\n\n{url}',
-    },
-  ],
-  p: [
-    {
-      id: 'pommu-generic',
-      label: '一般告知用',
-      body: 'エロネイターで「妄想した同人誌」を当ててもらうゲーム、公開しています。\n30問以内に当てる／外すの二択、気軽に一度遊んでみてください。\n\n{url}',
-    },
-  ],
-  n: [
-    {
-      id: 'note-lead',
-      label: 'note 記事リード用',
-      body: 'あなたが頭に浮かべた同人誌、AI が 30 問で当てます\n— エロネイター\n\n▼ 遊べる場所\n{url}\n',
-    },
-  ],
-  '5ch': [
-    {
-      id: '5ch-minimal',
-      label: '最小文体（慎重に）',
-      body: '同人誌当てるAIみたいなのがあったので貼っとく\n30問以内で当てるってやつ\n{url}',
-    },
-  ],
-  generic: [
-    {
-      id: 'generic-plain',
-      label: '汎用 1 行',
-      body: '同人誌当てAI「エロネイター」: {url}',
-    },
-  ],
-};
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import {
+  getPostTemplatesForChannel,
+  getPromoUtm,
+  type PromoChannelDef,
+} from '@/lib/promoChannelRegistry';
+import { usePromoChannels } from '../context/PromoChannelsContext';
 
 const HISTORY_KEY = 'eronator_promo_url_history_v1';
 const HISTORY_MAX = 10;
@@ -109,7 +18,7 @@ const HISTORY_MAX = 10;
 interface HistoryEntry {
   id: string;
   url: string;
-  channel: ChannelId;
+  channel: string;
   ct: string;
   utm: boolean;
   savedAt: string;
@@ -185,14 +94,308 @@ const smallBtn: CSSProperties = {
   cursor: 'pointer',
 };
 
+const labelCol: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+  fontSize: '0.82rem',
+};
+
+const inputBase: CSSProperties = {
+  padding: '0.4rem 0.5rem',
+  fontSize: '0.86rem',
+  borderRadius: 6,
+  border: '1px solid #cbd5e1',
+  width: '100%',
+  boxSizing: 'border-box',
+};
+
+function PromoChannelMasterBlock(props: {
+  channels: PromoChannelDef[];
+  upsertChannel: (ch: PromoChannelDef) => void;
+  removeChannel: (id: string) => void;
+  resetToDefaults: () => void;
+}) {
+  const { channels, upsertChannel, removeChannel, resetToDefaults } = props;
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [fid, setFid] = useState('');
+  const [flabel, setFlabel] = useState('');
+  const [fhint, setFhint] = useState('');
+  const [fsns, setFsns] = useState('');
+  const [futmS, setFutms] = useState('');
+  const [futmM, setFutmm] = useState('');
+  const [finherit, setFinherit] = useState('');
+  const [fbody, setFbody] = useState('');
+  const [formError, setFormError] = useState('');
+
+  const openCreate = () => {
+    setEditingId(null);
+    setFid('');
+    setFlabel('');
+    setFhint('');
+    setFsns('');
+    setFutms('eronator');
+    setFutmm('promo');
+    setFinherit('');
+    setFbody('');
+    setFormError('');
+    setFormOpen(true);
+  };
+
+  const openEdit = (ch: PromoChannelDef) => {
+    setEditingId(ch.id);
+    setFid(ch.id);
+    setFlabel(ch.label);
+    setFhint(ch.hint ?? '');
+    setFsns(ch.snsName);
+    setFutms(ch.utm.source);
+    setFutmm(ch.utm.medium);
+    setFinherit(ch.inheritTemplatesFrom ?? '');
+    setFbody(ch.postTemplates?.[0]?.body ?? '');
+    setFormError('');
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    setFormOpen(false);
+    setFormError('');
+  };
+
+  const handleSave = () => {
+    setFormError('');
+    const idNorm = fid.trim().toLowerCase();
+    if (!idNorm || idNorm.length > 32 || !/^[a-z0-9_-]+$/.test(idNorm)) {
+      setFormError('識別子は 32 文字以内の英小文字・数字・ハイフン・アンダースコアのみにしてください。');
+      return;
+    }
+    if (editingId == null && channels.some((c) => c.id.toLowerCase() === idNorm)) {
+      setFormError('同じ識別子の配布先がすでにあります。');
+      return;
+    }
+    if (editingId != null && editingId !== idNorm) {
+      setFormError('識別子は編集では変更できません。');
+      return;
+    }
+    const labelT = flabel.trim();
+    const snsT = fsns.trim();
+    if (!labelT || !snsT) {
+      setFormError('表示名と流入用の短い名前は必須です。');
+      return;
+    }
+    const us = futmS.trim();
+    const um = futmM.trim();
+    if (!us || !um) {
+      setFormError('ＵＴＭの source / medium は必須です。');
+      return;
+    }
+    const inh = finherit.trim().toLowerCase();
+    const inheritOk =
+      inh !== '' &&
+      inh !== idNorm &&
+      channels.some((c) => c.id.toLowerCase() === inh);
+
+    const next: PromoChannelDef = {
+      id: idNorm,
+      label: labelT,
+      snsName: snsT,
+      utm: { source: us, medium: um },
+      ...(fhint.trim() ? { hint: fhint.trim() } : {}),
+      ...(inheritOk ? { inheritTemplatesFrom: inh } : {}),
+    };
+    if (!inheritOk && fbody.trim()) {
+      next.postTemplates = [{ id: `${idNorm}-tpl`, label: 'カスタム', body: fbody.trim() }];
+    }
+    upsertChannel(next);
+    closeForm();
+  };
+
+  const handleReset = () => {
+    if (!confirm('配布先マスタをアプリ同梱の既定一覧に戻します。このブラウザに保存した上書きは消えます。よろしいですか？')) return;
+    resetToDefaults();
+    closeForm();
+  };
+
+  const inheritOptions = channels.filter((c) => c.id.toLowerCase() !== fid.trim().toLowerCase());
+
+  return (
+    <div style={{ ...sectionCard, marginBottom: '1rem', maxWidth: '1120px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+        <strong style={{ fontSize: '0.95rem', color: '#0f172a' }}>配布先マスタの編集</strong>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <button type="button" onClick={openCreate} style={{ ...smallBtn, fontWeight: 600, borderColor: '#0369a1', color: '#0369a1' }}>
+            新規追加
+          </button>
+          <button type="button" onClick={handleReset} style={{ ...smallBtn, color: '#b45309', borderColor: '#fdba74', background: '#fffbeb' }}>
+            既定に戻す
+          </button>
+        </div>
+      </div>
+      <p style={{ margin: '0 0 0.6rem 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.55 }}>
+        ここで保存した一覧は<strong>このブラウザだけ</strong>に残ります。本番プレイ履歴の「流入」列の表示名とも共通です。別の端末では同じ内容にしたい場合は、手動で同じ設定を入れてください。
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
+              <th style={{ textAlign: 'left', padding: '0.35rem 0.4rem' }}>識別子（ｒ＝）</th>
+              <th style={{ textAlign: 'left', padding: '0.35rem 0.4rem' }}>表示名</th>
+              <th style={{ textAlign: 'left', padding: '0.35rem 0.4rem' }}>流入短名</th>
+              <th style={{ textAlign: 'left', padding: '0.35rem 0.4rem' }}>テンプレ流用</th>
+              <th style={{ textAlign: 'right', padding: '0.35rem 0.4rem', whiteSpace: 'nowrap' }}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {channels.map((ch) => (
+              <tr key={ch.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                <td style={{ padding: '0.35rem 0.4rem', fontFamily: 'ui-monospace, monospace' }}>{ch.id}</td>
+                <td style={{ padding: '0.35rem 0.4rem' }}>{ch.label}</td>
+                <td style={{ padding: '0.35rem 0.4rem' }}>{ch.snsName}</td>
+                <td style={{ padding: '0.35rem 0.4rem', color: ch.inheritTemplatesFrom ? '#0369a1' : '#94a3b8' }}>
+                  {ch.inheritTemplatesFrom ?? '—'}
+                </td>
+                <td style={{ padding: '0.35rem 0.4rem', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button type="button" onClick={() => openEdit(ch)} style={{ ...smallBtn, marginRight: '0.25rem' }}>
+                    編集
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (channels.length <= 1) {
+                        alert('配布先は最低 1 件必要です。');
+                        return;
+                      }
+                      if (!confirm(`「${ch.label}」（r=${ch.id}）を削除しますか？`)) return;
+                      removeChannel(ch.id);
+                      if (formOpen && editingId === ch.id) closeForm();
+                    }}
+                    style={{ ...smallBtn, color: '#b91c1c', borderColor: '#fecaca', background: '#fef2f2' }}
+                  >
+                    削除
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {formOpen && (
+        <div
+          style={{
+            marginTop: '0.85rem',
+            padding: '0.85rem',
+            background: '#fff',
+            border: '1px solid #bae6fd',
+            borderRadius: 8,
+            display: 'grid',
+            gap: '0.65rem',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          }}
+        >
+          <div style={{ gridColumn: '1 / -1', fontWeight: 700, fontSize: '0.88rem', color: '#0c4a6e' }}>
+            {editingId == null ? '新しい配布先' : `編集: ${editingId}`}
+          </div>
+          <label style={labelCol}>
+            <span>識別子（ＵＲＬの ｒ＝ 。英小文字・数字・- と _ のみ）</span>
+            <input
+              style={inputBase}
+              value={fid}
+              onChange={(e) => setFid(e.target.value)}
+              disabled={editingId != null}
+              maxLength={32}
+              placeholder="例: mysns"
+            />
+          </label>
+          <label style={labelCol}>
+            <span>セレクト用の表示名</span>
+            <input style={inputBase} value={flabel} onChange={(e) => setFlabel(e.target.value)} placeholder="例: 私の掲示板" />
+          </label>
+          <label style={labelCol}>
+            <span>ヒント（任意・セレクトの括弧内）</span>
+            <input style={inputBase} value={fhint} onChange={(e) => setFhint(e.target.value)} placeholder="空なら r=識別子 と表示" />
+          </label>
+          <label style={labelCol}>
+            <span>流入列の短い名前</span>
+            <input style={inputBase} value={fsns} onChange={(e) => setFsns(e.target.value)} placeholder="例: 掲示板" />
+          </label>
+          <label style={labelCol}>
+            <span>ＵＴＭ source</span>
+            <input style={inputBase} value={futmS} onChange={(e) => setFutms(e.target.value)} />
+          </label>
+          <label style={labelCol}>
+            <span>ＵＴＭ medium</span>
+            <input style={inputBase} value={futmM} onChange={(e) => setFutmm(e.target.value)} />
+          </label>
+          <label style={{ ...labelCol, gridColumn: '1 / -1' }}>
+            <span>投稿テンプレを別の配布先から流用（空なら流用なし）</span>
+            <select style={inputBase} value={finherit} onChange={(e) => setFinherit(e.target.value)}>
+              <option value="">（流用しない）</option>
+              {inheritOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}（r={c.id}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ ...labelCol, gridColumn: '1 / -1' }}>
+            <span>独自の投稿テンプレ本文（任意。流用を選んでいるときは無視されます。{'{url}'} を含めてください）</span>
+            <textarea
+              style={{ ...inputBase, minHeight: '88px', fontFamily: 'ui-monospace, monospace', resize: 'vertical' }}
+              value={fbody}
+              onChange={(e) => setFbody(e.target.value)}
+              placeholder="空なら汎用の 1 行テンプレになります。"
+            />
+          </label>
+          {formError ? (
+            <div style={{ gridColumn: '1 / -1', color: '#b91c1c', fontSize: '0.8rem' }}>{formError}</div>
+          ) : null}
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleSave}
+              style={{
+                padding: '0.45rem 1rem',
+                fontSize: '0.86rem',
+                fontWeight: 700,
+                background: '#0369a1',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+              }}
+            >
+              保存
+            </button>
+            <button type="button" onClick={closeForm} style={{ ...smallBtn, padding: '0.45rem 0.85rem' }}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PromoTrackingLinkPanel() {
-  const [channel, setChannel] = useState<ChannelId>('x');
+  const { channels, upsertChannel, removeChannel, resetToDefaults } = usePromoChannels();
+
+  const defaultChannelId = useMemo(
+    () => channels.find((c) => c.id === 'x')?.id ?? channels[0]?.id ?? 'x',
+    [channels]
+  );
+
+  const [channel, setChannel] = useState<string>('x');
   const [campaign, setCampaign] = useState('');
   const [baseOverride, setBaseOverride] = useState('');
   const [includeUtm, setIncludeUtm] = useState(false);
   const [copiedKind, setCopiedKind] = useState<'url' | 'template' | null>(null);
   const [templateId, setTemplateId] = useState<string>('');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+
+  useEffect(() => {
+    setChannel((prev) => (channels.some((c) => c.id === prev) ? prev : defaultChannelId));
+  }, [channels, defaultChannelId]);
 
   useEffect(() => {
     setHistory(safeLoadHistory());
@@ -210,15 +413,8 @@ export function PromoTrackingLinkPanel() {
     }
   }, [baseOverride]);
 
-  // X の x1/x2 は x と同じテンプレ一覧を流用する
-  const effectiveTemplatesKey: ChannelId | 'generic' = (() => {
-    if (channel === 'x1' || channel === 'x2') return 'x';
-    return channel;
-  })();
-  const channelTemplates = POST_TEMPLATES[effectiveTemplatesKey] ?? [];
-  const templates = channelTemplates.length > 0 ? channelTemplates : POST_TEMPLATES.generic;
+  const templates = useMemo(() => getPostTemplatesForChannel(channel, channels), [channel, channels]);
 
-  // チャネル変更時はテンプレを先頭にリセット
   useEffect(() => {
     setTemplateId(templates[0]?.id ?? '');
   }, [channel]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,13 +426,13 @@ export function PromoTrackingLinkPanel() {
     const ct = campaign.trim();
     if (ct) q.set('ct', ct);
     if (includeUtm) {
-      const u = UTM_MAP[channel];
+      const u = getPromoUtm(channel, channels);
       q.set('utm_source', u.source);
       q.set('utm_medium', u.medium);
       if (ct) q.set('utm_campaign', ct);
     }
     return `${origin}/?${q.toString()}`;
-  }, [origin, channel, campaign, includeUtm]);
+  }, [origin, channel, campaign, includeUtm, channels]);
 
   const selectedTemplate = templates.find((t) => t.id === templateId) ?? templates[0] ?? null;
   const renderedTemplate = selectedTemplate
@@ -261,14 +457,14 @@ export function PromoTrackingLinkPanel() {
     ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=${encodeURIComponent(fullUrl)}`
     : '';
 
-  const pushHistory = (entry: HistoryEntry) => {
+  const pushHistory = useCallback((entry: HistoryEntry) => {
     setHistory((prev) => {
       const deduped = prev.filter((p) => p.url !== entry.url);
       const next = [entry, ...deduped].slice(0, HISTORY_MAX);
       safeSaveHistory(next);
       return next;
     });
-  };
+  }, []);
 
   const markRecentEntry = () => {
     if (!fullUrl) return;
@@ -330,6 +526,13 @@ export function PromoTrackingLinkPanel() {
     <section style={{ marginTop: '1rem', maxWidth: '1120px' }}>
       <h2 style={{ marginBottom: '0.75rem', fontSize: '1.1rem', fontWeight: 600 }}>配布用トラッキングURL</h2>
 
+      <PromoChannelMasterBlock
+        channels={channels}
+        upsertChannel={upsertChannel}
+        removeChannel={removeChannel}
+        resetToDefaults={resetToDefaults}
+      />
+
       <div
         style={{
           display: 'flex',
@@ -339,7 +542,6 @@ export function PromoTrackingLinkPanel() {
           flexWrap: 'wrap',
         }}
       >
-        {/* 左: 作業エリア */}
         <div
           style={{
             flex: '1 1 340px',
@@ -354,17 +556,19 @@ export function PromoTrackingLinkPanel() {
             SNS・掲示板・ブログなどに貼る URL を組み立てます。プレイ開始後、<strong>本番プレイ履歴</strong>の「流入」列に記録されます。
           </p>
 
-          {/* 基本設定 */}
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.88rem' }}>
             <span style={{ fontWeight: 600 }}>配布先</span>
             <select
-              value={channel}
-              onChange={(e) => setChannel(e.target.value as ChannelId)}
+              value={channels.some((c) => c.id === channel) ? channel : defaultChannelId}
+              onChange={(e) => setChannel(e.target.value)}
               style={{ padding: '0.45rem 0.5rem', fontSize: '0.9rem', borderRadius: 6, border: '1px solid #ccc', width: '100%', maxWidth: '400px' }}
             >
-              {CHANNELS.map((ch) => (
+              {!channels.some((c) => c.id === channel) && (
+                <option value={channel}>r={channel}（マスタ未登録）</option>
+              )}
+              {channels.map((ch) => (
                 <option key={ch.id} value={ch.id}>
-                  {ch.label}（{ch.hint}）
+                  {ch.label}（{ch.hint ?? `r=${ch.id}`}）
                 </option>
               ))}
             </select>
@@ -428,7 +632,6 @@ export function PromoTrackingLinkPanel() {
             />
           </label>
 
-          {/* 生成URL 表示＆コピー／新タブ */}
           <div
             style={{
               padding: '0.85rem 1rem',
@@ -481,7 +684,6 @@ export function PromoTrackingLinkPanel() {
             <span style={{ fontSize: '0.78rem', color: '#64748b' }}>コピーや新タブを押すと履歴に保存されます。</span>
           </div>
 
-          {/* 投稿テンプレート */}
           <div style={{ ...sectionCard, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
               <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>投稿テンプレート</strong>
@@ -536,7 +738,6 @@ export function PromoTrackingLinkPanel() {
             </div>
           </div>
 
-          {/* QR コード */}
           {qrImgUrl && (
             <div style={{ ...sectionCard, display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
               <img
@@ -555,7 +756,6 @@ export function PromoTrackingLinkPanel() {
             </div>
           )}
 
-          {/* 過去の生成履歴 */}
           {history.length > 0 && (
             <div style={{ ...sectionCard, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -568,7 +768,7 @@ export function PromoTrackingLinkPanel() {
               </div>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 {history.map((h) => {
-                  const chLabel = CHANNELS.find((c) => c.id === h.channel)?.label ?? h.channel;
+                  const chLabel = channels.find((c) => c.id === h.channel)?.label ?? h.channel;
                   const savedLabel = (() => {
                     try {
                       return new Date(h.savedAt).toLocaleString('ja-JP');
@@ -648,7 +848,6 @@ export function PromoTrackingLinkPanel() {
           )}
         </div>
 
-        {/* 右: 使い方・説明 */}
         <aside
           style={{
             flex: '1 1 320px',
@@ -684,6 +883,15 @@ export function PromoTrackingLinkPanel() {
                   <strong style={{ color: '#075985' }}>UTM 併記</strong>…GA など外部計測とも揃えたいときに ON。<code style={codeInline}>utm_source</code>/<code style={codeInline}>utm_medium</code> が自動で付きます（X→twitter、ci-en→ci-en、note→note 等）。
                 </li>
               </ul>
+              <p style={guideHeading}>配布先マスタについて</p>
+              <ul style={{ margin: '0 0 0.85rem 1.1rem', padding: 0 }}>
+                <li style={{ marginBottom: '0.35rem' }}>
+                  画面上部の<strong>配布先マスタの編集</strong>で、識別子・表示名・流入用の短い名前・ＵＴＭなどを追加・変更できます。保存先はこのブラウザのローカルストレージです。
+                </li>
+                <li>
+                  <strong>既定に戻す</strong>でアプリ同梱の初期一覧に戻せます。
+                </li>
+              </ul>
               <p style={guideHeading}>投稿テンプレートの使い方</p>
               <ul style={{ margin: '0 0 0.85rem 1.1rem', padding: 0 }}>
                 <li style={{ marginBottom: '0.35rem' }}>
@@ -705,7 +913,7 @@ export function PromoTrackingLinkPanel() {
               <p style={guideHeading}>管理画面での確認</p>
               <ul style={{ margin: '0 0 0 1.1rem', padding: 0 }}>
                 <li>
-                  <strong>本番プレイ履歴</strong>タブの「流入」列に、r= や UTM から解決した媒体名が入ります。セルをホバーすると詳細が出ます。
+                  <strong>本番プレイ履歴</strong>タブの「流入」列は、ここで編集したマスタと同じ名前で <code style={codeInline}>媒体名（r=…）</code> 形式になります。セルをホバーすると詳細が出ます。
                 </li>
               </ul>
             </div>

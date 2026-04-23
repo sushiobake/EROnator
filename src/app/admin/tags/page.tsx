@@ -31,6 +31,7 @@ import {
   playHistoryEmbedConfirmMessage,
 } from '@/lib/playHistoryAdminEmbed';
 import { PromoTrackingLinkPanel } from '../components/PromoTrackingLinkPanel';
+import { usePromoChannels } from '../context/PromoChannelsContext';
 import {
   classifyPlayHistoryRow,
   computeDurationSeconds,
@@ -203,6 +204,7 @@ function historyAnswerSymbol(a: string | undefined): string {
 
 export default function AdminTagsPage() {
   const { setProgress } = useAdminProgress();
+  const { channels: promoChannelList } = usePromoChannels();
   const [activeTab, setActiveTab] = useState<TabType>('works');
   const [adminToken, setAdminToken] = useState<string>('');
   const [file, setFile] = useState<File | null>(null);
@@ -2390,8 +2392,8 @@ export default function AdminTagsPage() {
     for (const { row, badge } of historyFilteredItems) {
       const durationSec = computeDurationSeconds(row);
       const maxConf = computeMaxConfidence(row);
-      const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson);
-      const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson);
+      const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson, promoChannelList);
+      const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson, promoChannelList);
       const cells: Array<unknown> = [
         row.id,
         row.createdAt ?? '',
@@ -6389,13 +6391,12 @@ export default function AdminTagsPage() {
                     const visitorBadge = resolveVisitorBadge(row.visitorPlayCount ?? (row.visitorId ? 1 : null));
                     const maxConfidence = computeMaxConfidence(row);
                     const durationSec = computeDurationSeconds(row);
-                    const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson);
-                    const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson);
-                    const inflowLabel = sns.cell !== 'ー'
-                      ? sns.cell
-                      : traffic.short
-                        ? traffic.short.replace(/^計測（短縮）：/, '').replace(/^別サイトから：/, '').replace(/^開いたページ：/, '').replace(/^このサイト内の直前のページ：/, '')
-                        : '直接';
+                    const traffic = trafficAttributionAdminLabel(row.trafficAttributionJson, promoChannelList);
+                    const sns = trafficAttributionSnsColumnLabel(row.trafficAttributionJson, promoChannelList);
+                    const hasAttributionR = sns.line1 !== 'ー';
+                    const inflowLabelFallback = traffic.short
+                      ? traffic.short.replace(/^計測（短縮）：/, '').replace(/^別サイトから：/, '').replace(/^開いたページ：/, '').replace(/^このサイト内の直前のページ：/, '')
+                      : '直接';
                     const inflowTitle = sns.title || traffic.title || traffic.short || '直接アクセス（参照元なし）';
                     return (
                     <tr
@@ -6491,16 +6492,30 @@ export default function AdminTagsPage() {
                         style={{
                           padding: '0.5rem',
                           fontSize: '0.78rem',
-                          maxWidth: '9rem',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          color: sns.cell !== 'ー' ? '#075985' : '#475569',
-                          fontWeight: sns.cell !== 'ー' ? 700 : 400,
+                          maxWidth: '12rem',
+                          minWidth: '6.5rem',
+                          whiteSpace: 'normal',
+                          overflow: 'visible',
+                          wordBreak: 'break-word',
+                          color: hasAttributionR ? '#075985' : '#475569',
+                          fontWeight: hasAttributionR ? 700 : 400,
+                          verticalAlign: 'top',
+                          lineHeight: 1.38,
                         }}
                         title={inflowTitle}
                       >
-                        {inflowLabel}
+                        {hasAttributionR ? (
+                          <>
+                            <div style={{ fontWeight: 700 }}>{sns.line1}</div>
+                            {sns.line2 ? (
+                              <div style={{ marginTop: '0.18rem', fontSize: '0.7rem', color: '#0369a1', fontWeight: 600 }}>
+                                {sns.line2}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          inflowLabelFallback
+                        )}
                       </td>
                       <td style={{ padding: '0.5rem', whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
                         {row.createdAt ? new Date(row.createdAt).toLocaleString('ja-JP') : '—'}

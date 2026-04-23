@@ -17,6 +17,7 @@ import { MosaicImage } from './MosaicImage';
 import { MobileRecommendCaptureGrid } from './MobileRecommendCaptureGrid';
 import { useToast } from './ToastContext';
 import { ResultScreenFourButtons } from './ResultScreenFourButtons';
+import { BetaThanksBanner, SuccessBetaSupportCTA } from './betaSupport';
 
 const LOGO_URL = '/ilust/inari_thinking_opening.png';
 /** 保存画像ヘッダ（推薦結果キャプチャと同じロゴ） */
@@ -56,6 +57,10 @@ interface SuccessProps {
   postTextAlmostSuccess?: string;
   /** 配信者モード時はタイトルを部分的伏字 */
   streamerMode?: boolean;
+  /** β: 「推薦してもらう」挙動（成功画面のみ渡す。未指定なら従来の X ポストのまま） */
+  onGoRecommend?: () => void;
+  /** β: 惜しかった画面で「ご協力ありがとう」バナーを表示する */
+  showBetaThanks?: boolean;
 }
 
 /** 正解作品より小さく。PC・スマホとも横スクロール */
@@ -86,6 +91,8 @@ export function Success({
   postTextSuccess = DEFAULT_POST_TEXT_SUCCESS,
   postTextAlmostSuccess = DEFAULT_POST_TEXT_ALMOST_SUCCESS,
   streamerMode,
+  onGoRecommend,
+  showBetaThanks,
 }: SuccessProps) {
   const linkText = '読んでみる';
   const isMobile = useMediaQuery(768);
@@ -402,6 +409,7 @@ export function Success({
         </div>
       </div>
 
+      {showBetaThanks && <BetaThanksBanner />}
       {/* 下半分: おすすめ5件。スマホ・mobileListBelow時はキャンバス下に表示 */}
       {recommendedWorks.length > 0 && !hideRecommendations && (
         <>
@@ -519,12 +527,20 @@ export function Success({
           marginTop: isMobile ? 12 : 14,
         }}
       >
+        {onGoRecommend && resultType === 'success' && (
+          <SuccessBetaSupportCTA isMobile={isMobile} />
+        )}
         <ResultScreenFourButtons
-          onSavePlain={() => runCapture(false)}
-          onSaveMosaic={() => runCapture(true)}
-          onPost={handlePostToX}
+          onSavePlain={isAlmostSuccess ? undefined : () => runCapture(false)}
+          onSaveMosaic={isAlmostSuccess ? undefined : () => runCapture(true)}
+          onPost={onGoRecommend ?? handlePostToX}
           onBackToTop={onBackToTop}
           isMobile={isMobile}
+          postLabel={onGoRecommend ? '推薦してもらう' : undefined}
+          postLabelPrefix={onGoRecommend ? '好みの同人誌を' : undefined}
+          postHideIcon={onGoRecommend ? true : undefined}
+          postBackground={onGoRecommend ? '#e11d48' : undefined}
+          postFirst={onGoRecommend ? true : undefined}
         />
         {onRestart && (
           <RestartButton onRestart={onRestart} inline compact={isMobile} small={!isMobile} />
