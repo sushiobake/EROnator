@@ -1145,6 +1145,7 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
             <SuccessRecommendationsVertical recommendedWorks={successRecommendedWorks} sessionId={sessionId} streamerMode={streamerMode} />
           ) : undefined}
           whiteboardWide={true}
+          mobileWhiteboardOverflowY="auto"
         >
           <Success
             shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
@@ -1197,6 +1198,7 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
             />
           ) : undefined}
           whiteboardWide={true}
+          mobileWhiteboardOverflowY="auto"
         >
           <Success
             shareCaptureHeading={gc?.recommendResultsHeading ?? 'こんな作品なんてどう？'}
@@ -1275,6 +1277,7 @@ export default function HomeClient({ initialRecentSuccesses = [] }: HomeClientPr
           }
           whiteboardWide={true}
           whiteboardFullContentWidth={true}
+          mobileWhiteboardOverflowY="auto"
         >
           {isThinking ? null : (
           <FailList
