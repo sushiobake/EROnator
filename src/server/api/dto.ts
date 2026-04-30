@@ -15,13 +15,14 @@ import { prisma } from '@/server/db/client';
  * パフォーマンス最適化: 部分的なWork型も受け取れるように修正
  */
 export function toWorkResponse(
-  work: Pick<Work, 'workId' | 'title' | 'authorName' | 'productUrl' | 'thumbnailUrl'> & { reviewAverage?: number | null; reviewCount?: number | null }
+  work: Pick<Work, 'workId' | 'title' | 'authorName' | 'productUrl' | 'thumbnailUrl'> & { affiliateUrl?: string | null; reviewAverage?: number | null; reviewCount?: number | null }
 ): WorkResponse {
   return {
     workId: work.workId,
     title: work.title,
     authorName: work.authorName,
     productUrl: work.productUrl,
+    affiliateUrl: work.affiliateUrl ?? null,
     thumbnailUrl: isAllowedThumbnailHost(work.thumbnailUrl)
       ? work.thumbnailUrl
       : null,

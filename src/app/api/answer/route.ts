@@ -230,6 +230,7 @@ export async function POST(request: NextRequest) {
           authorName: true,
           isAi: true,
           productUrl: true,
+          affiliateUrl: true,
           thumbnailUrl: true,
           reviewAverage: true,
           reviewCount: true,

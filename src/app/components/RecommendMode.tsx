@@ -25,6 +25,7 @@ type WorkResult = {
   title: string;
   authorName: string;
   productUrl: string;
+  affiliateUrl?: string | null;
   thumbnailUrl?: string | null;
   reviewAverage?: number | null;
   reviewCount?: number | null;
@@ -2488,7 +2489,7 @@ function RecommendResultsGrid({
           </p>
           <p style={{ fontSize: isMobile ? 9 : 10, color: 'var(--color-text-muted)', margin: '0 0 4px 0' }}>{rec.authorName}</p>
           <div style={{ fontSize: isMobile ? 10 : 13, color: 'var(--color-text-muted)' }}>
-            <ExternalLink href={rec.productUrl} linkText={LINK_TEXT} recommendSessionId={recommendSessionId} recommendFanzaWorkId={rec.workId}>
+            <ExternalLink href={rec.affiliateUrl || rec.productUrl} linkText={LINK_TEXT} recommendSessionId={recommendSessionId} recommendFanzaWorkId={rec.workId}>
               {LINK_TEXT}
             </ExternalLink>
           </div>

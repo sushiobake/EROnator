@@ -82,6 +82,7 @@ interface Work {
   title: string;
   authorName: string;
   productUrl: string;
+  affiliateUrl?: string | null;
   thumbnailUrl?: string | null;
 }
 

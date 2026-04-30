@@ -29,9 +29,17 @@ export function ExternalLink({
 }: ExternalLinkProps) {
   // AFFILIATE_IDは環境変数で分離（本番のみ本番ID）
   const affiliateId = process.env.NEXT_PUBLIC_AFFILIATE_ID || '';
-  
-  // アフィリエイトIDがある場合はURLに付与
-  const url = affiliateId ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}` : href;
+
+  // 公式アフィリエイトURL（al.dmm.* 中継ドメイン経由）はパラメータが完成済みなのでそのまま使う。
+  // それ以外（DMM 商品ページの直リンク等）にだけ af_id を後付けする。
+  // これは DMM 側で正規アフィリエイトクリックとして計測させるための分岐。
+  const isOfficialAffiliateUrl =
+    /^https?:\/\/al\.dmm\./i.test(href) || /[?&]af_id=/i.test(href);
+  const url = isOfficialAffiliateUrl
+    ? href
+    : affiliateId
+      ? `${href}${href.includes('?') ? '&' : '?'}af_id=${affiliateId}`
+      : href;
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
     if (recommendSessionId) {

@@ -12,6 +12,7 @@ export interface WorkResponse {
   title: string;
   authorName: string;
   productUrl: string;
+  affiliateUrl?: string | null;
   thumbnailUrl?: string | null;
   reviewAverage?: number | null;
   reviewCount?: number | null;

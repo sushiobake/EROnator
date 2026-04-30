@@ -28,6 +28,7 @@ interface WorkItem {
   title: string;
   authorName: string;
   productUrl: string;
+  affiliateUrl?: string | null;
   thumbnailUrl?: string | null;
   reviewAverage?: number | null;
   reviewCount?: number | null;
@@ -389,7 +390,7 @@ export function Success({
               {'★'.repeat(Math.round(work.reviewAverage))} {work.reviewAverage.toFixed(1)}（{work.reviewCount}件）
             </p>
           )}
-          <ExternalLink href={work.productUrl} linkText={linkText} sessionId={sessionId}>
+          <ExternalLink href={work.affiliateUrl || work.productUrl} linkText={linkText} sessionId={sessionId}>
             <span
               style={{
                 display: 'inline-block',
@@ -507,7 +508,7 @@ export function Success({
                     {rec.authorName}
                   </p>
                   <div style={{ fontSize: isMobile ? 10 : 14, color: 'var(--color-text-muted)', lineHeight: 1.2 }}>
-                    <ExternalLink href={rec.productUrl} linkText={linkText} sessionId={sessionId}>
+                    <ExternalLink href={rec.affiliateUrl || rec.productUrl} linkText={linkText} sessionId={sessionId}>
                       {linkText}
                     </ExternalLink>
                   </div>

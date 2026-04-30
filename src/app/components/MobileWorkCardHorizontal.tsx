@@ -16,6 +16,7 @@ interface WorkItem {
   title: string;
   authorName: string;
   productUrl: string;
+  affiliateUrl?: string | null;
   thumbnailUrl?: string | null;
 }
 
@@ -102,7 +103,7 @@ export function MobileWorkCardHorizontal({
         {showFanzaLink && (
           <div style={{ marginTop: 5, fontSize: 12 }}>
             <ExternalLink
-              href={work.productUrl}
+              href={work.affiliateUrl || work.productUrl}
               linkText={LINK_TEXT}
               compact
               sessionId={sessionId}
